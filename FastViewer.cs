@@ -2113,12 +2113,20 @@ namespace FastViewer
         }
         void OnWheel(object sender, MouseWheelEventArgs e)
         {
-            if (volPopup.IsOpen || gridOpen) return;
+            if (gridOpen) return;
+            // Over the speaker: volume. Checked first, because pointing at the speaker opens the volume slider
+            // (which handles the wheel over itself) and the speaker must keep working too.
+            if (transport.Visibility == Visibility.Visible && Within(e.OriginalSource as DependencyObject, volBtn))
+            {
+                SetVolume(volume + (e.Delta > 0 ? 0.05 : -0.05));
+                e.Handled = true;
+                return;
+            }
+            if (volPopup.IsOpen) return;
             if (transport.IsMouseOver && transport.Visibility == Visibility.Visible)
             {
-                // Over the control bar: volume on the volume button, jump on the time bar, nothing elsewhere.
-                if (volBtn.IsMouseOver) SetVolume(volume + (e.Delta > 0 ? 0.05 : -0.05));
-                else if (seek.IsMouseOver) SeekBy(e.Delta > 0 ? 5 : -5);
+                // Over the control bar: jump on the time bar, nothing elsewhere.
+                if (seek.IsMouseOver) SeekBy(e.Delta > 0 ? 5 : -5);
                 e.Handled = true;
                 return;
             }
@@ -2127,6 +2135,12 @@ namespace FastViewer
             else
                 Go(e.Delta < 0 ? 1 : -1);
             e.Handled = true;
+        }
+
+        static bool Within(DependencyObject d, DependencyObject container)
+        {
+            while (d != null && d != container) d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+            return d == container;
         }
 
         void OnAnyMouseMove(object sender, MouseEventArgs e)

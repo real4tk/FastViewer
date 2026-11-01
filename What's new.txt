@@ -5,6 +5,11 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.15.3  (2 Nov 2026)
+  Fixed
+  - The mouse wheel over the speaker button changes the volume again (it stopped in 1.15.0, when
+    pointing at the speaker started opening the volume slider).
+
 1.15.2  (2 Nov 2026)
   Fixed
   - In the Clean look and in full screen, the message at the top ("Update now", "Start over",

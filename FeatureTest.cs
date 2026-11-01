@@ -181,6 +181,20 @@ namespace FastViewer
                 muted = true;
                 ApplyAudio();
             });
+            Action<int> wheel = delta => volBtn.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, delta) { RoutedEvent = Mouse.MouseWheelEvent });
+            After(t += 100, () =>
+            {
+                double v0 = volume; wheel(120); double v1 = volume;
+                log(string.Format("wheel up on the speaker, slider closed: volume {0:0.00} -> {1:0.00}", v0, v1));
+                muted = true; ApplyAudio();
+            });
+            After(t += 100, () => mouse(volBtn, Mouse.MouseEnterEvent));
+            After(t += 300, () =>
+            {
+                double v0 = volume; wheel(-120); double v1 = volume;
+                log(string.Format("wheel down on the speaker, slider open {0}: volume {1:0.00} -> {2:0.00}", VolumeSliderOpen, v0, v1));
+                muted = true; ApplyAudio();
+            });
             After(t += 100, () => mouse(volBtn, Mouse.MouseEnterEvent));
             After(t += 300, () => { log("open again: " + VolumeSliderOpen); int photo = files.FindIndex(f => !IsVideoFile(f)); if (photo >= 0) ShowIndex(photo, 1); });
             After(t += 800, () => log("switched to a photo (no video bar): slider open " + VolumeSliderOpen + " (expected False)"));
