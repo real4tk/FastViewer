@@ -5,6 +5,19 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.11.0  (1 Nov 2026)
+  New
+  - Change the keys for everything: Settings > Keyboard now lists every action, including
+    Copy file path, Show in folder, Open with, Keep on top, Save a frame, Make compatible copy,
+    Save rotation to file, Actual size, Thumbnail strip on/off, Close window, and Slower / Faster /
+    Normal speed for videos. The new ones have no key until you give them one.
+  - Two keys per action: click a box and press a key, right-click a box to remove that key.
+  - Settings > Mouse: choose what the side buttons, the middle button and double-click do, and
+    whether a click on a video pauses it. The mouse wheel setting moved here too.
+  - Esc always goes back (full screen, mini player, grid, Settings), so you can't get stuck.
+  Fixed
+  - Settings now shows the current state of options you changed from a menu or key (Keep on top).
+
 1.10.0  (1 Nov 2026)
   New
   - All files in the folder: G (or the new grid button in the bottom bar) shows every photo and

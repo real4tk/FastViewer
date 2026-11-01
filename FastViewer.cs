@@ -378,6 +378,7 @@ namespace FastViewer
                 else if (args[i] == "--features" && i + 1 < args.Length) { snapDir = args[++i]; featureTest = true; }
                 else if (args[i] == "--ui" && i + 1 < args.Length) { snapDir = args[++i]; uiTest = true; }
                 else if (args[i] == "--gallery" && i + 1 < args.Length) { snapDir = args[++i]; galleryTest = true; }
+                else if (args[i] == "--controls" && i + 1 < args.Length) { snapDir = args[++i]; controlsTest = true; }
                 else if (args[i] == "--strip") stripOverride = true;
                 else if (args[i] == "--fadetest" && i + 1 < args.Length)
                 {
@@ -559,9 +560,15 @@ namespace FastViewer
             MouseMove += OnAnyMouseMove;
             PreviewMouseDown += delegate(object o, MouseButtonEventArgs e)
             {
-                if (gridOpen) { if (e.ChangedButton == MouseButton.XButton1) { CloseGrid(); e.Handled = true; } return; } // mouse back button leaves the grid
-                if (e.ChangedButton == MouseButton.XButton1) { Go(-1); e.Handled = true; }
-                else if (e.ChangedButton == MouseButton.XButton2) { Go(1); e.Handled = true; }
+                string button = e.ChangedButton == MouseButton.XButton1 ? "back" : e.ChangedButton == MouseButton.XButton2 ? "forward"
+                              : e.ChangedButton == MouseButton.Middle ? "middle" : null;
+                if (button == null) return;
+                if (gridOpen || settingsOpen) // the back button leaves the grid or Settings, like a browser
+                {
+                    if (button == "back") { if (gridOpen) CloseGrid(); else CloseSettings(); e.Handled = true; }
+                    return;
+                }
+                if (RunMouseAction(button)) e.Handled = true; // Settings > Mouse
             };
             stage.MouseLeftButtonDown += OnStageDown;
             stage.MouseMove += OnStageMove;
@@ -619,7 +626,7 @@ namespace FastViewer
                 if (path != null) OpenPath(path);
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
-                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else RunSnapshots(); }
+                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
         }
@@ -1553,15 +1560,15 @@ namespace FastViewer
                 Heading("File"),
                 Item("Save as", "\uE792", SaveAs, KeyOf("saveAs")),
                 Item("Copy", "\uE8C8", CopyFile, KeyOf("copy")),
-                Item("Copy file path", "\uE71B", delegate { if (CurrentFile != null) Clipboard.SetText(CurrentFile); }),
-                Item("Show in folder", "\uE838", ShowInFolder),
+                Item("Copy file path", "\uE71B", CopyPath, KeyOf("copyPath")),
+                Item("Show in folder", "\uE838", ShowInFolder, KeyOf("showInFolder")),
                 Item("Delete", "\uE74D", AskDelete, KeyOf("delete")),
                 new Separator(),
                 Heading("View"),
                 Item("Rotate", "\uE7AD", Rotate, KeyOf("rotate")),
-                Enabled(Item("Save rotation to file", "\uE74E", SaveRotationToFile), CanSaveRotation()),
+                Enabled(Item("Save rotation to file", "\uE74E", SaveRotationToFile, KeyOf("saveRotation")), CanSaveRotation()),
                 Item("Mini player", "\uE944", ToggleMini, KeyOf("mini")),
-                Item("Keep on top", pinned ? "\uE73E" : "\uE840", TogglePin),
+                Item("Keep on top", pinned ? "\uE73E" : "\uE840", TogglePin, KeyOf("pin")),
                 Item("Slideshow", "\uE786", ToggleSlideshow, KeyOf("slideshow")),
                 Item("Shuffle", shuffled ? "\uE73E" : "\uE8B1", ToggleShuffle, KeyOf("shuffle")),
                 Item("All files in folder", "\uF0E2", OpenGrid, KeyOf("grid")),
@@ -1580,7 +1587,7 @@ namespace FastViewer
             }
             items.Add(new Separator());
             items.Add(Item("Repeat", loop ? "" : null, ToggleLoop, "R"));
-            items.Add(Item("Save a frame", "", SaveFrame));
+            items.Add(Item("Save a frame", "", SaveFrame, KeyOf("saveFrame")));
             items.Add(new Separator());
             items.Add(Item("Previous frame", "\uE76B", delegate { StepFrame(-1); }, ","));
             items.Add(Item("Next frame", "\uE76C", delegate { StepFrame(1); }, "."));
@@ -1589,7 +1596,7 @@ namespace FastViewer
             if (loopA != null || loopB != null) items.Add(Item("Stop A-B loop", "\uE711", ClearLoop, "\\"));
             items.Add(new Separator());
             items.Add(Item("Trim...", "\uE7A8", StartTrim, "Ctrl+T"));
-            items.Add(Item("Make compatible copy...", "\uE8C8", MakeCompatibleCopy));
+            items.Add(Item("Make compatible copy...", "\uE8C8", MakeCompatibleCopy, KeyOf("compatible")));
             ShowMenu("VideoMoreBtn", PlacementMode.Top, items.ToArray());
         }
 
@@ -1679,11 +1686,13 @@ namespace FastViewer
         void OnStageDown(object sender, MouseButtonEventArgs e)
         {
             bool video = shown != null && shown.IsVideo && !shown.Failed;
+            bool clickPlays = mouseActions["click"] == "play"; // Settings > Mouse
             if (e.ClickCount == 2)
             {
                 if (video && clickToggled) TogglePlay(); // undo the first click's pause/play
                 clickToggled = false;
-                if (mini) ToggleMini(); else ToggleFullscreen();
+                if (mini && mouseActions["double"] == "fullscreen") ToggleMini(); // from the mini player: back to the window
+                else RunMouseAction("double");
                 return;
             }
             clickToggled = false;
@@ -1700,9 +1709,9 @@ namespace FastViewer
                 try { DragMove(); } // the mini player has no title bar: drag the video to move it
                 catch { }
                 bool moved = Math.Abs(Left - x) > 2 || Math.Abs(Top - y) > 2;
-                if (!moved && video) { TogglePlay(); clickToggled = true; } // a click without dragging: play/pause
+                if (!moved && video && clickPlays) { TogglePlay(); clickToggled = true; } // a click without dragging: play/pause
             }
-            else if (video)
+            else if (video && clickPlays)
             {
                 TogglePlay();
                 clickToggled = true;
@@ -1987,7 +1996,7 @@ namespace FastViewer
                     "loop=" + (loop ? "1" : "0"),
                     "maximized=" + (max ? "1" : "0"),
                     "bounds=" + bounds.ToString(CultureInfo.InvariantCulture)
-                }.Concat(OptionLines()).Concat(ShortcutLines()));
+                }.Concat(OptionLines()).Concat(ShortcutLines()).Concat(MouseLines()));
             }
             catch { }
         }

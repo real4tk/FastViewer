@@ -60,7 +60,10 @@ namespace FastViewer
                 case "keepReady": keepReady = v == "1"; break;
                 case "strip": showStrip = v == "1"; break;
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
-                default: if (key.StartsWith("key.")) savedKeys[key.Substring(4)] = v; break;
+                default:
+                    if (key.StartsWith("key.")) savedKeys[key.Substring(4)] = v;
+                    else if (key.StartsWith("mouse.") && mouseActions.ContainsKey(key.Substring(6))) mouseActions[key.Substring(6)] = v;
+                    break;
                 case "lastUpdateCheck": lastUpdateCheck = new DateTime(long.Parse(v, CultureInfo.InvariantCulture)); break;
                 case "miniLong": miniLong = double.Parse(v, CultureInfo.InvariantCulture); break;
                 case "miniLeft": miniLeft = double.Parse(v, CultureInfo.InvariantCulture); break;
@@ -220,6 +223,7 @@ namespace FastViewer
             CloseGrid();
             if (playing) TogglePlay();
             settingsOpen = true;
+            foreach (var refresh in settingsRefresh) refresh(); // things changed by a key or menu since last time (Keep on top...)
             if (settingsList.Children.Count == 0 && settingsPages.Count > 0) ShowSettingsPage(settingsPages[0].Value);
             F<FrameworkElement>("SettingsPage").Visibility = Visibility.Visible;
         }
@@ -237,10 +241,6 @@ namespace FastViewer
             OnClick("SettingsBackBtn", CloseSettings);
 
             AddGroup("Viewing");
-            AddCard("", "Mouse wheel",
-                "What the mouse wheel does when viewing a file. Ctrl + mouse wheel always zooms.",
-                Dropdown(new[] { "View next or previous items", "Zoom in or out" },
-                    () => wheelZooms ? 1 : 0, i => wheelZooms = i == 1));
             AddCard("", "Zoom preference",
                 "How to show photos and videos that are smaller than the window.",
                 Dropdown(new[] { "Fit to window", "View at actual size" },
@@ -322,6 +322,9 @@ namespace FastViewer
             AddGroup("Keyboard");
             AddShortcutCards();
 
+            AddGroup("Mouse");
+            AddMouseCards();
+
             AddGroup("Speed");
             AddCard("\uE7E8", "Stay ready in the background",
                 "When you close FastViewer it keeps waiting, hidden, so the next file you double-click opens instantly. " +
@@ -384,6 +387,7 @@ namespace FastViewer
                 case "Viewing": return "\uE8B9";
                 case "Videos": return "\uE714";
                 case "Keyboard": return "\uE765";
+                case "Mouse": return "\uE962";
                 case "Speed": return "\uE945";
                 case "Updates": return "\uE895";
                 case "Default app": return "\uE7AC";
@@ -482,9 +486,12 @@ namespace FastViewer
             });
         }
 
+        readonly List<Action> settingsRefresh = new List<Action>();
+
         CheckBox Toggle(Func<bool> get, Action<bool> set)
         {
             var cb = new CheckBox { Style = (Style)Application.Current.Resources["ToggleSwitch"], IsChecked = get() };
+            settingsRefresh.Add(delegate { cb.IsChecked = get(); });
             cb.Click += delegate
             {
                 set(cb.IsChecked == true);
@@ -513,6 +520,7 @@ namespace FastViewer
                 HorizontalContentAlignment = HorizontalAlignment.Stretch
             };
             text.Text = options[get()];
+            settingsRefresh.Add(delegate { text.Text = options[get()]; });
             b.Click += delegate
             {
                 var menu = new ContextMenu { PlacementTarget = b, Placement = PlacementMode.Bottom, MinWidth = b.ActualWidth, VerticalOffset = 2 };

@@ -1,4 +1,4 @@
-FastViewer 1.10.0 - a fast photo and video viewer for Windows 10 and 11
+FastViewer 1.11.0 - a fast photo and video viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -44,7 +44,8 @@ Handy keys
   Ctrl + mouse wheel   zoom
 
 Settings are in the "..." menu at the top. Every option has a short explanation;
-keyboard shortcuts can be changed in Settings > Keyboard. X shuffles the folder.
+every action's keys can be changed in Settings > Keyboard (two keys each), and the mouse
+buttons in Settings > Mouse. Esc always goes back. X shuffles the folder.
 Closing FastViewer keeps it ready in the background (icon by the clock) so files open instantly.
 Each file you open from File Explorer while FastViewer is open gets a window of its own.
 Videos that don't play or get no thumbnail elsewhere: video "..." -> "Make compatible copy".

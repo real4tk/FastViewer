@@ -12,8 +12,67 @@ namespace FastViewer
 {
     partial class ViewerWindow
     {
-        bool featureTest, uiTest, galleryTest;
+        bool featureTest, uiTest, galleryTest, controlsTest;
         int preloadOverride;
+
+        // FastViewer.exe <file> --controls <output folder>: two keys per action, taking keys over, mouse buttons.
+        void RunControlsTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            var steps = new List<KeyValuePair<int, Action>>();
+            Action<int, Action> at = (ms, a) => steps.Add(new KeyValuePair<int, Action>(ms, a));
+            Action<string> log = text => testLog.Add(text);
+            Func<string, Shortcut> sc = id => shortcuts.First(s => s.Id == id);
+            Func<Key, KeyEventArgs> key = k => new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(this), 0, k) { RoutedEvent = Keyboard.KeyDownEvent };
+            Action<string, int, Key> assign = (id, slot, k) => { StartCapture(sc(id), slot); CaptureKey(key(k)); };
+            Func<string, string> keys = id => "[" + string.Join(", ", sc(id).Keys) + "]";
+            Func<string, Button> nav = name => settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == name).Key;
+
+            at(1200, () => { OpenSettings(); nav("Keyboard").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); });
+            at(1700, () => Snap("1_keyboard"));
+            at(1800, () => nav("Mouse").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)));
+            at(2200, () => { Snap("2_mouse"); CloseSettings(); });
+            at(2300, () =>
+            {
+                log("actions: " + shortcuts.Count + ", new ones without a key: " + string.Join(", ", shortcuts.Where(s => s.Keys.Count == 0).Select(s => s.Id)));
+                assign("strip", 0, Key.P); log("strip after P in box 1: " + keys("strip"));
+                assign("next", 1, Key.N); log("next after N in box 2: " + keys("next") + " (expected Right, N)");
+                assign("next", 0, Key.N); log("next after N in box 1 too: " + keys("next") + " (expected N once)");
+                RemoveKey(sc("next"), 0); log("next after right-click box 1: " + keys("next") + " (expected none)");
+                assign("next", 0, Key.Right); assign("next", 1, Key.PageDown); log("next restored: " + keys("next"));
+                assign("strip", 1, Key.G); log("strip took G: strip " + keys("strip") + ", grid " + keys("grid") + " (expected grid without G)");
+                bool before = showStrip; HandleShortcut(key(Key.P)); log("P toggles the strip: " + (showStrip != before));
+                HandleShortcut(key(Key.G)); log("G now toggles the strip, grid open: " + gridOpen + " (expected False)");
+                log("saved key lines: " + string.Join("; ", ShortcutLines()));
+            });
+            at(2600, () =>
+            {
+                mouseActions["middle"] = "grid";
+                log("middle button set to grid, runs: " + RunMouseAction("middle") + ", grid open " + gridOpen);
+                CloseGrid();
+                mouseActions["back"] = "none";
+                int i = index;
+                log("back button set to nothing, runs: " + RunMouseAction("back") + ", file unchanged " + (index == i));
+                log("saved mouse lines: " + string.Join("; ", MouseLines()));
+            });
+            at(2800, () => { int v = files.FindIndex(IsVideoFile); if (v >= 0) ShowIndex(v, 1); });
+            at(3800, () =>
+            {
+                StepSpeed(1); log("faster: " + speed);
+                StepSpeed(1); StepSpeed(1); log("faster x3 (stops at 2): " + speed);
+                StepSpeed(-1); log("slower: " + speed);
+                StepSpeed(0); log("normal: " + speed);
+            });
+            at(4000, () => { OpenSettings(); nav("Keyboard").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); });
+            at(4400, () => { Snap("3_keyboard_changed"); nav("Mouse").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); });
+            at(4800, () => Snap("4_mouse_changed"));
+            at(4900, () =>
+            {
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ")));
+                Close();
+            });
+            foreach (var s in steps) After(s.Key, s.Value);
+        }
 
         // FastViewer.exe <file> --strip --gallery <output folder>: the thumbnail strip and the folder grid.
         void RunGalleryTest()
