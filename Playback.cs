@@ -1,0 +1,370 @@
+// FastViewer: resume where you left off, frame-by-frame, A-B loop, trim, and the small pop-up message.
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
+
+namespace FastViewer
+{
+    partial class ViewerWindow
+    {
+        int preloadAhead = 2;      // files loaded ahead and behind (Settings > Preload); 2 keeps even very fast clicking instant
+        bool resumeVideos = true;  // continue long videos where you stopped (Settings)
+        const double ResumeMinSeconds = 60;
+
+        static readonly string PositionsFile = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FastViewer", "positions.txt");
+        readonly Dictionary<string, double> positions = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        bool positionsLoaded;
+
+        TimeSpan? loopA, loopB;
+        readonly DispatcherTimer loopTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(15) };
+        bool trimming, converting;
+
+        readonly DispatcherTimer toastTimer = new DispatcherTimer();
+        Action toastAction;
+        string toastKind;
+
+        void InitExtras()
+        {
+            OnClick("ToastBtn", delegate { if (toastAction != null) toastAction(); });
+            OnClick("ToastClose", delegate { HideToast(null); });
+            OnClick("TrimStartBtn", SetLoopStart);
+            OnClick("TrimEndBtn", SetLoopEnd);
+            OnClick("TrimSaveBtn", SaveTrim);
+            OnClick("TrimCancelBtn", EndTrim);
+            toastTimer.Tick += delegate { HideToast(null); };
+            loopTimer.Tick += delegate { KeepInLoop(); };
+            transport.SizeChanged += delegate { UpdateLoopUi(); };
+            gifTimer.Tick += delegate { NextGifFrame(); };
+        }
+
+        // Called whenever a different file appears on screen.
+        void OnShownChanged(Slot before)
+        {
+            if (trimming) EndTrim();
+            ClearLoop();
+            HideToast("resume");
+            var s = shown;
+            double saved;
+            if (s.IsVideo && resumeVideos && positions.TryGetValue(s.File, out saved) && saved > 1)
+            {
+                var file = s.File;
+                ShowToast("Continuing where you left off (" + Fmt(TimeSpan.FromSeconds(saved)) + ")", "Start over", delegate
+                {
+                    if (shown != null && shown.File == file) shown.Video.Position = TimeSpan.Zero;
+                    positions.Remove(file);
+                    HideToast(null);
+                }, 4, "resume");
+            }
+            UpdateGif();
+        }
+
+        // ---------------------------------------------------------------- resume
+
+        void LoadPositions()
+        {
+            if (positionsLoaded) return;
+            positionsLoaded = true;
+            try
+            {
+                if (!File.Exists(PositionsFile)) return;
+                foreach (var line in File.ReadAllLines(PositionsFile))
+                {
+                    int bar = line.IndexOf('|');
+                    double sec;
+                    if (bar > 0 && double.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out sec))
+                        positions[line.Substring(bar + 1)] = sec;
+                }
+            }
+            catch { }
+        }
+
+        void SavePositions()
+        {
+            if (!positionsLoaded || snapDir != null || selfTestInterval > 0 || fadeTestLog != null) return;
+            try
+            {
+                // Keep the 300 most recent.
+                File.WriteAllLines(PositionsFile, positions.Skip(Math.Max(0, positions.Count - 300))
+                    .Select(p => p.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "|" + p.Key));
+            }
+            catch { }
+        }
+
+        // Remembers where you are in a long video (from 5 s in until 5 s before the end).
+        void RememberPosition(Slot s)
+        {
+            if (s == null || !s.IsVideo || s.Failed || s.File == null) return;
+            var d = s.Video.NaturalDuration;
+            if (!d.HasTimeSpan) return;
+            LoadPositions();
+            double length = d.TimeSpan.TotalSeconds, at = s.Video.Position.TotalSeconds;
+            positions.Remove(s.File); // re-added at the end = most recent
+            if (resumeVideos && length >= ResumeMinSeconds && at >= 5 && at <= length - 5) positions[s.File] = at;
+        }
+
+        // Puts a hidden video at its first frame, or where you left off. A freshly opened video is
+        // already at its first frame (onlyIfResuming): seeking there anyway would slow switching down.
+        void GoToResumePoint(Slot s, bool onlyIfResuming = false)
+        {
+            LoadPositions();
+            double at;
+            if (!resumeVideos || s.File == null || !positions.TryGetValue(s.File, out at)) at = 0;
+            if (at == 0 && onlyIfResuming) return;
+            s.Video.Position = TimeSpan.FromSeconds(at);
+        }
+
+        // ---------------------------------------------------------------- frame by frame
+
+        void StepFrame(int direction)
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || s.Failed) return;
+            if (playing) TogglePlay();
+            var d = s.Video.NaturalDuration;
+            double at = s.Video.Position.TotalSeconds + direction * s.FrameSeconds;
+            if (d.HasTimeSpan) at = Math.Min(at, d.TimeSpan.TotalSeconds);
+            s.Poster.Visibility = Visibility.Collapsed;
+            s.Video.Position = TimeSpan.FromSeconds(Math.Max(0, at));
+            UpdateTime();
+            ShowOverlay();
+        }
+
+        // ---------------------------------------------------------------- A-B loop
+
+        void SetLoopStart()
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || s.Failed) return;
+            loopA = s.Video.Position;
+            if (loopB.HasValue && loopB.Value <= loopA.Value) loopB = null;
+            AfterLoopChange("Loop start (A) set at " + Fmt(loopA.Value) + ". Press ] at the end point.");
+        }
+
+        void SetLoopEnd()
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || s.Failed) return;
+            var at = s.Video.Position;
+            if (!loopA.HasValue) loopA = TimeSpan.Zero;
+            if (at <= loopA.Value) { loopB = loopA; loopA = at; } // set the "wrong" way round: swap
+            else loopB = at;
+            AfterLoopChange("Looping " + Fmt(loopA.Value) + " - " + Fmt(loopB.Value) + ". Press \\ to stop.");
+        }
+
+        void ClearLoop()
+        {
+            if (!loopA.HasValue && !loopB.HasValue) return;
+            loopA = loopB = null;
+            loopTimer.Stop();
+            UpdateLoopUi();
+            HideToast("loop");
+        }
+
+        void AfterLoopChange(string message)
+        {
+            if (loopB.HasValue) loopTimer.Start();
+            UpdateLoopUi();
+            if (trimming) UpdateTrimUi();
+            else ShowToast(message, null, null, 3, "loop");
+            ShowOverlay();
+        }
+
+        void KeepInLoop()
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || !loopB.HasValue) return;
+            var at = s.Video.Position;
+            if (at >= loopB.Value || (loopA.HasValue && at < loopA.Value - TimeSpan.FromMilliseconds(500)))
+                s.Video.Position = loopA ?? TimeSpan.Zero;
+        }
+
+        // Shows the A-B part as a band on the time bar.
+        void UpdateLoopUi()
+        {
+            var band = F<FrameworkElement>("LoopRange");
+            var s = shown;
+            if (!loopA.HasValue || s == null || !s.IsVideo || !s.Video.NaturalDuration.HasTimeSpan || seek.ActualWidth <= 20)
+            {
+                band.Visibility = Visibility.Collapsed;
+                return;
+            }
+            double length = s.Video.NaturalDuration.TimeSpan.TotalSeconds;
+            double usable = seek.ActualWidth - 20; // the thumb is 20 wide; its centre runs from 10 to width-10
+            double x1 = 10 + usable * loopA.Value.TotalSeconds / length;
+            double x2 = loopB.HasValue ? 10 + usable * loopB.Value.TotalSeconds / length : x1 + 4;
+            band.Margin = new Thickness(x1 - 7, 0, 0, 0);
+            band.Width = Math.Max(14, x2 - x1 + 14);
+            band.Visibility = Visibility.Visible;
+        }
+
+        // ---------------------------------------------------------------- trim
+
+        void StartTrim()
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || s.Failed || !s.Video.NaturalDuration.HasTimeSpan) return;
+            if (mini) ToggleMini();
+            trimming = true;
+            HideToast(null);
+            loopA = TimeSpan.Zero;
+            loopB = s.Video.NaturalDuration.TimeSpan;
+            loopTimer.Start();
+            F<FrameworkElement>("TrimBar").Visibility = Visibility.Visible;
+            UpdateLoopUi();
+            UpdateTrimUi();
+            ShowOverlay();
+        }
+
+        void UpdateTrimUi()
+        {
+            if (!loopA.HasValue || !loopB.HasValue) return;
+            var length = loopB.Value - loopA.Value;
+            F<TextBlock>("TrimText").Text = "Clip: " + Fmt(loopA.Value) + " - " + Fmt(loopB.Value) +
+                "  (" + Math.Round(length.TotalSeconds, 1) + " s)";
+        }
+
+        void EndTrim()
+        {
+            trimming = false;
+            F<FrameworkElement>("TrimBar").Visibility = Visibility.Collapsed;
+            ClearLoop();
+        }
+
+        void SaveTrim()
+        {
+            var s = shown;
+            if (s == null || !loopA.HasValue || !loopB.HasValue) return;
+            if (playing) TogglePlay();
+            string target = AskSaveVideo(s.File, " (clip)");
+            if (target == null) return;
+            var from = loopA.Value;
+            var to = loopB.Value;
+            EndTrim();
+            RunConversion(s.File, target, from, to, "Saving clip");
+        }
+
+        void MakeCompatibleCopy()
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || s.Failed) return;
+            if (playing) TogglePlay();
+            string target = AskSaveVideo(s.File, " (compatible)");
+            if (target != null) RunConversion(s.File, target, null, null, "Making compatible copy");
+        }
+
+        string AskSaveVideo(string source, string suffix)
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save video",
+                FileName = Path.GetFileNameWithoutExtension(source) + suffix + ".mp4",
+                InitialDirectory = Path.GetDirectoryName(source),
+                DefaultExt = ".mp4",
+                Filter = "MP4 video|*.mp4"
+            };
+            if (dlg.ShowDialog(this) != true) return null;
+            if (string.Equals(Path.GetFullPath(dlg.FileName), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase))
+            {
+                ShowToast("Pick a different name: the original can't be replaced while converting.", null, null, 5, null);
+                return null;
+            }
+            return dlg.FileName;
+        }
+
+        // Converts in the background with Windows' own video tools; progress shows in the pop-up.
+        void RunConversion(string source, string target, TimeSpan? from, TimeSpan? to, string what)
+        {
+            if (converting)
+            {
+                ShowToast("Already saving a video, one moment...", null, null, 3, null);
+                return;
+            }
+            converting = true;
+            int turn;
+            rotations.TryGetValue(source, out turn); // save it the way it's shown
+            var cancel = new CancelFlag();
+            ShowToast(what + "... 0%", "Cancel", delegate { cancel.Cancelled = true; }, 0, "convert");
+            int lastPercent = 0;
+            var thread = new Thread(delegate()
+            {
+                string error = null;
+                try
+                {
+                    VideoConverter.Convert(source, target, from, to, turn, delegate(double p)
+                    {
+                        int percent = (int)(p * 100);
+                        if (percent == lastPercent) return;
+                        lastPercent = percent;
+                        Dispatcher.BeginInvoke(new Action(delegate
+                        {
+                            if (toastKind == "convert") F<TextBlock>("ToastText").Text = what + "... " + percent + "%";
+                        }));
+                    }, cancel);
+                }
+                catch (Exception ex) { error = ex.Message; }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    converting = false;
+                    if (cancel.Cancelled || error != null)
+                    {
+                        try { if (File.Exists(target)) File.Delete(target); } catch { }
+                        ShowToast(cancel.Cancelled ? "Cancelled." : "Couldn't save the video: " + error, null, null, 6, null);
+                        return;
+                    }
+                    ShowToast("Saved " + Path.GetFileName(target), "Show in folder", delegate
+                    {
+                        Process.Start("explorer.exe", "/select,\"" + target + "\"");
+                        HideToast(null);
+                    }, 8, null);
+                    if (snapDir != null) testLog.Add("converted " + target);
+                }));
+            });
+            thread.IsBackground = true;
+            thread.SetApartmentState(ApartmentState.MTA);
+            thread.Start();
+        }
+
+        // ---------------------------------------------------------------- pop-up message
+
+        void ShowToast(string text, string button, Action action, double seconds, string kind)
+        {
+            F<TextBlock>("ToastText").Text = text;
+            var b = F<Button>("ToastBtn");
+            b.Content = button;
+            b.Visibility = button == null ? Visibility.Collapsed : Visibility.Visible;
+            toastAction = action;
+            toastKind = kind;
+            var toast = F<FrameworkElement>("Toast");
+            if (toast.Visibility != Visibility.Visible)
+            {
+                toast.Visibility = Visibility.Visible;
+                toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)));
+            }
+            toastTimer.Stop();
+            if (seconds > 0)
+            {
+                toastTimer.Interval = TimeSpan.FromSeconds(seconds);
+                toastTimer.Start();
+            }
+        }
+
+        // Hides the pop-up; with a kind, only if it's that kind of message.
+        void HideToast(string kind)
+        {
+            if (kind != null && kind != toastKind) return; // (closing the save progress just hides it; saving goes on)
+            toastTimer.Stop();
+            F<FrameworkElement>("Toast").Visibility = Visibility.Collapsed;
+            toastKind = null;
+        }
+    }
+}

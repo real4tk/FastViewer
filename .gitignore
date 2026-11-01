@@ -1,0 +1,4 @@
+# Build output and release packages (the exe is attached to each GitHub release instead)
+*.exe
+*.zip
+selftest.log

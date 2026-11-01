@@ -1,0 +1,204 @@
+// FastViewer: checks GitHub for a newer version and updates itself.
+//
+// A new version is a "release" on github.com/<UpdateRepo> named like v1.8.0, with the file
+// FastViewer-1.8.0.zip attached (the same zip that's shared with friends).
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Net;
+using System.Reflection;
+using System.Threading;
+using System.Web.Script.Serialization;
+using System.Windows;
+
+namespace FastViewer
+{
+    partial class ViewerWindow
+    {
+        // The GitHub page updates come from ("owner/FastViewer"). Empty = updates not set up yet.
+        const string UpdateRepo = "real4tk/FastViewer";
+
+        bool autoUpdate = true;          // check when FastViewer starts, at most about once a day (Settings)
+        DateTime lastUpdateCheck;
+        string updateFeed;               // test runs: --update-feed <local .json>
+        bool updateTestAccept;           // test runs: --update-test (accepts the update by itself)
+
+        class Release
+        {
+            public Version Version;
+            public string ZipUrl;
+        }
+
+        static Version CurrentVersion { get { return Assembly.GetExecutingAssembly().GetName().Version; } }
+
+        string Feed
+        {
+            get
+            {
+                if (updateFeed != null) return updateFeed;
+                return UpdateRepo.Length == 0 ? null : "https://api.github.com/repos/" + UpdateRepo + "/releases/latest";
+            }
+        }
+
+        // Called once FastViewer has opened.
+        void StartupUpdateCheck()
+        {
+            // Left over from the last update (the old program can't delete itself while running).
+            try
+            {
+                string old = Assembly.GetExecutingAssembly().Location + ".old";
+                if (File.Exists(old)) File.Delete(old);
+            }
+            catch { }
+            bool due = autoUpdate && (DateTime.Now - lastUpdateCheck).TotalHours >= 20;
+            if (updateTestAccept) Log("startup: feed=" + Feed + ", due=" + due);
+            if (Feed != null && (due || updateFeed != null)) After(3000, delegate { CheckForUpdates(false); });
+        }
+
+        void CheckForUpdates(bool manual)
+        {
+            string feed = Feed;
+            if (feed == null)
+            {
+                if (manual) ShowToast("Updates aren't set up in this version yet.", null, null, 4, null);
+                return;
+            }
+            if (manual) ShowToast("Checking for updates...", null, null, 0, "update");
+            var thread = new Thread(delegate()
+            {
+                Release latest = null;
+                string error = null;
+                try { latest = FetchLatest(feed); }
+                catch (Exception ex) { error = ex.Message; }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (updateTestAccept) Log("checked: " + (error ?? (latest == null ? "no usable release" : latest.Version + " at " + latest.ZipUrl)));
+                    lastUpdateCheck = DateTime.Now;
+                    SaveSettings();
+                    if (error != null)
+                    {
+                        if (manual) ShowToast("Couldn't check for updates: " + error, null, null, 6, "update");
+                        return;
+                    }
+                    if (latest == null || latest.Version <= CurrentVersion)
+                    {
+                        if (manual) ShowToast("You have the latest version (" + CurrentVersion.ToString(3) + ").", null, null, 4, "update");
+                        else if (updateTestAccept) Log("update test: nothing newer");
+                        return;
+                    }
+                    ShowToast("FastViewer " + latest.Version.ToString(3) + " is available.", "Update now",
+                              delegate { InstallUpdate(latest); }, 0, "update");
+                    if (updateTestAccept) InstallUpdate(latest);
+                }));
+            });
+            thread.IsBackground = true;
+            thread.Start();
+        }
+
+        Release FetchLatest(string feed)
+        {
+            string json;
+            if (File.Exists(feed)) json = File.ReadAllText(feed);
+            else using (var web = NewWebClient()) json = web.DownloadString(feed);
+
+            var data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+            Version version;
+            if (!Version.TryParse(((string)data["tag_name"]).TrimStart('v', 'V'), out version)) return null;
+            var release = new Release { Version = Normalize(version) };
+            foreach (var item in (System.Collections.IEnumerable)data["assets"])
+            {
+                var asset = (Dictionary<string, object>)item;
+                string name = (string)asset["name"], url = (string)asset["browser_download_url"];
+                if (!name.StartsWith("FastViewer", StringComparison.OrdinalIgnoreCase) || !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
+                // Only download from this FastViewer's own GitHub page (or a local file in test runs).
+                bool trusted = updateFeed != null
+                    ? File.Exists(url)
+                    : url.StartsWith("https://github.com/" + UpdateRepo + "/releases/download/", StringComparison.OrdinalIgnoreCase);
+                if (trusted) release.ZipUrl = url;
+            }
+            return release.ZipUrl == null ? null : release;
+        }
+
+        static Version Normalize(Version v) // 1.8.0 and 1.8.0.0 are the same version
+        {
+            return new Version(v.Major, v.Minor, Math.Max(0, v.Build), Math.Max(0, v.Revision));
+        }
+
+        static WebClient NewWebClient()
+        {
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var web = new WebClient();
+            web.Headers[HttpRequestHeader.UserAgent] = "FastViewer/" + CurrentVersion.ToString(3);
+            web.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
+            return web;
+        }
+
+        void InstallUpdate(Release release)
+        {
+            ShowToast("Downloading FastViewer " + release.Version.ToString(3) + "...", null, null, 0, "update");
+            string exe = Assembly.GetExecutingAssembly().Location;
+            var thread = new Thread(delegate()
+            {
+                string error = null;
+                string temp = Path.Combine(Path.GetTempPath(), "FastViewer-update-" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    Directory.CreateDirectory(temp);
+                    string zip = Path.Combine(temp, "update.zip"), fresh = Path.Combine(temp, "FastViewer.exe");
+                    if (File.Exists(release.ZipUrl)) File.Copy(release.ZipUrl, zip);
+                    else using (var web = NewWebClient()) web.DownloadFile(release.ZipUrl, zip);
+
+                    using (var archive = ZipFile.OpenRead(zip))
+                    {
+                        var entry = archive.Entries.FirstOrDefault(e => e.Name.Equals("FastViewer.exe", StringComparison.OrdinalIgnoreCase));
+                        if (entry == null) throw new Exception("the download doesn't contain FastViewer.exe");
+                        entry.ExtractToFile(fresh);
+                    }
+                    var downloaded = Normalize(AssemblyName.GetAssemblyName(fresh).Version);
+                    if (downloaded <= CurrentVersion) throw new Exception("the download isn't newer than this version");
+
+                    // Swap: a running program's file can be renamed, so move this one aside and put the new one in its place.
+                    string old = exe + ".old";
+                    if (File.Exists(old)) File.Delete(old);
+                    File.Move(exe, old);
+                    try { File.Copy(fresh, exe); }
+                    catch
+                    {
+                        File.Move(old, exe); // put things back as they were
+                        throw;
+                    }
+                }
+                catch (UnauthorizedAccessException) { error = "Windows doesn't allow changing files in FastViewer's folder. Download the new zip instead."; }
+                catch (Exception ex) { error = ex.Message; }
+                finally
+                {
+                    try { Directory.Delete(temp, true); } catch { }
+                }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (error != null)
+                    {
+                        ShowToast("Couldn't update: " + error, null, null, 8, "update");
+                        Log("update failed: " + error);
+                        return;
+                    }
+                    Log("updated to " + release.Version.ToString(3));
+                    // Restart on the same file.
+                    RememberPosition(shown);
+                    SavePositions();
+                    SaveSettings();
+                    PrepareRestart(); // the new version takes over receiving files
+                    if (!updateTestAccept)
+                        Process.Start(exe, CurrentFile == null ? "" : "\"" + CurrentFile + "\"");
+                    Close();
+                }));
+            });
+            thread.IsBackground = true;
+            thread.Start();
+        }
+    }
+}

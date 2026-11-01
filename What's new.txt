@@ -1,0 +1,118 @@
+FastViewer - what's new
+=======================
+
+Version numbers: major.minor.patch. New features raise the middle number, bug fixes the last one.
+You can see which version you have in "..." -> Settings -> About.
+
+
+1.10.0  (1 Nov 2026)
+  New
+  - All files in the folder: G (or the new grid button in the bottom bar) shows every photo and
+    video as thumbnails, in File Explorer's order and with your Show filter. Click one to open it,
+    or use the arrows and Enter. Small / Medium / Large, or Ctrl + mouse wheel. Esc goes back.
+    While shuffle is on the grid stays in folder order; picking a file keeps shuffling from there.
+  - Thumbnail strip (Settings > Viewing, off unless you turn it on): small pictures of the files
+    before and after this one, under the picture. Click one to jump to it. With shuffle on it
+    shows the shuffled order, so you see what comes next.
+  - Thumbnails are the ones File Explorer uses and load after you stop switching: switching
+    stays exactly as fast as before (measured).
+  Changed
+  - A file you open from File Explorer while FastViewer is open now gets a window of its own
+    instead of replacing what you're looking at. FastViewer waiting in the background still opens
+    the first file instantly; when you close windows, one stays ready and the others quit.
+
+1.9.0  (1 Nov 2026)
+  New
+  - Opens instantly: after you close FastViewer it stays ready in the background (icon next to
+    the clock, right-click > Quit), so the next file opens in a blink. Settings > Speed.
+  - One window: double-clicking another file shows it in the open FastViewer.
+  - New files in the folder (a finished download, a clip you saved) appear by themselves.
+  - Keyboard shortcuts can be changed: Settings > Keyboard.
+  - Shuffle (X, or "..." > Shuffle).
+  - "When a video ends": stop, or play the next file (Settings > Videos). Repeat works as before.
+  - Click the video to pause or play; double-click still goes full screen.
+  - Mouse wheel over the volume button changes the volume, over the time bar it jumps;
+    over the other video buttons it no longer switches files by accident.
+  - Full screen: the top and bottom bars appear when you move the mouse.
+  - Settings has a side menu (Viewing, Videos, Keyboard, Speed, ...), and Back stays visible.
+  - The "..." menu is grouped into File and View.
+1.8.0  (1 Nov 2026)
+  New
+  - Automatic updates: when FastViewer starts (at most once a day) it checks
+    github.com/real4tk/FastViewer for a newer version and offers "Update now".
+    Nothing is installed without your click, and your settings stay.
+    Settings -> Updates has an on/off switch and "Check now".
+
+1.7.0  (1 Nov 2026)
+  New
+  - Continue where you left off: videos longer than a minute start again where you stopped
+    ("Start over" button in the message that appears). Can be switched off in Settings.
+  - Frame by frame: , and . step one frame back or forward (also in the video "..." menu).
+  - A-B loop: [ sets the start, ] the end, \ stops it. The looped part shows on the time bar.
+  - Trim (Ctrl+T or video "..." -> Trim): pick a start and end, save that part as a new .mp4.
+  - Make compatible copy (video "..." menu): saves an .mp4 that plays and gets thumbnails
+    everywhere, upright and in normal colours. Uses Windows' own video tools, no extra programs.
+  - Animated GIFs play.
+  - Photos: "When you rotate a photo" setting can save the rotation into the file
+    (JPEGs without any quality loss), plus "..." -> "Save rotation to file".
+  - Faster: "Preload" setting, now 2 files each way by default, so even very fast clicking
+    through videos stays instant. FastViewer also starts a little quicker, and Settings has an
+    optional "Start even faster" button (needs administrator approval once).
+
+1.6.1  (30 Oct 2026)
+  Fixed
+  - Videos filmed upright on a phone (for example iPhone HDR videos) opened sideways.
+    FastViewer now reads the rotation stored in the video and shows it the right way up.
+  - "Save a frame" now saves the frame the way it's shown, also for turned videos.
+
+1.6.0  (26 Oct 2026)
+  New
+  - Mini player (Ctrl+M or the button left of "Open with"): just the video in a small
+    window that stays on top of other apps. It takes the shape of the video and changes
+    shape when you go to the next file or rotate. Drag to move, drag the edges to resize,
+    double-click or Esc to go back.
+  - "Keep on top" option ("..." menu and Settings) for the normal window.
+  - The window can be made much smaller; buttons tuck into the "..." menu when there's no room.
+
+1.5.0  (25 Oct 2026)
+  New
+  - Rotate photos and videos 90 degrees (button at the top, Ctrl+R, or "..." -> Rotate).
+
+1.4.2  (19 Oct 2026)
+  Fixed
+  - No more FastViewer logo stamped on video thumbnails in File Explorer.
+
+1.4.1  (19 Oct 2026)
+  Fixed
+  - Controls now fade away as soon as the mouse leaves the window, instead of after 2.5 seconds.
+
+1.4.0  (19 Oct 2026)
+  New
+  - Choose how far the skip buttons (and J / L) jump: 5, 10, 15, 30 or 60 seconds.
+
+1.3.0  (19 Oct 2026)
+  New
+  - Play/pause button in the middle of videos, styled like the Windows Photos app.
+  - Video dims slightly while the controls are showing, like Photos.
+  - Settings page: mouse wheel, zoom preference, which files to show, order, wrap around,
+    ask before deleting, autoplay, repeat, dimming, hide delay, slideshow speed.
+  - Save as (Ctrl+S) and "Save a frame" from a video.
+  Fixed
+  - Top bar no longer overlaps itself in narrow windows.
+  - No black flash when resuming a paused video.
+
+1.2.0  (19 Oct 2026)
+  New
+  - Center play/pause button; controls stay visible while paused.
+  Fixed
+  - No black flash between videos when switching quickly.
+
+1.1.0  (19 Oct 2026)
+  New
+  - Windows 11 Photos look: top bar, bottom bar, file info, zoom, slideshow, delete to Recycle Bin.
+  - Files go in the same order as File Explorer (for example newest first in Downloads).
+  - New black-and-white icon.
+
+1.0.0  (19 Oct 2026)
+  - First version: instant switching between photos and videos (the next and previous
+    files are loaded ahead of time).

@@ -1,0 +1,51 @@
+FastViewer 1.10.0 - a fast photo and video viewer for Windows 10 and 11
+======================================================================
+
+No install needed: FastViewer.exe is the whole program.
+See "What's new.txt" for what changed in each version.
+
+1. Put FastViewer.exe in a folder where it can stay (for example Documents\FastViewer).
+   Don't run it straight from the zip. From now on FastViewer updates itself: it offers
+   new versions when it starts (Settings -> Updates). Your settings are kept.
+
+2. The first time you open it, Windows may say "Windows protected your PC".
+   That's because it's a home-made app without a paid signature.
+   Click "More info", then "Run anyway".
+
+3. To open your videos with it when you double-click them:
+   right-click a video -> Open with -> Choose another app -> More apps ->
+   "Look for another app on this PC" -> pick FastViewer.exe -> tick "Always use this app".
+   (Or open FastViewer -> "..." -> Settings -> "Show FastViewer in Open with" -> Add.)
+
+Mini player
+  Ctrl + M (or the button left of "Open with") shows just the video in a small
+  window that stays on top of everything. It takes the shape of the video.
+  Drag the video to move it, drag the edges to resize, double-click or Esc to go back.
+
+All files in the folder
+  G (or the grid button in the bottom bar) shows every photo and video in the folder as
+  thumbnails, in File Explorer's order. Click one to open it; arrows + Enter work too.
+  Ctrl + mouse wheel makes the thumbnails bigger or smaller. Esc goes back.
+  Settings > Viewing > Thumbnail strip adds a band of thumbnails under the picture.
+
+Handy keys
+  Left / Right         previous / next file (instant, also for videos)
+  Space / click video  play / pause
+  J / L                skip back / forward (length set in Settings)
+  , / .                one frame back / forward
+  [  ]  \              A-B loop: set start, set end, stop
+  Ctrl + T             trim: save part of a video as a new file
+  Up / Down            volume
+  Ctrl + R             rotate 90 degrees (also the rotate button at the top)
+  Ctrl + M             mini player
+  G                    all files in the folder (grid)
+  F or F11             full screen
+  Delete               move to Recycle Bin
+  Ctrl + mouse wheel   zoom
+
+Settings are in the "..." menu at the top. Every option has a short explanation;
+keyboard shortcuts can be changed in Settings > Keyboard. X shuffles the folder.
+Closing FastViewer keeps it ready in the background (icon by the clock) so files open instantly.
+Each file you open from File Explorer while FastViewer is open gets a window of its own.
+Videos that don't play or get no thumbnail elsewhere: video "..." -> "Make compatible copy".
+iPhone videos (HEVC) need "HEVC Video Extensions" from the Microsoft Store, same as the Photos app.
