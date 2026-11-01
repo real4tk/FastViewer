@@ -26,4 +26,4 @@ player is visible, and the old picture stays up until the new one is ready (no b
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The Inter font in `fonts/` is by Rasmus Andersson, under the SIL Open Font License ([fonts/Inter-LICENSE.txt](fonts/Inter-LICENSE.txt)).
