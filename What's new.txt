@@ -5,6 +5,12 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.15.0  (1 Nov 2026)
+  Changed
+  - Volume: point at the speaker button and the volume slider opens by itself; it closes a moment
+    after you move away. Clicking the speaker now mutes and unmutes (like YouTube). On a touch
+    screen a tap opens the slider.
+
 1.14.0  (1 Nov 2026)
   New
   - Looks: Settings > Appearance (now at the top) has four, each with a small preview, and it

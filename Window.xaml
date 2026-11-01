@@ -137,7 +137,7 @@
               <TextBlock x:Name="FwdText" FontSize="7.5" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,1,0,0"/>
             </Grid>
           </Button>
-          <Button x:Name="VolBtn" Grid.Column="3" Style="{StaticResource Transport}" ToolTip="Volume">
+          <Button x:Name="VolBtn" Grid.Column="3" Style="{StaticResource Transport}" ToolTip="Mute (M). Point at it for the volume slider">
             <fv:Glyph x:Name="VolIcon" Code="&#xE995;"/>
           </Button>
           <TextBlock x:Name="PosText" Grid.Column="4" FontSize="12" Margin="8,0,10,0" VerticalAlignment="Center" Text="00:00"/>
@@ -156,8 +156,9 @@
         </Grid>
       </Border>
 
+      <!-- Opens on hover and closes itself (FastViewer.cs, InitVolumeHover), so it doesn't grab the mouse -->
       <Popup x:Name="VolPopup" PlacementTarget="{Binding ElementName=VolBtn}" Placement="Top" VerticalOffset="-8"
-             StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+             StaysOpen="True" AllowsTransparency="True" PopupAnimation="Fade">
         <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
                 CornerRadius="{DynamicResource Radius.Float}" Padding="6,4">
           <StackPanel Orientation="Horizontal">

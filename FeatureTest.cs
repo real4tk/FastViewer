@@ -12,8 +12,50 @@ namespace FastViewer
 {
     partial class ViewerWindow
     {
-        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest, looksTest;
+        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest, looksTest, volumeTest;
         int preloadOverride;
+
+        // FastViewer.exe <video> --volume <output folder>: the volume slider on hover. The mouse moving in and out is
+        // simulated (the real pointer isn't touched) and the slider isn't shown, only what it would do is logged.
+        // The video is paused first, so unmuting stays silent.
+        void RunVolumeTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            Action<string> log = text => testLog.Add(text);
+            var panel = (FrameworkElement)volPopup.Child;
+            Action<UIElement, RoutedEvent> mouse = (el, ev) => el.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = ev });
+            int t = 1500;
+            After(t, () => { if (playing) TogglePlay(); log("paused: " + !playing + ", muted at start: " + muted); });
+            After(t += 100, () => mouse(volBtn, Mouse.MouseEnterEvent));
+            After(t += 80, () => log("pointer on the speaker 80 ms: slider open " + VolumeSliderOpen + " (expected False, waits a moment)"));
+            After(t += 170, () => log("pointer on the speaker 250 ms: slider open " + VolumeSliderOpen + " (expected True)"));
+            After(t += 50, () => mouse(volBtn, Mouse.MouseLeaveEvent));
+            After(t += 250, () => log("left 250 ms ago: slider open " + VolumeSliderOpen + " (expected True, a short grace)"));
+            After(t += 500, () => log("left 750 ms ago: slider open " + VolumeSliderOpen + " (expected False)"));
+            After(t += 100, () => mouse(volBtn, Mouse.MouseEnterEvent));
+            After(t += 300, () => { mouse(volBtn, Mouse.MouseLeaveEvent); mouse(panel, Mouse.MouseEnterEvent); });
+            After(t += 900, () => log("moved from the speaker onto the slider, 900 ms: slider open " + VolumeSliderOpen + " (expected True)"));
+            After(t += 50, () => mouse(panel, Mouse.MouseLeaveEvent));
+            After(t += 800, () => log("left the slider: open " + VolumeSliderOpen + " (expected False)"));
+            After(t += 100, () =>
+            {
+                bool before = muted;
+                volBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                log("click on the speaker: muted " + before + " -> " + muted + ", slider open " + VolumeSliderOpen);
+                volBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                log("click again: muted " + muted);
+                muted = true;
+                ApplyAudio();
+            });
+            After(t += 100, () => mouse(volBtn, Mouse.MouseEnterEvent));
+            After(t += 300, () => { log("open again: " + VolumeSliderOpen); int photo = files.FindIndex(f => !IsVideoFile(f)); if (photo >= 0) ShowIndex(photo, 1); });
+            After(t += 800, () => log("switched to a photo (no video bar): slider open " + VolumeSliderOpen + " (expected False)"));
+            After(t += 100, () =>
+            {
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ")));
+                Close();
+            });
+        }
 
         // FastViewer.exe <video> --looks <output folder>: every look, dark and light, on the viewer and on
         // Settings > Appearance; the Buttons page and the presets. Liquid Glass is shown over a stand-in desktop.

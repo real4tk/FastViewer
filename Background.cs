@@ -182,6 +182,7 @@ namespace FastViewer
             if (fullscreen) ToggleFullscreen();
             if (settingsOpen) CloseSettings();
             CloseGrid();
+            SetVolumeSlider(false);
             StopSlideshow();
             dialog.Visibility = Visibility.Collapsed;
             HideToast(null);

@@ -367,7 +367,6 @@ namespace FastViewer
         Rect boundsBeforeFullscreen;
         WindowState stateBeforeFullscreen;
         Point lastMouse, panStart;
-        DateTime volPopupClosedAt;
         int openMenus;
         bool clickToggled; // the last click on the video paused/played it (a double-click undoes that)
         // --fadetest <file>: logs when the controls show/hide (to check hiding when the mouse leaves).
@@ -404,6 +403,7 @@ namespace FastViewer
                 else if (args[i] == "--grab-always") grabAlways = true;
                 else if (args[i] == "--look" && i + 1 < args.Length) lookOverride = args[++i];
                 else if (args[i] == "--looks" && i + 1 < args.Length) { snapDir = args[++i]; looksTest = true; }
+                else if (args[i] == "--volume" && i + 1 < args.Length) { snapDir = args[++i]; volumeTest = true; }
                 else if (args[i] == "--fadetest" && i + 1 < args.Length)
                 {
                     string logFile = args[++i];
@@ -534,7 +534,7 @@ namespace FastViewer
             OnClick("CenterPlayBtn", TogglePlay);
             OnClick("BackBtn", delegate { SeekBy(-skipBack); });
             OnClick("FwdBtn", delegate { SeekBy(skipForward); });
-            OnClick("VolBtn", ToggleVolumePopup);
+            OnClick("VolBtn", ToggleMute); // the slider opens on hover (InitVolumeHover)
             OnClick("MuteBtn", ToggleMute);
             OnClick("LoopBtn", ToggleLoop);
             OnClick("VideoMoreBtn", ShowVideoMenu);
@@ -563,7 +563,7 @@ namespace FastViewer
             zoomSlider.Minimum = 0;
             zoomSlider.Maximum = Math.Log(MaxZoom);
             zoomSlider.ValueChanged += delegate { if (!settingSlider) SetZoom(Math.Exp(zoomSlider.Value), StageCenter()); };
-            volPopup.Closed += delegate { volPopupClosedAt = DateTime.Now; };
+            InitVolumeHover();
             volPopup.MouseWheel += delegate(object o, MouseWheelEventArgs e) { SetVolume(volume + (e.Delta > 0 ? 0.05 : -0.05)); e.Handled = true; };
             stage.SizeChanged += delegate
             {
@@ -647,7 +647,7 @@ namespace FastViewer
                 if (path != null) OpenPath(path);
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
-                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else RunSnapshots(); }
+                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
         }
@@ -1399,11 +1399,52 @@ namespace FastViewer
             if (shown != null && shown.IsVideo && playing) shown.Video.SpeedRatio = speed;
         }
 
-        void ToggleVolumePopup()
+        // The volume slider opens when the mouse rests on the speaker and closes a moment after it has left both
+        // the speaker and the slider; clicking the speaker mutes. A touch tap opens it instead (touch has no hover).
+        readonly DispatcherTimer volOpenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        readonly DispatcherTimer volCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        bool volumeTestOpen; // tests: what the slider would do, without it appearing on screen
+
+        bool VolumeSliderOpen { get { return snapDir != null ? volumeTestOpen : volPopup.IsOpen; } }
+
+        void InitVolumeHover()
         {
-            // A click on the button also closes the popup (it closes on any outside click); don't reopen it then.
-            if ((DateTime.Now - volPopupClosedAt).TotalMilliseconds < 250) return;
-            volPopup.IsOpen = !volPopup.IsOpen;
+            var panel = (FrameworkElement)volPopup.Child;
+            volOpenTimer.Tick += delegate { SetVolumeSlider(true); };
+            volCloseTimer.Tick += delegate
+            {
+                volCloseTimer.Stop();
+                if (!volBtn.IsMouseOver && !panel.IsMouseOver) SetVolumeSlider(false);
+            };
+            volBtn.MouseEnter += delegate
+            {
+                volCloseTimer.Stop();
+                if (!VolumeSliderOpen) volOpenTimer.Start();
+            };
+            volBtn.MouseLeave += delegate { LeaveVolume(); };
+            panel.MouseEnter += delegate { volCloseTimer.Stop(); };
+            panel.MouseLeave += delegate { LeaveVolume(); };
+            volBtn.PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e)
+            {
+                if (e.StylusDevice == null) return; // a real mouse click: mute (Click)
+                SetVolumeSlider(!VolumeSliderOpen);
+                e.Handled = true;
+            };
+            Deactivated += delegate { SetVolumeSlider(false); };
+        }
+
+        void LeaveVolume()
+        {
+            volOpenTimer.Stop();
+            volCloseTimer.Stop();
+            volCloseTimer.Start();
+        }
+
+        void SetVolumeSlider(bool open)
+        {
+            volOpenTimer.Stop();
+            if (snapDir != null) volumeTestOpen = open;
+            else volPopup.IsOpen = open;
         }
 
         void UpdateControls()
@@ -1411,6 +1452,7 @@ namespace FastViewer
             bool isVideo = shown != null && shown.IsVideo && !shown.Failed;
             // A small mini player has no room for the control bar; play/pause stays in the middle.
             transport.Visibility = isVideo && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
+            if (transport.Visibility != Visibility.Visible || settingsOpen || gridOpen) SetVolumeSlider(false); // nothing left to point at
             bool center = centerButton == 0 || (centerButton == 1 && !playing); // Settings > Videos
             centerPlayBtn.Visibility = isVideo && center ? Visibility.Visible : Visibility.Collapsed;
             F<FrameworkElement>("PrevBtn").Visibility = F<FrameworkElement>("NextBtn").Visibility =

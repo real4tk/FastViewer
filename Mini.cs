@@ -67,6 +67,7 @@ namespace FastViewer
                 Height = boundsBeforeMini.Height;
                 WindowState = stateBeforeMini;
             }
+            SetVolumeSlider(false);
             PlaceBars();
             ApplyWindowLook(); // the mini player is never see-through
             UpdateMiniUi();

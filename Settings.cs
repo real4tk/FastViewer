@@ -244,6 +244,7 @@ namespace FastViewer
         void OpenSettings()
         {
             CloseGrid();
+            SetVolumeSlider(false);
             if (playing) TogglePlay();
             settingsOpen = true;
             foreach (var refresh in settingsRefresh) refresh(); // things changed by a key or menu since last time (Keep on top...)
