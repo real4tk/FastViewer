@@ -88,11 +88,18 @@ namespace FastViewer
                 S("settings", "Settings", OpenSettings, "Ctrl+OemComma"),
                 S("close", "Close window", Close),
             };
+            ApplySavedKeys();
+        }
+
+        // The keys from settings.ini (actions without a saved line keep their default keys).
+        void ApplySavedKeys()
+        {
             foreach (var s in shortcuts)
             {
                 string keys;
-                if (savedKeys.TryGetValue(s.Id, out keys))
-                    s.Keys = keys.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries).Take(KeysPerAction).ToList();
+                s.Keys = savedKeys.TryGetValue(s.Id, out keys)
+                    ? keys.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries).Take(KeysPerAction).ToList()
+                    : s.Defaults.ToList();
             }
             RebuildShortcutMap();
         }
@@ -339,6 +346,15 @@ namespace FastViewer
             "none", "previous", "next", "play", "skipBack", "skipForward", "mute", "fullscreen", "mini", "grid",
             "rotate", "fit", "info", "shuffle", "slideshow", "pin", "showInFolder", "openWith", "close"
         };
+
+        void ResetMouseActions()
+        {
+            mouseActions["back"] = "previous";
+            mouseActions["forward"] = "next";
+            mouseActions["middle"] = "none";
+            mouseActions["double"] = "fullscreen";
+            mouseActions["click"] = "play";
+        }
 
         bool RunMouseAction(string button)
         {

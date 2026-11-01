@@ -74,7 +74,7 @@ namespace FastViewer
             app.Run(new ViewerWindow(args));
         }
 
-        static void WriteCrash(Exception ex)
+        public static void WriteCrash(Exception ex)
         {
             try
             {
@@ -298,7 +298,7 @@ namespace FastViewer
         static readonly HashSet<string> VideoExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".mp4", ".m4v", ".mov", ".wmv", ".avi", ".mkv", ".3gp", ".3g2", ".mts", ".m2ts", ".ts", ".mpg", ".mpeg", ".asf", ".webm" };
 
-        static readonly string SettingsFile = Path.Combine(
+        static string SettingsFile = Path.Combine( // --settings <file>: tests save to a scratch file instead
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FastViewer", "settings.ini");
 
         const double MaxZoom = 20;
@@ -404,6 +404,9 @@ namespace FastViewer
                 else if (args[i] == "--look" && i + 1 < args.Length) lookOverride = args[++i];
                 else if (args[i] == "--looks" && i + 1 < args.Length) { snapDir = args[++i]; looksTest = true; }
                 else if (args[i] == "--volume" && i + 1 < args.Length) { snapDir = args[++i]; volumeTest = true; }
+                else if (args[i] == "--dim" && i + 1 < args.Length) { snapDir = args[++i]; dimTest = true; }
+                else if (args[i] == "--sync" && i + 1 < args.Length) { snapDir = args[++i]; syncTest = true; }
+                else if (args[i] == "--settings" && i + 1 < args.Length) { SettingsFile = args[++i]; settingsOverride = true; }
                 else if (args[i] == "--fadetest" && i + 1 < args.Length)
                 {
                     string logFile = args[++i];
@@ -627,7 +630,8 @@ namespace FastViewer
                 HwndSource.FromHwnd(new WindowInteropHelper(this).Handle).AddHook(WndProc);
                 if (testMode) SendToBack();
             };
-            Closing += delegate { RememberPosition(shown); SavePositions(); SaveSettings(); };
+            Closing += delegate { RememberPosition(shown); SavePositions(); SaveSettings(true); };
+            Activated += delegate { SyncSettings(); }; // another window may have changed a setting
 
             Loaded += delegate
             {
@@ -647,7 +651,7 @@ namespace FastViewer
                 if (path != null) OpenPath(path);
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
-                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else RunSnapshots(); }
+                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else if (dimTest) RunDimTest(); else if (syncTest) RunSyncTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
         }
@@ -2178,11 +2182,19 @@ namespace FastViewer
 
         // ---------------------------------------------------------------- settings
 
-        void LoadSettings(bool applyWindow)
+        // sync: re-reading what another FastViewer window saved; this window keeps its own size, place and volume.
+        void LoadSettings(bool applyWindow, bool sync = false)
         {
             try
             {
                 if (!File.Exists(SettingsFile)) return;
+                settingsSyncedAt = File.GetLastWriteTimeUtc(SettingsFile);
+                if (sync)
+                {
+                    savedKeys.Clear();
+                    hiddenButtons.Clear();
+                    ResetMouseActions();
+                }
                 foreach (var line in File.ReadAllLines(SettingsFile))
                 {
                     var kv = line.Split(new[] { '=' }, 2);
@@ -2190,8 +2202,8 @@ namespace FastViewer
                     var v = kv[1].Trim();
                     switch (kv[0].Trim())
                     {
-                        case "volume": volume = double.Parse(v, CultureInfo.InvariantCulture); break;
-                        case "muted": muted = v == "1"; break;
+                        case "volume": if (!sync) volume = double.Parse(v, CultureInfo.InvariantCulture); break;
+                        case "muted": if (!sync) muted = v == "1"; break;
                         case "loop": loop = v == "1"; break;
                         default: LoadOption(kv[0].Trim(), v); break;
                         case "maximized": if (applyWindow && v == "1") WindowState = WindowState.Maximized; break;
@@ -2212,9 +2224,48 @@ namespace FastViewer
             catch { }
         }
 
-        void SaveSettings()
+        bool settingsOverride;
+        DateTime settingsSyncedAt; // the settings file's time when this window last read or wrote it
+
+        // Several FastViewer windows can be open (and one waiting in the background). Each window re-reads the
+        // settings when it comes to the front if another one saved meanwhile, so a change made in one window
+        // (Dim video off, a look, a key...) reaches the others, and an old window can't undo it later.
+        void SyncSettings()
         {
-            if (selfTestInterval > 0 || snapDir != null || fadeTestLog != null) return;
+            if ((selfTestInterval > 0 || snapDir != null || fadeTestLog != null) && !settingsOverride) return;
+            try
+            {
+                if (!File.Exists(SettingsFile) || File.GetLastWriteTimeUtc(SettingsFile) <= settingsSyncedAt) return;
+            }
+            catch { return; }
+            int oldFilter = filter, oldOrder = order;
+            LoadSettings(false, true);
+            if (root == null) return;
+            ApplyLook();
+            if (shortcuts != null)
+            {
+                ApplySavedKeys();
+                RefreshShortcutEditors();
+            }
+            idleTimer.Interval = TimeSpan.FromSeconds(hideDelay > 0 ? hideDelay : 2.5);
+            slideTimer.Interval = TimeSpan.FromSeconds(slideSeconds);
+            Topmost = pinned || mini;
+            UpdateSkipButtons();
+            ApplyStretch();
+            ApplyStrip();
+            F<TextBlock>("GridSizeText").Text = GridSizeNames[gridSize];
+            UpdateGridNamesButton();
+            ApplyButtons(); // also the video controls and the dimming
+            foreach (var refresh in settingsRefresh) refresh();
+            if (filter != oldFilter || order != oldOrder) ReloadFolder();
+        }
+
+        // syncFirst: saving when the window closes or goes to the background, with no change of its own to keep:
+        // first take in what other windows saved, then add this window's size, place and volume.
+        void SaveSettings(bool syncFirst = false)
+        {
+            if ((selfTestInterval > 0 || snapDir != null || fadeTestLog != null) && !settingsOverride) return;
+            if (syncFirst) SyncSettings();
             try
             {
                 var bounds = mini ? boundsBeforeMini : fullscreen ? boundsBeforeFullscreen : RestoreBounds;
@@ -2229,8 +2280,9 @@ namespace FastViewer
                     "maximized=" + (max ? "1" : "0"),
                     "bounds=" + bounds.ToString(CultureInfo.InvariantCulture)
                 }.Concat(OptionLines()).Concat(ShortcutLines()).Concat(MouseLines()));
+                settingsSyncedAt = File.GetLastWriteTimeUtc(SettingsFile);
             }
-            catch { }
+            catch (Exception ex) { Program.WriteCrash(new Exception("Settings couldn't be saved to " + SettingsFile, ex)); }
         }
 
         // ---------------------------------------------------------------- tests

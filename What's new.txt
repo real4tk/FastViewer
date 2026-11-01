@@ -5,6 +5,14 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.15.1  (2 Nov 2026)
+  Fixed
+  - With more than one FastViewer window open (or one waiting in the background), a setting changed
+    in one window didn't reach the others: they kept the old one (for example the video still
+    dimmed with "Dim video" off) and could even put it back when they closed. Now every window
+    picks up changes made in another as soon as you switch to it.
+  - If FastViewer ever can't save its settings, the reason goes to %TEMP%\FastViewer\crash.txt.
+
 1.15.0  (1 Nov 2026)
   Changed
   - Volume: point at the speaker button and the volume slider opens by itself; it closes a moment

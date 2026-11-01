@@ -12,8 +12,100 @@ namespace FastViewer
 {
     partial class ViewerWindow
     {
-        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest, looksTest, volumeTest;
+        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest, looksTest, volumeTest, dimTest, syncTest;
         int preloadOverride;
+
+        // FastViewer.exe <video> --settings <scratch .ini> --sync <output folder>: another FastViewer window (played by
+        // this test, writing the scratch file) changes settings; this window must take them over when it comes to the
+        // front, and closing must keep them (plus this window's own volume).
+        void RunSyncTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            Action<string> log = text => testLog.Add(text);
+            Func<string> state = () => "dim " + (dimVideo ? "on" : "off") + ", scrim " + scrim.Visibility + ", look " + lookId + " (" + Looks.Current.Name + ")" +
+                ", Copy button " + F<FrameworkElement>("CopyBtn").Visibility + ", next keys [" + string.Join(", ", shortcuts.First(s => s.Id == "next").Keys) +
+                "], middle button " + mouseActions["middle"];
+            Action<string[]> otherWindowSaves = lines =>
+            {
+                var all = File.ReadAllLines(SettingsFile).Where(l => !lines.Any(n => l.StartsWith(n.Split('=')[0] + "="))).Concat(lines).ToArray();
+                File.WriteAllLines(SettingsFile, all);
+                File.SetLastWriteTimeUtc(SettingsFile, DateTime.UtcNow.AddSeconds(2));
+            };
+            int t = 1800;
+            After(t, () => { if (playing) TogglePlay(); log("start: " + state()); });
+            After(t += 200, () =>
+            {
+                otherWindowSaves(new[] { "dim=0", "look=Midnight", "hide=CopyBtn", "key.next=N", "mouse.middle=grid" });
+                log("other window saved: dim off, Midnight, Copy hidden, next = N, middle = grid");
+                log("before coming to the front: " + state());
+                SyncSettings(); // what happens when this window is activated
+                log("after coming to the front: " + state());
+            });
+            After(t += 600, () => Snap("1_after_sync"));
+            After(t += 100, () =>
+            {
+                int before = settingsRefresh.Count;
+                volume = 0.33; // this window's own change (saved only when it closes)
+                otherWindowSaves(new[] { "dim=1", "look=Clean" });
+                log("other window saved again: dim on, Clean; this window's volume set to 0.33, then it closes");
+                SaveSettings(true);
+                log("file after closing: " + string.Join(" | ", File.ReadAllLines(SettingsFile).Where(l => l.StartsWith("dim=") || l.StartsWith("look=") || l.StartsWith("volume=") || l.StartsWith("hide="))));
+            });
+            After(t += 200, () =>
+            {
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ")));
+                Close();
+            });
+        }
+
+        // FastViewer.exe <video> --dim <output folder>: with "Dim video" off, does the video get darker while the
+        // controls show? Every look, controls shown and hidden (and dim on for comparison), saved as pictures.
+        void RunDimTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            if (settingsOverride)
+            {
+                After(1500, () =>
+                {
+                    dimVideo = false;
+                    SaveSettings();
+                    testLog.Add("saved to " + SettingsFile + ": " + (File.Exists(SettingsFile) ? string.Join(" | ", File.ReadAllLines(SettingsFile).Where(l => l.StartsWith("dim=") || l.StartsWith("look="))) : "NOT WRITTEN"));
+                    File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.Contains(" ms  ")));
+                    Close();
+                });
+                return;
+            }
+            Action<string> log = text => testLog.Add(text);
+            Action<bool> controls = show =>
+            {
+                overlay.BeginAnimation(OpacityProperty, null);
+                overlay.Opacity = show ? 1 : 0;
+                overlayVisible = show;
+                foreach (var name in new[] { "TopBar", "BottomBar" })
+                {
+                    var bar = F<FrameworkElement>(name);
+                    bar.BeginAnimation(OpacityProperty, null);
+                    if (Floating) bar.Opacity = show ? 1 : 0;
+                }
+            };
+            int t = 1800;
+            After(t, () => { if (playing) TogglePlay(); });
+            foreach (var look in new[] { "Photos", "Clean", "Glass", "Midnight" })
+                foreach (var dim in new[] { false, true })
+                {
+                    var id = look;
+                    var d = dim;
+                    After(t += 200, () => { lookId = id; lookMode = "Dark"; ApplyLook(); dimVideo = d; UpdateScrim(); controls(true); });
+                    After(t += 500, () => { Snap(id + "_dim" + (d ? "On" : "Off") + "_controls"); log(id + " dim " + (d ? "on" : "off") + ": scrim " + scrim.Visibility + ", shown slot opacity " + (shown == null ? "-" : shown.Host.Opacity.ToString("0.00"))); });
+                    After(t += 100, () => controls(false));
+                    After(t += 500, () => Snap(id + "_dim" + (d ? "On" : "Off") + "_none"));
+                }
+            After(t += 200, () =>
+            {
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ")));
+                Close();
+            });
+        }
 
         // FastViewer.exe <video> --volume <output folder>: the volume slider on hover. The mouse moving in and out is
         // simulated (the real pointer isn't touched) and the slider isn't shown, only what it would do is logged.

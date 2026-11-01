@@ -187,7 +187,7 @@ namespace FastViewer
             dialog.Visibility = Visibility.Collapsed;
             HideToast(null);
             ClearLoop();
-            SaveSettings();
+            SaveSettings(true);
             lastOpened = CurrentFile;
             LetGoOfFiles();
 
