@@ -255,7 +255,7 @@ namespace FastViewer
     class Slot
     {
         public readonly Grid Host = new Grid();
-        public readonly MediaElement Video = new MediaElement();
+        public MediaElement Video;              // made by NewVideoPlayer
         public readonly Image Picture = new Image();
         public readonly Image Poster = new Image(); // first-frame snapshot shown while a video starts
         public readonly ScaleTransform Zoom = new ScaleTransform(1, 1);
@@ -266,6 +266,8 @@ namespace FastViewer
         public double FrameSeconds = 1 / 30.0;   // length of one video frame (for frame-by-frame)
         public GifAnimation Gif;                  // frames of an animated GIF, or null
         public int GifFrame;
+        public int FullWidth, FullHeight;         // photo size in the file (the picture in memory may be smaller)
+        public bool Reduced;                      // the picture in memory is screen-sized; zooming in loads the full one
         public string File;
         public bool IsVideo, Ready, Failed;
         public string Error;
@@ -379,7 +381,11 @@ namespace FastViewer
                 else if (args[i] == "--ui" && i + 1 < args.Length) { snapDir = args[++i]; uiTest = true; }
                 else if (args[i] == "--gallery" && i + 1 < args.Length) { snapDir = args[++i]; galleryTest = true; }
                 else if (args[i] == "--controls" && i + 1 < args.Length) { snapDir = args[++i]; controlsTest = true; }
+                else if (args[i] == "--tweaks" && i + 1 < args.Length) { snapDir = args[++i]; tweaksTest = true; }
+                else if (args[i] == "--memory" && i + 1 < args.Length) { snapDir = args[++i]; memoryTest = true; }
+                else if (args[i] == "--stall" && i + 1 < args.Length) { snapDir = args[++i]; stallTest = true; }
                 else if (args[i] == "--strip") stripOverride = true;
+                else if (args[i] == "--grab-always") grabAlways = true;
                 else if (args[i] == "--fadetest" && i + 1 < args.Length)
                 {
                     string logFile = args[++i];
@@ -467,14 +473,7 @@ namespace FastViewer
             for (int i = 0; i < slots.Length; i++)
             {
                 var s = new Slot();
-                s.Video.LoadedBehavior = MediaState.Manual;
-                s.Video.UnloadedBehavior = MediaState.Manual;
-                s.Video.ScrubbingEnabled = true;
-                s.Video.Stretch = Stretch.Uniform;
-                s.Video.IsMuted = true;
-                s.Video.MediaOpened += delegate { OnVideoOpened(s); };
-                s.Video.MediaFailed += delegate(object o, ExceptionRoutedEventArgs e) { OnLoadFailed(s, e.ErrorException); };
-                s.Video.MediaEnded += delegate { OnVideoEnded(s); };
+                NewVideoPlayer(s);
                 s.Picture.Stretch = Stretch.Uniform;
                 RenderOptions.SetBitmapScalingMode(s.Picture, BitmapScalingMode.HighQuality);
                 var transforms = new TransformGroup();
@@ -485,7 +484,6 @@ namespace FastViewer
                 s.Poster.Visibility = Visibility.Collapsed;
                 RenderOptions.SetBitmapScalingMode(s.Poster, BitmapScalingMode.HighQuality);
                 s.Rotor.LayoutTransform = s.Rotation;
-                s.Rotor.Children.Add(s.Video);
                 s.Rotor.Children.Add(s.Poster);
                 s.Rotor.Children.Add(s.Picture);
                 s.Host.Children.Add(s.Rotor);
@@ -626,9 +624,30 @@ namespace FastViewer
                 if (path != null) OpenPath(path);
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
-                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else RunSnapshots(); }
+                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
+        }
+
+        // A video player for the slot, at the bottom of its layers (below the first-frame picture and the photo).
+        void NewVideoPlayer(Slot s)
+        {
+            if (s.Video != null) s.Rotor.Children.Remove(s.Video);
+            var v = new MediaElement
+            {
+                LoadedBehavior = MediaState.Manual,
+                UnloadedBehavior = MediaState.Manual,
+                ScrubbingEnabled = true,
+                Stretch = Stretch.Uniform,
+                IsMuted = true,
+                StretchDirection = smallActualSize ? StretchDirection.DownOnly : StretchDirection.Both,
+                Visibility = Visibility.Collapsed
+            };
+            v.MediaOpened += delegate { OnVideoOpened(s); };
+            v.MediaFailed += delegate(object o, ExceptionRoutedEventArgs e) { OnLoadFailed(s, e.ErrorException); };
+            v.MediaEnded += delegate { OnVideoEnded(s); };
+            s.Video = v;
+            s.Rotor.Children.Insert(0, v);
         }
 
         T F<T>(string name) where T : class
@@ -821,6 +840,8 @@ namespace FastViewer
             s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
             s.Rotation.Angle = rotations.TryGetValue(file, out angle) ? angle : 0;
 
+            Dropped(s.Picture.Source as BitmapSource);
+            Dropped(s.Poster.Source as BitmapSource);
             s.Poster.Source = null;
             s.Poster.Visibility = Visibility.Collapsed;
             s.Gif = null;
@@ -846,9 +867,10 @@ namespace FastViewer
                     BitmapSource bmp = null;
                     string error = null;
                     GifAnimation gif = null;
+                    int fullWidth = 0, fullHeight = 0;
                     try
                     {
-                        bmp = DecodeImage(file);
+                        bmp = DecodeImage(file, Math.Min(ScreenSide, MaxDecodeSide), out fullWidth, out fullHeight);
                         if (Path.GetExtension(file).Equals(".gif", StringComparison.OrdinalIgnoreCase)) gif = GifAnimation.Load(file);
                     }
                     catch (Exception ex) { error = ex.Message; }
@@ -856,6 +878,9 @@ namespace FastViewer
                     {
                         if (s.Token != token) return; // slot was reused for another file meanwhile
                         s.Picture.Source = bmp;
+                        s.FullWidth = fullWidth;
+                        s.FullHeight = fullHeight;
+                        s.Reduced = bmp != null && gif == null && Math.Max(bmp.PixelWidth, bmp.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
                         s.Gif = gif;
                         s.Ready = true;
                         s.Failed = bmp == null;
@@ -866,11 +891,68 @@ namespace FastViewer
             }
         }
 
-        static BitmapSource DecodeImage(string file)
+        // Pictures we stopped using only give their memory back when .NET cleans up, which it rarely does on
+        // its own here (the pictures live outside its heap). So once enough has piled up, clean up ourselves:
+        // after switching has been quiet for a moment, never in the middle of it. Takes a few milliseconds.
+        long droppedBytes;
+        DispatcherTimer cleanupTimer;
+
+        void Dropped(BitmapSource b)
+        {
+            if (b == null) return;
+            droppedBytes += (long)b.PixelWidth * b.PixelHeight * 4 * 2; // decoding leaves about one more copy behind
+            if (droppedBytes < 32L << 20) return;
+            if (cleanupTimer == null)
+            {
+                cleanupTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+                cleanupTimer.Tick += delegate { CleanUp(); };
+            }
+            cleanupTimer.Stop();
+            cleanupTimer.Start(); // restarts on every drop: waits until you pause
+            // Clicking through without a pause: clean up anyway once a lot has piled up, when nothing else is waiting.
+            if (droppedBytes > 128L << 20) Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(CleanUp));
+        }
+
+        void CleanUp()
+        {
+            cleanupTimer.Stop();
+            if (droppedBytes == 0) return;
+            droppedBytes = 0;
+            GC.Collect();
+        }
+
+        // Photos are decoded no bigger than the biggest screen: a 12 MP photo then takes about 10 MB
+        // instead of 48 MB, and JPEGs decode faster too. Zooming in past that loads the whole photo.
+        static readonly int ScreenSide = LargestScreenSide();
+        const int MaxDecodeSide = 6000; // even the whole photo stops here (huge panoramas)
+
+        delegate bool MonitorProc(IntPtr monitor, IntPtr hdc, ref NativeRect rect, IntPtr data);
+        [DllImport("user32.dll")]
+        static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorProc proc, IntPtr data);
+
+        // Longest side of the biggest monitor, in pixels (asked from Windows directly: loading Windows Forms
+        // for this would slow down the first photo).
+        static int LargestScreenSide()
+        {
+            int best = 0;
+            try
+            {
+                EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate(IntPtr m, IntPtr h, ref NativeRect r, IntPtr d)
+                {
+                    best = Math.Max(best, Math.Max(r.Right - r.Left, r.Bottom - r.Top));
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
+            return best > 0 ? Math.Max(640, best) : MaxDecodeSide;
+        }
+
+        static BitmapSource DecodeImage(string file, int maxSide, out int fullWidth, out int fullHeight)
         {
             using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             {
-                var decoder = BitmapDecoder.Create(fs, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                // Nothing is decoded yet (no cache): the pixels are pulled below, at the size we need.
+                var decoder = BitmapDecoder.Create(fs, BitmapCreateOptions.None, BitmapCacheOption.None);
                 BitmapFrame frame = decoder.Frames[0];
                 BitmapSource src = frame;
 
@@ -882,13 +964,16 @@ namespace FastViewer
                     if (o != null) orientation = Convert.ToInt32(o);
                 }
                 catch { }
+                bool sideways = orientation >= 5 && orientation <= 8;
+                fullWidth = sideways ? frame.PixelHeight : frame.PixelWidth;
+                fullHeight = sideways ? frame.PixelWidth : frame.PixelHeight;
 
-                // Keep memory sane for huge panoramas.
-                const int max = 6000;
-                int longest = Math.Max(src.PixelWidth, src.PixelHeight);
-                if (longest > max)
+                int longest = Math.Max(frame.PixelWidth, frame.PixelHeight);
+                if (longest > maxSide)
                 {
-                    double k = (double)max / longest;
+                    // Windows decodes JPEGs straight at the smaller size (other types are scaled while decoding).
+                    // (BitmapImage's DecodePixelWidth does the same, but its first use costs ~50 ms of start-up.)
+                    double k = (double)maxSide / longest;
                     src = new TransformedBitmap(src, new ScaleTransform(k, k));
                 }
 
@@ -1033,7 +1118,7 @@ namespace FastViewer
         // now. OnRendering removes it as soon as real frames are being drawn.
         void StartPlayback(Slot c, bool snapshotNow)
         {
-            if (snapshotNow && c.Poster.Visibility != Visibility.Visible)
+            if (snapshotNow && c.Poster.Visibility != Visibility.Visible && !slowGrabs)
             {
                 try { c.Poster.Source = Snapshot(c.Video); FitPoster(c); }
                 catch { c.Poster.Source = null; }
@@ -1075,7 +1160,9 @@ namespace FastViewer
             if (c != null && c == wanted)
             {
                 var played = c.Video.Position - revealStart;
-                bool drawing = played >= TimeSpan.FromMilliseconds(50) && HasPicture(c.Video);
+                // A slow PC: trust the clock instead of looking at the picture (see Grab).
+                bool drawing = slowGrabs ? played >= TimeSpan.FromMilliseconds(150)
+                                         : played >= TimeSpan.FromMilliseconds(50) && HasPicture(c.Video);
                 if (!drawing && played < TimeSpan.FromMilliseconds(400) && revealWatch.ElapsedMilliseconds < 1500) return;
             }
             StopRevealWatch();
@@ -1095,14 +1182,25 @@ namespace FastViewer
             return b;
         }
 
+        // Set once a frame grab was slow. Grabbing has to wait until Windows has the video's current frame
+        // ready, on the window's own thread. On a PC that struggles to decode a heavy video that wait took
+        // up to 9 s (the window froze and Windows greyed it out). From then on FastViewer doesn't grab
+        // frames any more this session: switching waits until the video plays (the old picture stays up),
+        // and resuming may show Windows' short black flash instead of a freeze.
+        static volatile bool slowGrabs;
+        static bool grabAlways; // --grab-always: tests without this protection, to compare
+        const int SlowGrabMs = 120;
+
         // Renders the video's current picture at the given size (works while it's hidden, too).
         static RenderTargetBitmap Grab(MediaElement v, int w, int h)
         {
+            var watch = Stopwatch.StartNew();
             var dv = new DrawingVisual();
             using (var dc = dv.RenderOpen())
                 dc.DrawRectangle(new VisualBrush(v) { Stretch = Stretch.Fill }, null, new Rect(0, 0, w, h));
             var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(dv);
+            if (watch.ElapsedMilliseconds > SlowGrabMs && !grabAlways) slowGrabs = true;
             return rtb;
         }
 
@@ -1123,10 +1221,12 @@ namespace FastViewer
             int token = s.Token;
             After(attempt == 0 ? 40 : 60, delegate // check soon and often: rapid clicking needs it early
             {
-                if (s.Token != token || !s.IsVideo || s.Failed || s == shown || s == revealing) return;
+                if (s.Token != token || !s.IsVideo || s.Failed || s == shown || s == revealing || slowGrabs) return;
                 var v = s.Video;
                 if (v.NaturalVideoWidth == 0) return;
-                if (!HasPicture(v) && attempt < 12)
+                bool drawn = HasPicture(v);
+                if (slowGrabs) return; // that look took too long: no more snapshots (see Grab)
+                if (!drawn && attempt < 12)
                 {
                     SchedulePoster(s, attempt + 1); // frame not drawn yet
                     return;
@@ -1169,6 +1269,7 @@ namespace FastViewer
             s.Video.IsMuted = true;
             GoToResumePoint(s);
             s.Poster.Visibility = Visibility.Collapsed;
+            Dropped(s.Poster.Source as BitmapSource);
             s.Poster.Source = null;
             SchedulePoster(s, 0); // fresh snapshot of the first frame for next time
         }
@@ -1225,6 +1326,9 @@ namespace FastViewer
             if (d.HasTimeSpan) pos = Math.Min(pos, d.TimeSpan.TotalSeconds);
             s.Video.Position = TimeSpan.FromSeconds(Math.Max(0, pos));
             UpdateTime();
+            if (!overlayVisible) // the time bar isn't showing: say where we are
+                ShowFeedback((seconds > 0 ? "+" : "-") + Math.Abs(seconds).ToString("0.#", CultureInfo.InvariantCulture) + " s    " +
+                             Fmt(s.Video.Position) + (d.HasTimeSpan ? " / " + Fmt(d.TimeSpan) : ""));
         }
 
         void SetVolume(double v)
@@ -1232,12 +1336,20 @@ namespace FastViewer
             volume = Math.Max(0, Math.Min(1, v));
             if (volume > 0) muted = false;
             ApplyAudio();
+            ShowVolumeFeedback();
         }
 
         void ToggleMute()
         {
             muted = !muted;
             ApplyAudio();
+            ShowVolumeFeedback();
+        }
+
+        // The control bar only shows a speaker icon, so a key or the wheel shows the level (not while the slider is open).
+        void ShowVolumeFeedback()
+        {
+            if (!volPopup.IsOpen) ShowFeedback(muted || volume == 0 ? "Muted" : "Volume " + Math.Round(volume * 100) + "%");
         }
 
         void ApplyAudio()
@@ -1274,7 +1386,10 @@ namespace FastViewer
             bool isVideo = shown != null && shown.IsVideo && !shown.Failed;
             // A small mini player has no room for the control bar; play/pause stays in the middle.
             transport.Visibility = isVideo && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
-            centerPlayBtn.Visibility = isVideo ? Visibility.Visible : Visibility.Collapsed;
+            bool center = centerButton == 0 || (centerButton == 1 && !playing); // Settings > Videos
+            centerPlayBtn.Visibility = isVideo && center ? Visibility.Visible : Visibility.Collapsed;
+            F<FrameworkElement>("PrevBtn").Visibility = F<FrameworkElement>("NextBtn").Visibility =
+                showArrows ? Visibility.Visible : Visibility.Collapsed;
             playGlyph.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
             pauseGlyph.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
             UpdateScrim();
@@ -1359,6 +1474,11 @@ namespace FastViewer
             {
                 w = s.Video.NaturalVideoWidth;
                 h = s.Video.NaturalVideoHeight;
+            }
+            else if (s.FullWidth > 0)
+            {
+                w = s.FullWidth; // the photo's real size, also while a screen-sized copy is in memory
+                h = s.FullHeight;
             }
             else
             {
@@ -1652,6 +1772,33 @@ namespace FastViewer
             s.Pan.Y = p.Y - z * y;
             ClampPan(s);
             UpdateZoomUi();
+            LoadFullPictureIfNeeded(s);
+        }
+
+        // Zoomed in further than the screen-sized copy has detail for: load the whole photo in the background
+        // and swap it in (same shape, so nothing moves). Once per file per slot.
+        void LoadFullPictureIfNeeded(Slot s)
+        {
+            if (!s.Reduced || s.IsVideo || s.Gif != null) return;
+            var b = s.Picture.Source as BitmapSource;
+            int full = Math.Max(s.FullWidth, s.FullHeight);
+            if (b == null || full <= 0) return;
+            double detail = (double)Math.Max(b.PixelWidth, b.PixelHeight) / full; // pixels in memory per photo pixel
+            if (FitScale(s) * s.Zoom.ScaleX <= detail * 1.05) return;              // screen pixels per photo pixel
+            s.Reduced = false;
+            int token = s.Token;
+            string file = s.File;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                BitmapSource whole = null;
+                int w, h;
+                try { whole = DecodeImage(file, MaxDecodeSide, out w, out h); }
+                catch { }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (s.Token == token && whole != null && s.Gif == null) s.Picture.Source = whole;
+                }));
+            });
         }
 
         void ClampPan(Slot s)
@@ -1937,11 +2084,12 @@ namespace FastViewer
             bool pausedVideo = shown != null && shown.IsVideo && !shown.Failed && !playing; // keep controls up while paused
             bool pointerOnControls = transport.IsMouseOver || centerPlayBtn.IsMouseOver;
             if (snapDir != null || volPopup.IsOpen || openMenus > 0 || files.Count == 0 || !overlayVisible || gridOpen) return;
-            if (!leftWindow && (pausedVideo || pointerOnControls)) return;
+            if (!leftWindow && ((pausedVideo && !fadePaused) || pointerOnControls)) return;
             overlayVisible = false;
             overlay.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)));
             FadeBars(false);
-            if (fullscreen) Cursor = Cursors.None;
+            // The pointer goes too: always in full screen, and over a video in the window.
+            if (fullscreen || (stage.IsMouseOver && shown != null && shown.IsVideo)) Cursor = Cursors.None;
         }
 
         // ---------------------------------------------------------------- settings

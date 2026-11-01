@@ -1,4 +1,4 @@
-FastViewer 1.11.0 - a fast photo and video viewer for Windows 10 and 11
+FastViewer 1.13.0 - a fast photo and video viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -24,7 +24,7 @@ Mini player
 
 All files in the folder
   G (or the grid button in the bottom bar) shows every photo and video in the folder as
-  thumbnails, in File Explorer's order. Click one to open it; arrows + Enter work too.
+  thumbnails, in File Explorer's order. Click one to open it; arrows + Enter work too. Names shows file names.
   Ctrl + mouse wheel makes the thumbnails bigger or smaller. Esc goes back.
   Settings > Viewing > Thumbnail strip adds a band of thumbnails under the picture.
 

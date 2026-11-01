@@ -5,6 +5,29 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.13.0  (1 Nov 2026)
+  Better
+  - Uses much less memory with big photos: they're kept at screen size (a 12 MP photo takes
+    about 10 MB instead of 48 MB), and the full photo loads by itself when you zoom in further.
+    Going through a folder of 12 MP photos now peaks around 250 MB instead of 1.3 GB.
+  - Pictures FastViewer no longer needs are given back to Windows right away, once you pause.
+  - Photos open a little faster too (less to decode).
+  Fixed
+  - On slower PCs FastViewer could freeze for several seconds at heavy parts of a video (Windows
+    then turns the window pale). It no longer waits for Windows' video player when the PC is busy.
+
+1.12.0  (1 Nov 2026)
+  New
+  - Play button in the middle: Show, Only when paused (like YouTube) or Hide.
+    Settings > Videos. Clicking the video still pauses and plays.
+  - Hide controls on a paused video too (Settings > Videos, off by default): the controls and
+    dimming fade while paused as well, so you can look at a clean paused frame.
+  - Volume, mute and skipping with a key or the wheel show a short note ('Volume 45%',
+    '+30 s  1:42 / 5:00') when the controls that would show it are hidden.
+  - The mouse pointer hides over a video when the controls fade, also in a normal window.
+  - Arrows on the sides can be turned off (Settings > Viewing).
+  - Grid: a Names button shows the file names under the thumbnails.
+
 1.11.0  (1 Nov 2026)
   New
   - Change the keys for everything: Settings > Keyboard now lists every action, including

@@ -156,7 +156,12 @@ namespace FastViewer
                 rotations.Remove(file);
                 s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
                 s.Rotation.Angle = 0;
-                s.Picture.Source = DecodeImage(file);
+                int fullWidth, fullHeight;
+                var picture = DecodeImage(file, Math.Min(ScreenSide, MaxDecodeSide), out fullWidth, out fullHeight);
+                s.Picture.Source = picture;
+                s.FullWidth = fullWidth;
+                s.FullHeight = fullHeight;
+                s.Reduced = Math.Max(picture.PixelWidth, picture.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
                 RefreshThumbnail(file);
                 UpdateZoomUi();
                 UpdateFacts();

@@ -270,6 +270,7 @@
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <Button x:Name="GridBackBtn" Style="{StaticResource Subtle}" ToolTip="Back (Esc)">
           <TextBlock Style="{StaticResource Icon}" Text="&#xE72B;"/>
@@ -277,7 +278,13 @@
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="10,0,12,0" TextTrimming="CharacterEllipsis">
           <Run x:Name="GridFolder" FontSize="20" FontWeight="SemiBold"/><Run x:Name="GridCount" FontSize="13" Foreground="{StaticResource TextSecondary}"/>
         </TextBlock>
-        <Button x:Name="GridSizeBtn" Grid.Column="2" Style="{StaticResource Filled}" Height="32" ToolTip="Thumbnail size (Ctrl + mouse wheel)">
+        <Button x:Name="GridNamesBtn" Grid.Column="2" Style="{StaticResource Filled}" Height="32" Margin="0,0,8,0">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock x:Name="GridNamesIcon" Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12" Margin="0,0,8,0"/>
+            <TextBlock Text="Names" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button x:Name="GridSizeBtn" Grid.Column="3" Style="{StaticResource Filled}" Height="32" ToolTip="Thumbnail size (Ctrl + mouse wheel)">
           <StackPanel Orientation="Horizontal">
             <TextBlock Style="{StaticResource Icon}" Text="&#xF0E2;" FontSize="14"/>
             <TextBlock x:Name="GridSizeText" Margin="10,0,14,0" VerticalAlignment="Center"/>

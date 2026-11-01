@@ -26,6 +26,9 @@ namespace FastViewer
         int slideSeconds = 4;
         int skipBack = 10, skipForward = 30; // seconds for the skip buttons (and J / L)
         static readonly int[] SkipChoices = { 5, 10, 15, 30, 60 };
+        int centerButton;         // play/pause in the middle of a video: 0 show, 1 only while paused, 2 hide
+        bool fadePaused;          // let the controls fade on a paused video too
+        bool showArrows = true;   // the < > buttons at the sides
         int filter;               // 0 photos and videos, 1 only videos, 2 only photos
         int order;                // 0 like File Explorer, 1 name, 2 newest first, 3 oldest first
 
@@ -59,6 +62,10 @@ namespace FastViewer
                 case "playNext": playNextAtEnd = v == "1"; break;
                 case "keepReady": keepReady = v == "1"; break;
                 case "strip": showStrip = v == "1"; break;
+                case "centerPlay": centerButton = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
+                case "fadePaused": fadePaused = v == "1"; break;
+                case "arrows": showArrows = v == "1"; break;
+                case "gridNames": gridNames = v == "1"; break;
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 default:
                     if (key.StartsWith("key.")) savedKeys[key.Substring(4)] = v;
@@ -95,6 +102,10 @@ namespace FastViewer
                 "playNext=" + (playNextAtEnd ? "1" : "0"),
                 "keepReady=" + (keepReady ? "1" : "0"),
                 "strip=" + (showStrip ? "1" : "0"),
+                "centerPlay=" + centerButton.ToString(CultureInfo.InvariantCulture),
+                "fadePaused=" + (fadePaused ? "1" : "0"),
+                "arrows=" + (showArrows ? "1" : "0"),
+                "gridNames=" + (gridNames ? "1" : "0"),
                 "gridSize=" + gridSize.ToString(CultureInfo.InvariantCulture),
                 "lastUpdateCheck=" + lastUpdateCheck.Ticks.ToString(CultureInfo.InvariantCulture),
                 "miniLong=" + miniLong.ToString(CultureInfo.InvariantCulture),
@@ -261,6 +272,10 @@ namespace FastViewer
                 "The thumbnails are the ones File Explorer uses and load after you stop switching, so switching stays just as fast. " +
                 "To see the whole folder at once, press G or click the grid button in the bottom bar (that works with the strip off too).",
                 Toggle(() => showStrip, v => { showStrip = v; ApplyStrip(); }));
+            AddCard("", "Arrows on the sides",
+                "The < and > buttons at the left and right edge of the picture. Without them you still switch files with the " +
+                "arrow keys, the mouse wheel, the thumbnail strip or the mouse side buttons.",
+                Toggle(() => showArrows, v => { showArrows = v; UpdateControls(); }));
             AddCard("\uE840", "Keep on top",
                 "Keep FastViewer above other windows, even when you click another app. The mini player (Ctrl+M) is always on top.",
                 Toggle(() => pinned, v => { pinned = v; Topmost = pinned || mini; }));
@@ -291,6 +306,14 @@ namespace FastViewer
             AddCard("", "Dim video while controls are showing",
                 "Darkens the video slightly so the controls are easier to see, like Photos.",
                 Toggle(() => dimVideo, v => { dimVideo = v; UpdateScrim(); }));
+            AddCard("", "Play button in the middle",
+                "The big play/pause button over a video. \"Only when paused\" shows a play button on a paused video, like YouTube. " +
+                "Clicking the video pauses and plays either way, and the control bar at the bottom stays.",
+                Dropdown(new[] { "Show", "Only when paused", "Hide" }, () => centerButton, i => { centerButton = i; UpdateControls(); }));
+            AddCard("", "Hide controls on a paused video too",
+                "Normally the controls stay while a video is paused. Turn this on to let them (and the dimming) fade after the " +
+                "usual time, so you can look at the paused picture. Moving the mouse brings them back.",
+                Toggle(() => fadePaused, v => fadePaused = v));
             AddCard("", "Hide controls after",
                 "How long the controls stay after you stop moving the mouse. Any mouse movement brings them back.",
                 Dropdown(new[] { "1.5 seconds", "2.5 seconds", "5 seconds", "Never" },

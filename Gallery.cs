@@ -39,6 +39,9 @@ namespace FastViewer
         List<string> gridFiles = new List<string>();
         int gridCols = 1, gridSelected;
         double gridTile;
+        bool gridNames;                // file names under the grid tiles (the Names button)
+
+        double GridRow { get { return gridTile + (gridNames ? Tile.NameHeight : 0); } }
         readonly Dictionary<int, Tile> gridShown = new Dictionary<int, Tile>(); // tiles on screen, by position
         readonly Stack<Tile> gridSpare = new Stack<Tile>();
 
@@ -52,6 +55,14 @@ namespace FastViewer
             OnClick("GridBtn", ToggleGrid);
             OnClick("GridBackBtn", CloseGrid);
             OnClick("GridSizeBtn", ShowGridSizeMenu);
+            OnClick("GridNamesBtn", delegate
+            {
+                gridNames = !gridNames;
+                UpdateGridNamesButton();
+                SaveSettings();
+                if (gridOpen) LayoutGrid(true);
+            });
+            UpdateGridNamesButton();
             gridScroll.ScrollChanged += delegate { RealizeGrid(); };
             gridScroll.SizeChanged += delegate(object o, SizeChangedEventArgs e) { if (gridOpen && e.WidthChanged) LayoutGrid(false); };
             gridScroll.PreviewMouseWheel += delegate(object o, MouseWheelEventArgs e)
@@ -88,6 +99,7 @@ namespace FastViewer
             t.File = file;
             t.Px = px;
             t.ToolTip = Path.GetFileName(file);
+            t.SetName(Path.GetFileName(file));
             bool video = IsVideoFile(file);
             BitmapSource image;
             if (Thumbs.TryGet(file, px, out image))
@@ -280,11 +292,12 @@ namespace FastViewer
                 gridShown.Clear();
             }
             int rows = (gridFiles.Count + gridCols - 1) / gridCols;
-            gridCanvas.Height = rows * gridTile;
-            foreach (var p in gridShown) // columns may have changed
+            gridCanvas.Height = rows * GridRow;
+            foreach (var p in gridShown) // columns (or names on/off) may have changed
             {
+                p.Value.SetSize(gridTile, gridNames);
                 Canvas.SetLeft(p.Value, (p.Key % gridCols) * gridTile);
-                Canvas.SetTop(p.Value, (p.Key / gridCols) * gridTile);
+                Canvas.SetTop(p.Value, (p.Key / gridCols) * GridRow);
             }
             if (scrollToSelected)
             {
@@ -300,8 +313,8 @@ namespace FastViewer
             if (!gridOpen || gridTile <= 0 || gridFiles.Count == 0) return;
             double top = gridScroll.VerticalOffset - gridCanvas.Margin.Top;
             double bottom = top + gridScroll.ViewportHeight;
-            int first = Math.Max(0, (int)Math.Floor(top / gridTile)) * gridCols;
-            int last = Math.Min(gridFiles.Count - 1, ((int)Math.Floor(bottom / gridTile) + 1) * gridCols - 1);
+            int first = Math.Max(0, (int)Math.Floor(top / GridRow)) * gridCols;
+            int last = Math.Min(gridFiles.Count - 1, ((int)Math.Floor(bottom / GridRow) + 1) * gridCols - 1);
             foreach (var i in gridShown.Keys.Where(i => i < first || i > last).ToList())
             {
                 var t = gridShown[i];
@@ -316,9 +329,9 @@ namespace FastViewer
                 if (!gridShown.TryGetValue(i, out t))
                 {
                     t = gridSpare.Count > 0 ? gridSpare.Pop() : NewGridTile();
-                    t.SetSize(gridTile);
+                    t.SetSize(gridTile, gridNames);
                     Canvas.SetLeft(t, (i % gridCols) * gridTile);
-                    Canvas.SetTop(t, (i / gridCols) * gridTile);
+                    Canvas.SetTop(t, (i / gridCols) * GridRow);
                     gridShown[i] = t;
                 }
                 BindTile(t, i, gridFiles[i], px, i == gridSelected);
@@ -349,11 +362,17 @@ namespace FastViewer
 
         void ScrollGridTo(int i, bool center)
         {
-            double y = (i / gridCols) * gridTile + gridCanvas.Margin.Top;
+            double row = GridRow, y = (i / gridCols) * row + gridCanvas.Margin.Top;
             double offset = gridScroll.VerticalOffset, h = gridScroll.ViewportHeight;
-            if (center) gridScroll.ScrollToVerticalOffset(y - (h - gridTile) / 2);
+            if (center) gridScroll.ScrollToVerticalOffset(y - (h - row) / 2);
             else if (y < offset) gridScroll.ScrollToVerticalOffset(y - gridCanvas.Margin.Top);
-            else if (y + gridTile > offset + h) gridScroll.ScrollToVerticalOffset(y + gridTile - h + gridCanvas.Margin.Bottom);
+            else if (y + row > offset + h) gridScroll.ScrollToVerticalOffset(y + row - h + gridCanvas.Margin.Bottom);
+        }
+
+        void UpdateGridNamesButton()
+        {
+            F<TextBlock>("GridNamesIcon").Visibility = gridNames ? Visibility.Visible : Visibility.Collapsed;
+            F<Button>("GridNamesBtn").ToolTip = gridNames ? "Hide file names" : "Show file names under the thumbnails";
         }
 
         void SelectGridTile(int i)
@@ -371,7 +390,7 @@ namespace FastViewer
         {
             Key key = e.Key == Key.System ? e.SystemKey : e.Key;
             int n = gridFiles.Count, sel = gridSelected;
-            int page = Math.Max(1, (int)(gridScroll.ViewportHeight / Math.Max(1, gridTile))) * gridCols;
+            int page = Math.Max(1, (int)(gridScroll.ViewportHeight / Math.Max(1, GridRow))) * gridCols;
             switch (key)
             {
                 case Key.Escape: CloseGrid(); return true;

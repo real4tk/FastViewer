@@ -188,7 +188,18 @@ namespace FastViewer
             ClearLoop();
             SaveSettings();
             lastOpened = CurrentFile;
+            LetGoOfFiles();
 
+            Hide();
+            ShowTray();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1)); // hand unused memory back to Windows
+        }
+
+        // Closes every file (so they can be moved or deleted) and drops the pictures and thumbnails.
+        void LetGoOfFiles()
+        {
             StopRevealWatch();
             gifTimer.Stop();
             foreach (var s in slots)
@@ -213,12 +224,6 @@ namespace FastViewer
             titleText.Text = "";
             message.Text = "Drop a photo, video or folder here\nor press Ctrl+O to open one";
             UpdateControls();
-
-            Hide();
-            ShowTray();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1)); // hand unused memory back to Windows
         }
 
         void ShowTray()

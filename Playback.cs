@@ -358,6 +358,14 @@ namespace FastViewer
             }
         }
 
+        // A short note of what a key or the wheel just changed (volume, skipping). Never covers a message
+        // that has a button, like "Start over".
+        void ShowFeedback(string text)
+        {
+            if (toastKind != null && toastKind != "feedback" && toastAction != null) return;
+            ShowToast(text, null, null, 1.2, "feedback");
+        }
+
         // Hides the pop-up; with a kind, only if it's that kind of message.
         void HideToast(string kind)
         {

@@ -213,9 +213,11 @@ namespace FastViewer
         }
     }
 
-    // One square thumbnail: the picture with rounded corners, a ring for the current file, a play badge on videos.
+    // One square thumbnail: the picture with rounded corners, a ring for the current file, a play badge on videos,
+    // and (grid, when Names is on) the file name underneath.
     class Tile : Border
     {
+        public const double NameHeight = 22;
         static readonly Brush Placeholder = Frozen(Color.FromRgb(0x2B, 0x2B, 0x2B));
         static readonly Brush HoverRing = Frozen(Color.FromArgb(0x5A, 0xFF, 0xFF, 0xFF));
         static readonly Brush BadgeBack = Frozen(Color.FromArgb(0xA0, 0x1C, 0x1C, 0x1C));
@@ -224,6 +226,11 @@ namespace FastViewer
         readonly ImageBrush brush = new ImageBrush { Stretch = Stretch.UniformToFill };
         readonly RotateTransform turn = new RotateTransform(0, 0.5, 0.5);
         readonly TextBlock glyph, play;
+        readonly TextBlock name = new TextBlock
+        {
+            FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(3, 3, 3, 0), Visibility = Visibility.Collapsed, IsHitTestVisible = false
+        };
         readonly Border badge;
         bool selected;
 
@@ -265,17 +272,25 @@ namespace FastViewer
             layers.Children.Add(glyph);
             layers.Children.Add(badge);
             picture.Child = layers;
-            Child = picture;
+            var stack = new DockPanel();
+            DockPanel.SetDock(name, Dock.Bottom);
+            stack.Children.Add(name);
+            stack.Children.Add(picture);
+            Child = stack;
             MouseEnter += delegate { UpdateRing(); };
             MouseLeave += delegate { UpdateRing(); };
-            SetSize(size);
+            SetSize(size, false);
             Clear();
         }
 
-        public void SetSize(double size)
+        public void SetSize(double size, bool withName)
         {
-            if (Width == size) return;
-            Width = Height = size;
+            bool sameSize = Width == size;
+            name.Visibility = withName ? Visibility.Visible : Visibility.Collapsed;
+            Height = size + (withName ? NameHeight : 0);
+            if (sameSize) return;
+            Width = size;
+            picture.Height = size - 6; // stays square: the ring (2) and gap (1) on each side
             double b = Math.Max(16, Math.Min(26, Math.Round(size * 0.18)));
             badge.Width = badge.Height = b;
             badge.CornerRadius = new CornerRadius(b / 2);
@@ -328,6 +343,11 @@ namespace FastViewer
             Visibility = Visibility.Visible;
         }
 
+        public void SetName(string text)
+        {
+            name.Text = text;
+        }
+
         // Photos turned in FastViewer (not saved into the file) are turned here too.
         public void SetAngle(double angle)
         {
@@ -343,6 +363,7 @@ namespace FastViewer
                 Job = null;
             }
             File = null;
+            name.Text = "";
             brush.ImageSource = null;
             picture.Background = Placeholder;
             Visibility = Visibility.Hidden;

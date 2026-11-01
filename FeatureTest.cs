@@ -12,8 +12,196 @@ namespace FastViewer
 {
     partial class ViewerWindow
     {
-        bool featureTest, uiTest, galleryTest, controlsTest;
+        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest;
         int preloadOverride;
+        volatile string stallStep = "opening";
+
+        // FastViewer.exe <file> --stall <output folder>: plays, seeks, pauses, switches and "hovers" over heavy videos,
+        // while a watchdog notes every moment the window stops responding (> 0.3 s) and the code it was stuck in.
+        void RunStallTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            long beat = 0, lastTick = 0;
+            var ui = System.Threading.Thread.CurrentThread;
+            var stalls = new List<string>();
+            bool done = false;
+            var heart = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(50) };
+            heart.Tick += delegate
+            {
+                long now = clock.ElapsedMilliseconds;
+                if (lastTick > 0 && now - lastTick > 300) lock (stalls) stalls.Add(string.Format("{0,6} ms: not responding for {1} ms (during: {2})", now, now - lastTick, stallStep));
+                lastTick = now;
+                System.Threading.Interlocked.Exchange(ref beat, now);
+            };
+            heart.Start();
+            var watchdog = new System.Threading.Thread(delegate()
+            {
+                long reported = -1;
+                while (!done)
+                {
+                    System.Threading.Thread.Sleep(50);
+                    long last = System.Threading.Interlocked.Read(ref beat);
+                    if (last == 0 || clock.ElapsedMilliseconds - last < 300 || reported == last) continue;
+                    reported = last;
+                    string trace;
+#pragma warning disable 618 // reading another thread's stack: test only
+                    try
+                    {
+                        ui.Suspend();
+                        try { trace = new System.Diagnostics.StackTrace(ui, false).ToString(); }
+                        finally { ui.Resume(); }
+                    }
+                    catch (Exception ex) { trace = "(no stack: " + ex.Message + ")"; }
+#pragma warning restore 618
+                    var lines = trace.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Take(14);
+                    lock (stalls) stalls.Add("  stuck in (during: " + stallStep + "):\n      " + string.Join("\n      ", lines));
+                }
+            }) { IsBackground = true };
+            watchdog.Start();
+
+            var steps = new List<KeyValuePair<int, Action>>();
+            Action<int, string, Action> at = (ms, name, a) => steps.Add(new KeyValuePair<int, Action>(ms, () => { stallStep = name; a(); }));
+            var random = new Random(1);
+            for (int ms = 1500; ms < 29000; ms += 250) at(ms, null, () => ShowOverlay()); // the mouse moving over the video
+            at(2500, "skip forward 5 s", () => SeekBy(5));
+            at(3200, "skip back 3 s", () => SeekBy(-3));
+            for (int k = 0; k < 12; k++) at(3800 + k * 80, "dragging the time bar", () => seek.Value = random.NextDouble() * seek.Maximum);
+            at(5200, "pause", () => TogglePlay());
+            at(5700, "play again", () => TogglePlay());
+            at(6300, "pause", () => TogglePlay());
+            at(6600, "frame by frame", () => { StepFrame(1); StepFrame(1); StepFrame(-1); });
+            at(7200, "play again", () => TogglePlay());
+            at(8200, "next (4K)", () => Go(1));
+            at(10000, "next (long 1080p60)", () => Go(1));
+            for (int k = 0; k < 10; k++) at(11500 + k * 100, "dragging the time bar (long)", () => seek.Value = random.NextDouble() * seek.Maximum);
+            at(13000, "skip forward 30 s", () => SeekBy(30));
+            at(13600, "skip back 10 s", () => SeekBy(-10));
+            at(14200, "pause", () => TogglePlay());
+            at(14600, "play again", () => TogglePlay());
+            for (int k = 0; k < 8; k++) { int dir = k % 2 == 0 ? -1 : 1; at(15500 + k * 150, "switching quickly", () => Go(dir)); }
+            for (int k = 0; k < 6; k++) at(17500 + k * 400, "switching", () => Go(-1));
+            at(21000, "play to the end region", () => { if (shown != null && shown.IsVideo && shown.Video.NaturalDuration.HasTimeSpan) shown.Video.Position = shown.Video.NaturalDuration.TimeSpan - TimeSpan.FromSeconds(1.5); });
+            at(24000, "watching", () => { });
+            at(29000, "done", () =>
+            {
+                done = true;
+                heart.Stop();
+                var log = new List<string>
+                {
+                    "stalls over 0.3 s: " + stalls.Count(l => l.Contains("not responding")) +
+                    ", longest " + stalls.Where(l => l.Contains("not responding")).Select(l => int.Parse(System.Text.RegularExpressions.Regex.Match(l, @"for (\d+) ms").Groups[1].Value)).DefaultIfEmpty(0).Max() + " ms" +
+                    ", stopped grabbing frames: " + slowGrabs
+                };
+                lock (stalls) log.AddRange(stalls);
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), log);
+                Close();
+            });
+            foreach (var s in steps) { var a = s.Value; After(s.Key, () => { var keep = stallStep; a(); if (stallStep == null) stallStep = keep; }); }
+        }
+
+        // FastViewer.exe <file> --memory <output folder>: memory while going through the folder, after zooming
+        // into a photo, and after letting go of everything (what the background mode does).
+        void RunMemoryTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            Action<string> log = text => testLog.Add(text);
+            var me = System.Diagnostics.Process.GetCurrentProcess();
+            double peakPrivate = 0, peakWorking = 0;
+            Func<string> mem = () =>
+            {
+                me.Refresh();
+                return string.Format("private {0:0} MB, working set {1:0} MB, managed {2:0} MB",
+                    me.PrivateMemorySize64 / 1048576.0, me.WorkingSet64 / 1048576.0, GC.GetTotalMemory(false) / 1048576.0);
+            };
+            var sampler = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            sampler.Tick += delegate
+            {
+                me.Refresh();
+                peakPrivate = Math.Max(peakPrivate, me.PrivateMemorySize64 / 1048576.0);
+                peakWorking = Math.Max(peakWorking, me.WorkingSet64 / 1048576.0);
+            };
+            Action collect = () => { GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); };
+
+            int t = 1500;
+            After(t, () => { log("first file open: " + mem()); sampler.Start(); });
+            for (int i = 0; i < 24; i++) After(t += 400, () => Go(1)); // once through the whole folder and a bit
+            After(t += 1500, () =>
+            {
+                sampler.Stop();
+                log(string.Format("going through {0} files: peak private {1:0} MB, peak working set {2:0} MB", files.Count, peakPrivate, peakWorking));
+                log("after: " + mem());
+                int photo = files.FindIndex(f => !IsVideoFile(f));
+                ShowIndex(photo, 1);
+            });
+            After(t += 800, () =>
+            {
+                var b = shown.Picture.Source as System.Windows.Media.Imaging.BitmapSource;
+                log("photo on screen: " + (b == null ? "-" : b.PixelWidth + " x " + b.PixelHeight) + " pixels in memory, photo is " + shown.FullWidth + " x " + shown.FullHeight);
+                SetZoom(4, StageCenter());
+            });
+            After(t += 1500, () =>
+            {
+                var b = shown.Picture.Source as System.Windows.Media.Imaging.BitmapSource;
+                log("zoomed to 400%: " + (b == null ? "-" : b.PixelWidth + " x " + b.PixelHeight) + " pixels in memory; " + mem());
+                SetZoom(1, StageCenter());
+                LetGoOfFiles();
+                collect();
+                log("let go of everything, right away: " + mem());
+            });
+            After(t += 1500, () => { collect(); log("let go of everything, 1.5 s later: " + mem()); });
+            After(t += 300, () =>
+            {
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ")));
+                Close();
+            });
+        }
+
+        // FastViewer.exe <file> --tweaks <output folder>: middle play button, side arrows, feedback, grid names.
+        // The video is paused before anything touches the volume, so the test stays silent.
+        void RunTweaksTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            var steps = new List<KeyValuePair<int, Action>>();
+            Action<int, Action> at = (ms, a) => steps.Add(new KeyValuePair<int, Action>(ms, a));
+            Action<string> log = text => testLog.Add(text);
+            Func<string> toast = () => F<FrameworkElement>("Toast").Visibility == Visibility.Visible ? F<TextBlock>("ToastText").Text : "(none)";
+            Func<string, Button> nav = name => settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == name).Key;
+
+            at(800, () => { int v = files.FindIndex(IsVideoFile); if (v >= 0) ShowIndex(v, 1); });
+            at(2000, () => { centerButton = 1; UpdateControls(); log("only when paused, playing=" + playing + ": button " + centerPlayBtn.Visibility); Snap("1_playing_no_button"); });
+            at(2200, () => { if (playing) TogglePlay(); log("only when paused, paused: button " + centerPlayBtn.Visibility); });
+            at(2600, () => Snap("2_paused_play_button"));
+            at(2700, () => { centerButton = 2; UpdateControls(); log("hide, paused: button " + centerPlayBtn.Visibility); showArrows = false; UpdateControls(); log("arrows off: " + F<FrameworkElement>("PrevBtn").Visibility + "/" + F<FrameworkElement>("NextBtn").Visibility); });
+            at(3100, () => Snap("3_no_button_no_arrows"));
+            at(3200, () =>
+            {
+                overlayVisible = false; // as if the controls had faded
+                SeekBy(10); log("skip with controls hidden: " + toast());
+                HideToast(null); overlayVisible = true; SeekBy(10); log("skip with controls showing: " + toast());
+                log("paused before volume: " + !playing);
+                SetVolume(0.45); log("volume key: " + toast());
+                ToggleMute(); log("mute key: " + toast());
+                muted = true; ApplyAudio(); log("test muted again: " + muted);
+                ShowToast("Continuing where you left off", "Start over", delegate { }, 4, "resume");
+                SetVolume(0.5); log("volume while a message with a button shows: " + toast() + " (expected the message stays)");
+                muted = true; ApplyAudio(); HideToast(null);
+            });
+            at(3500, () => { centerButton = 0; showArrows = true; UpdateControls(); OpenGrid(); gridNames = true; UpdateGridNamesButton(); LayoutGrid(true); });
+            at(4300, () => { Snap("4_grid_names"); log("grid names: row " + GridRow + " for tile " + gridTile + ", tiles " + gridShown.Count); });
+            at(4400, () => { gridNames = false; UpdateGridNamesButton(); LayoutGrid(true); log("names off: row " + GridRow); CloseGrid(); });
+            at(4600, () => { OpenSettings(); nav("Videos").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); });
+            at(5000, () => { F<ScrollViewer>("SettingsScroll").ScrollToVerticalOffset(260); });
+            at(5300, () => { Snap("5_settings_videos"); nav("Viewing").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); });
+            at(5700, () => { F<ScrollViewer>("SettingsScroll").ScrollToVerticalOffset(250); });
+            at(6000, () => { Snap("6_settings_viewing"); CloseSettings(); });
+            at(6100, () =>
+            {
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ")));
+                Close();
+            });
+            foreach (var s in steps) After(s.Key, s.Value);
+        }
 
         // FastViewer.exe <file> --controls <output folder>: two keys per action, taking keys over, mouse buttons.
         void RunControlsTest()
