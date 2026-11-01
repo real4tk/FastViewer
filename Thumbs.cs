@@ -214,18 +214,16 @@ namespace FastViewer
     }
 
     // One square thumbnail: the picture with rounded corners, a ring for the current file, a play badge on videos,
-    // and (grid, when Names is on) the file name underneath.
+    // and (grid, when Names is on) the file name underneath. Its colours come from the look.
     class Tile : Border
     {
         public const double NameHeight = 22;
-        static readonly Brush Placeholder = Frozen(Color.FromRgb(0x2B, 0x2B, 0x2B));
-        static readonly Brush HoverRing = Frozen(Color.FromArgb(0x5A, 0xFF, 0xFF, 0xFF));
-        static readonly Brush BadgeBack = Frozen(Color.FromArgb(0xA0, 0x1C, 0x1C, 0x1C));
 
         readonly Border picture = new Border { CornerRadius = new CornerRadius(4) };
         readonly ImageBrush brush = new ImageBrush { Stretch = Stretch.UniformToFill };
         readonly RotateTransform turn = new RotateTransform(0, 0.5, 0.5);
-        readonly TextBlock glyph, play;
+        readonly Glyph glyph = new Glyph { Visibility = Visibility.Collapsed };
+        readonly Glyph play = new Glyph { Code = "\uE768", Foreground = Brushes.White };
         readonly TextBlock name = new TextBlock
         {
             FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center,
@@ -238,13 +236,6 @@ namespace FastViewer
         public string File;
         public Thumbs.Job Job;
 
-        static Brush Frozen(Color c)
-        {
-            var b = new SolidColorBrush(c);
-            b.Freeze();
-            return b;
-        }
-
         public Tile(double size)
         {
             BorderThickness = new Thickness(2);
@@ -252,22 +243,14 @@ namespace FastViewer
             CornerRadius = new CornerRadius(7);
             Background = Brushes.Transparent; // the whole square is clickable
             brush.RelativeTransform = turn;
-            picture.Background = Placeholder;
-            glyph = new TextBlock
-            {
-                FontFamily = Ui.Icons, Foreground = (Brush)Application.Current.Resources["TextSecondary"],
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed
-            };
-            play = new TextBlock
-            {
-                Text = "", FontFamily = Ui.Icons, Foreground = Brushes.White,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-            };
+            ShowPlaceholder();
+            glyph.SetResourceReference(Glyph.ForegroundProperty, "TextSecondary");
             badge = new Border
             {
-                Background = BadgeBack, Child = play, Visibility = Visibility.Collapsed,
+                Child = play, Visibility = Visibility.Collapsed,
                 HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom
             };
+            badge.SetResourceReference(Border.BackgroundProperty, "BadgeBg");
             var layers = new Grid();
             layers.Children.Add(glyph);
             layers.Children.Add(badge);
@@ -283,6 +266,8 @@ namespace FastViewer
             Clear();
         }
 
+        void ShowPlaceholder() { picture.SetResourceReference(Border.BackgroundProperty, "ThumbPlaceholder"); }
+
         public void SetSize(double size, bool withName)
         {
             bool sameSize = Width == size;
@@ -295,9 +280,9 @@ namespace FastViewer
             badge.Width = badge.Height = b;
             badge.CornerRadius = new CornerRadius(b / 2);
             badge.Margin = new Thickness(Math.Round(b * 0.25));
-            play.FontSize = Math.Round(b * 0.42);
+            play.Size = Math.Round(b * 0.42);
             play.Margin = new Thickness(Math.Round(b * 0.06), 0, 0, 0); // the triangle looks centred a hair to the right
-            glyph.FontSize = Math.Round(Math.Max(14, size * 0.22));
+            glyph.Size = Math.Round(Math.Max(14, size * 0.22));
         }
 
         public bool Selected
@@ -313,13 +298,15 @@ namespace FastViewer
 
         void UpdateRing()
         {
-            BorderBrush = selected ? (Brush)Application.Current.Resources["Accent"] : IsMouseOver ? HoverRing : Brushes.Transparent;
+            if (selected) SetResourceReference(BorderBrushProperty, "Accent");
+            else if (IsMouseOver) SetResourceReference(BorderBrushProperty, "ThumbHover");
+            else BorderBrush = Brushes.Transparent;
         }
 
-        // Waiting for the thumbnail: a plain dark square (videos already get their badge).
+        // Waiting for the thumbnail: a plain square (videos already get their badge).
         public void SetLoading(bool video)
         {
-            picture.Background = Placeholder;
+            ShowPlaceholder();
             glyph.Visibility = Visibility.Collapsed;
             badge.Visibility = video ? Visibility.Visible : Visibility.Collapsed;
             Visibility = Visibility.Visible;
@@ -329,8 +316,8 @@ namespace FastViewer
         {
             if (image == null)
             {
-                picture.Background = Placeholder; // no thumbnail from Windows: show what kind of file it is
-                glyph.Text = video ? "" : "";
+                ShowPlaceholder(); // no thumbnail from Windows: show what kind of file it is
+                glyph.Code = video ? "\uE714" : "\uE91B";
                 glyph.Visibility = Visibility.Visible;
             }
             else
@@ -365,7 +352,7 @@ namespace FastViewer
             File = null;
             name.Text = "";
             brush.ImageSource = null;
-            picture.Background = Placeholder;
+            ShowPlaceholder();
             Visibility = Visibility.Hidden;
             selected = false;
             UpdateRing();

@@ -67,9 +67,23 @@ namespace FastViewer
             }
             var app = new Application();
             app.ShutdownMode = ShutdownMode.OnMainWindowClose;
-            app.Resources.MergedDictionaries.Add(Ui.Load<ResourceDictionary>("FastViewer.Theme.xaml"));
-            app.Resources["Accent"] = new SolidColorBrush(Ui.AccentColor());
+            // If FastViewer ever crashes, the reason is kept in %TEMP%\FastViewer\crash.txt.
+            app.DispatcherUnhandledException += (o, e) => WriteCrash(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (o, e) => WriteCrash(e.ExceptionObject as Exception);
+            app.Resources.MergedDictionaries.Add(Ui.Load<ResourceDictionary>("FastViewer.Theme.xaml")); // the window applies its look (Looks.cs)
             app.Run(new ViewerWindow(args));
+        }
+
+        static void WriteCrash(Exception ex)
+        {
+            try
+            {
+                var dir = Path.Combine(Path.GetTempPath(), "FastViewer");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "crash.txt"), DateTime.Now + " FastViewer " +
+                    Assembly.GetExecutingAssembly().GetName().Version + Environment.NewLine + ex + Environment.NewLine + Environment.NewLine);
+            }
+            catch { }
         }
     }
 
@@ -83,19 +97,21 @@ namespace FastViewer
                 return (T)XamlReader.Load(s);
         }
 
-        // The light shade of the Windows accent colour, which is what dark-mode controls use.
-        public static Color AccentColor()
+        // The Windows accent colour: its light shade for dark looks (what dark-mode controls use), its dark
+        // shade for light looks.
+        public static Color AccentColor(bool forLight = false)
         {
             try
             {
                 using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent"))
                 {
                     var p = key == null ? null : key.GetValue("AccentPalette") as byte[];
-                    if (p != null && p.Length >= 8) return Color.FromRgb(p[4], p[5], p[6]);
+                    int i = forLight ? 16 : 4;
+                    if (p != null && p.Length >= i + 3) return Color.FromRgb(p[i], p[i + 1], p[i + 2]);
                 }
             }
             catch { }
-            return Color.FromRgb(0x60, 0xCD, 0xFF);
+            return forLight ? Color.FromRgb(0x00, 0x5F, 0xB8) : Color.FromRgb(0x60, 0xCD, 0xFF);
         }
 
         [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
@@ -334,8 +350,8 @@ namespace FastViewer
         readonly Border cover = new Border();
         readonly RowDefinition topRow, bottomRow;
         readonly ColumnDefinition infoCol;
-        readonly TextBlock titleText, message, playIcon, volIcon, muteIcon, loopIcon, posText, durText, volText,
-                           typeText, dimText, sizeText, zoomText, fullIcon, maxIcon, dialogText;
+        readonly TextBlock titleText, message, posText, durText, volText, typeText, dimText, sizeText, zoomText, dialogText;
+        readonly Glyph playIcon, volIcon, muteIcon, loopIcon, fullIcon, maxIcon;
         readonly Slider seek, vol, zoomSlider;
         readonly Border transport;
         readonly Popup volPopup;
@@ -386,6 +402,8 @@ namespace FastViewer
                 else if (args[i] == "--stall" && i + 1 < args.Length) { snapDir = args[++i]; stallTest = true; }
                 else if (args[i] == "--strip") stripOverride = true;
                 else if (args[i] == "--grab-always") grabAlways = true;
+                else if (args[i] == "--look" && i + 1 < args.Length) lookOverride = args[++i];
+                else if (args[i] == "--looks" && i + 1 < args.Length) { snapDir = args[++i]; looksTest = true; }
                 else if (args[i] == "--fadetest" && i + 1 < args.Length)
                 {
                     string logFile = args[++i];
@@ -404,7 +422,7 @@ namespace FastViewer
             MinWidth = NormalMinWidth;
             MinHeight = NormalMinHeight;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            Background = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20));
+            SetResourceReference(BackgroundProperty, "WindowBg");
             AllowDrop = true;
             chrome = new WindowChrome
             {
@@ -417,6 +435,10 @@ namespace FastViewer
             WindowChrome.SetWindowChrome(this, chrome);
             LoadSettings(!testMode);
             if (stripOverride) showStrip = true;
+            if (lookOverride != null) lookId = lookOverride;
+            var lookWatch = Stopwatch.StartNew();
+            ApplyLook(); // before the window's layout loads, so it starts in the right look
+            if (testMode) testLog.Add("look " + lookId + " applied in " + lookWatch.ElapsedMilliseconds + " ms");
             if (testMode)
             {
                 // Kept behind all other windows (see SendToBack) so tests don't get in the way.
@@ -440,10 +462,10 @@ namespace FastViewer
             infoCol = F<ColumnDefinition>("InfoCol");
             titleText = F<TextBlock>("TitleText");
             message = F<TextBlock>("Message");
-            playIcon = F<TextBlock>("PlayIcon");
-            volIcon = F<TextBlock>("VolIcon");
-            muteIcon = F<TextBlock>("MuteIcon");
-            loopIcon = F<TextBlock>("LoopIcon");
+            playIcon = F<Glyph>("PlayIcon");
+            volIcon = F<Glyph>("VolIcon");
+            muteIcon = F<Glyph>("MuteIcon");
+            loopIcon = F<Glyph>("LoopIcon");
             posText = F<TextBlock>("PosText");
             durText = F<TextBlock>("DurText");
             volText = F<TextBlock>("VolText");
@@ -451,8 +473,8 @@ namespace FastViewer
             dimText = F<TextBlock>("DimText");
             sizeText = F<TextBlock>("SizeText");
             zoomText = F<TextBlock>("ZoomText");
-            fullIcon = F<TextBlock>("FullIcon");
-            maxIcon = F<TextBlock>("MaxIcon");
+            fullIcon = F<Glyph>("FullIcon");
+            maxIcon = F<Glyph>("MaxIcon");
             dialogText = F<TextBlock>("DialogText");
             seek = F<Slider>("Seek");
             vol = F<Slider>("Vol");
@@ -491,7 +513,7 @@ namespace FastViewer
                 stage.Children.Add(s.Host);
                 slots[i] = s;
             }
-            cover.Background = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20));
+            cover.SetResourceReference(Border.BackgroundProperty, "CoverBg");
             cover.IsHitTestVisible = false;
             Panel.SetZIndex(cover, 1);
             stage.Children.Add(cover);
@@ -572,7 +594,13 @@ namespace FastViewer
             stage.MouseMove += OnStageMove;
             stage.MouseLeftButtonUp += OnStageUp;
             Drop += OnDrop;
-            StateChanged += delegate { UpdateWindowFrame(); };
+            StateChanged += delegate { UpdateWindowFrame(); RoundCorners(); };
+            SizeChanged += delegate { RoundCorners(); };
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged += (o, e) => // Windows switched dark/light: follow it ("Auto")
+            {
+                if (e.Category == Microsoft.Win32.UserPreferenceCategory.General && lookMode == "Auto")
+                    Dispatcher.BeginInvoke(new Action(ApplyLook));
+            };
 
             uiTimer.Interval = TimeSpan.FromMilliseconds(100);
             uiTimer.Tick += delegate
@@ -595,13 +623,7 @@ namespace FastViewer
 
             SourceInitialized += delegate
             {
-                try
-                {
-                    int on = 1; // dark window frame (Windows 10 20H1+ uses 20, older builds 19)
-                    var hwnd = new WindowInteropHelper(this).Handle;
-                    if (DwmSetWindowAttribute(hwnd, 20, ref on, 4) != 0) DwmSetWindowAttribute(hwnd, 19, ref on, 4);
-                }
-                catch { }
+                ApplyWindowLook(); // dark or light frame, see-through for Liquid Glass
                 HwndSource.FromHwnd(new WindowInteropHelper(this).Handle).AddHook(WndProc);
                 if (testMode) SendToBack();
             };
@@ -615,6 +637,7 @@ namespace FastViewer
                 BuildSettingsPage();
                 InitExtras();
                 InitGallery();
+                ApplyButtons();
                 if (!testMode) StartSingleInstance();
                 StartupUpdateCheck();
                 ApplyStretch();
@@ -624,7 +647,7 @@ namespace FastViewer
                 if (path != null) OpenPath(path);
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
-                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else RunSnapshots(); }
+                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
         }
@@ -1250,8 +1273,10 @@ namespace FastViewer
                 }
                 ResetZoom(shown);
                 Panel.SetZIndex(shown.Host, 0);
+                if (glassSlots) shown.Host.Opacity = HiddenSlotOpacity;
             }
             Panel.SetZIndex(c.Host, 2);
+            c.Host.Opacity = 1;
             var before = shown;
             shown = c;
             OnShownChanged(before);
@@ -1389,21 +1414,24 @@ namespace FastViewer
             bool center = centerButton == 0 || (centerButton == 1 && !playing); // Settings > Videos
             centerPlayBtn.Visibility = isVideo && center ? Visibility.Visible : Visibility.Collapsed;
             F<FrameworkElement>("PrevBtn").Visibility = F<FrameworkElement>("NextBtn").Visibility =
-                showArrows ? Visibility.Visible : Visibility.Collapsed;
+                Shown("Arrows") ? Visibility.Visible : Visibility.Collapsed; // Settings > Buttons
+            foreach (var id in new[] { "PlayBtn", "BackBtn", "FwdBtn", "VolBtn", "LoopBtn" })
+                F<FrameworkElement>(id).Visibility = Shown(id) ? Visibility.Visible : Visibility.Collapsed;
             playGlyph.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
             pauseGlyph.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
             UpdateScrim();
             centerPlayBtn.ToolTip = playing ? "Pause (Space)" : "Play (Space)";
-            playIcon.Text = playing ? "" : "";
-            loopIcon.Foreground = loop ? (Brush)Application.Current.Resources["Accent"] : Brushes.White;
-            string level = muted || volume == 0 ? "" : volume < 0.34 ? "" : volume < 0.67 ? "" : "";
-            volIcon.Text = level;
-            muteIcon.Text = level;
+            playIcon.Code = playing ? "\uE769" : "\uE768";
+            if (loop) loopIcon.SetResourceReference(Glyph.ForegroundProperty, "Accent");
+            else loopIcon.ClearValue(Glyph.ForegroundProperty);
+            string level = muted || volume == 0 ? "\uE74F" : volume < 0.34 ? "\uE993" : volume < 0.67 ? "\uE994" : "\uE995";
+            volIcon.Code = level;
+            muteIcon.Code = level;
             settingSlider = true;
             vol.Value = volume * 100;
             settingSlider = false;
             volText.Text = Math.Round(volume * 100).ToString(CultureInfo.InvariantCulture);
-            fullIcon.Text = fullscreen ? "" : "";
+            fullIcon.Code = fullscreen ? "\uE73F" : "\uE740";
             // While the grid is open the file buttons are off: the file they'd act on isn't on screen.
             bool hasFile = CurrentFile != null && !gridOpen;
             foreach (var name in new[] { "DeleteBtn", "CopyBtn", "MoreBtn", "OpenWithBtn", "SlideshowBtn", "InfoBtn", "GridBtn" })
@@ -1503,7 +1531,7 @@ namespace FastViewer
                 fileFacts.Visibility = Visibility.Collapsed;
                 return;
             }
-            fileFacts.Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
+            fileFacts.Visibility = narrow || !Shown("FileFacts") ? Visibility.Collapsed : Visibility.Visible;
             typeText.Text = Path.GetExtension(s.File).TrimStart('.').ToUpperInvariant();
             int w, h;
             ContentSize(s, out w, out h);
@@ -1547,7 +1575,9 @@ namespace FastViewer
         void AddInfo(string label, string value)
         {
             var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 16) };
-            panel.Children.Add(new TextBlock { Text = label, FontSize = 12, Foreground = (Brush)Application.Current.Resources["TextSecondary"] });
+            var caption = new TextBlock { Text = label, FontSize = 12 };
+            caption.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            panel.Children.Add(caption);
             panel.Children.Add(new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0) });
             infoList.Children.Add(panel);
         }
@@ -1655,7 +1685,7 @@ namespace FastViewer
         static MenuItem Item(string header, string glyph, Action action, string shortcut = null)
         {
             var mi = new MenuItem { Header = header, InputGestureText = shortcut ?? "" };
-            if (glyph != null) mi.Icon = new TextBlock { Text = glyph, FontFamily = Ui.Icons, FontSize = 14 };
+            if (glyph != null) mi.Icon = new Glyph { Code = glyph, Size = 14 };
             mi.Click += delegate { action(); };
             return mi;
         }
@@ -1676,7 +1706,8 @@ namespace FastViewer
 
         void ShowMoreMenu()
         {
-            ShowMenu("MoreBtn", PlacementMode.Bottom,
+            var items = new List<Control>
+            {
                 Heading("File"),
                 Item("Save as", "\uE792", SaveAs, KeyOf("saveAs")),
                 Item("Copy", "\uE8C8", CopyFile, KeyOf("copy")),
@@ -1693,8 +1724,11 @@ namespace FastViewer
                 Item("Shuffle", shuffled ? "\uE73E" : "\uE8B1", ToggleShuffle, KeyOf("shuffle")),
                 Item("All files in folder", "\uF0E2", OpenGrid, KeyOf("grid")),
                 Item("File info", "\uE946", ToggleInfo, KeyOf("info")),
-                new Separator(),
-                Item("Settings", "\uE713", OpenSettings, KeyOf("settings")));
+            };
+            items.AddRange(HiddenButtonItems(false)); // buttons switched off in Settings > Buttons
+            items.Add(new Separator());
+            items.Add(Item("Settings", "\uE713", OpenSettings, KeyOf("settings")));
+            ShowMenu("MoreBtn", PlacementMode.Bottom, items.ToArray());
         }
         void ShowVideoMenu()
         {
@@ -1717,6 +1751,7 @@ namespace FastViewer
             items.Add(new Separator());
             items.Add(Item("Trim...", "\uE7A8", StartTrim, "Ctrl+T"));
             items.Add(Item("Make compatible copy...", "\uE8C8", MakeCompatibleCopy, KeyOf("compatible")));
+            items.AddRange(HiddenButtonItems(true));
             ShowMenu("VideoMoreBtn", PlacementMode.Top, items.ToArray());
         }
 
@@ -1887,7 +1922,7 @@ namespace FastViewer
 
         void UpdateWindowFrame()
         {
-            maxIcon.Text = WindowState == WindowState.Maximized ? "" : "";
+            maxIcon.Code = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
             // A maximized window hangs over the screen edge by its (invisible) border; pad it back in.
             if (WindowState == WindowState.Maximized && !fullscreen)
             {
@@ -1898,35 +1933,43 @@ namespace FastViewer
             else root.Margin = new Thickness(0);
         }
 
-        // Full screen: the top and bottom bars float over the picture and fade with the other controls.
+        // The top and bottom bars float over the picture and fade with the other controls in full screen, and
+        // always in looks like Clean (Look.BarsFloat), except while Settings or the grid is open.
+        bool Floating { get { return !mini && (fullscreen || (barsFloat && !settingsOpen && !gridOpen)); } }
+
         void PlaceBars()
         {
+            if (root == null) return;
             var top = F<FrameworkElement>("TopBar");
             var bottom = F<FrameworkElement>("BottomBar");
-            Grid.SetRow(top, fullscreen ? 1 : 0);
-            Grid.SetRow(bottom, fullscreen ? 1 : 2);
-            top.VerticalAlignment = fullscreen ? VerticalAlignment.Top : VerticalAlignment.Stretch;
-            bottom.VerticalAlignment = fullscreen ? VerticalAlignment.Bottom : VerticalAlignment.Stretch;
-            top.Height = fullscreen ? 48 : double.NaN;
-            Panel.SetZIndex(top, fullscreen ? 10 : 0);
-            Panel.SetZIndex(bottom, fullscreen ? 10 : 0);
-            transport.Margin = new Thickness(0, 0, 0, fullscreen ? (showStrip ? 48 + 64 : 48) : 16);
+            bool floating = Floating;
+            topRow.Height = new GridLength(floating || mini ? 0 : 48);
+            bottomRow.Height = floating || mini ? new GridLength(0) : GridLength.Auto;
+            Grid.SetRow(top, floating ? 1 : 0);
+            Grid.SetRow(bottom, floating ? 1 : 2);
+            top.VerticalAlignment = floating ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+            bottom.VerticalAlignment = floating ? VerticalAlignment.Bottom : VerticalAlignment.Stretch;
+            top.Height = floating ? 48 : double.NaN;
+            Panel.SetZIndex(top, floating ? 10 : 0);
+            Panel.SetZIndex(bottom, floating ? 10 : 0);
+            double under = (showStrip ? 64 : 0) + (BottomControlsShown() ? 32 : 0); // what the floating bottom bar covers
+            transport.Margin = new Thickness(0, 0, 0, floating ? under + 16 : 16);
             foreach (var bar in new[] { top, bottom })
             {
                 bar.BeginAnimation(OpacityProperty, null);
-                bar.Opacity = !fullscreen || overlayVisible ? 1 : 0;
-                bar.IsHitTestVisible = !fullscreen || overlayVisible;
+                bar.Opacity = !floating || overlayVisible ? 1 : 0;
+                bar.IsHitTestVisible = !floating || overlayVisible;
             }
         }
 
         void FadeBars(bool show)
         {
-            if (!fullscreen) return;
+            if (!Floating) return;
             foreach (var name in new[] { "TopBar", "BottomBar" })
             {
                 var bar = F<FrameworkElement>(name);
                 bar.IsHitTestVisible = show; // hidden buttons mustn't be clickable
-                bar.BeginAnimation(OpacityProperty, new DoubleAnimation(show ? 1 : 0, TimeSpan.FromMilliseconds(show ? 120 : 300)));
+                bar.BeginAnimation(OpacityProperty, new DoubleAnimation(show ? 1 : 0, TimeSpan.FromMilliseconds(show ? fadeInMs : fadeOutMs)));
             }
         }
 
@@ -1940,11 +1983,9 @@ namespace FastViewer
                 fullscreen = true;
                 chrome.CaptionHeight = 0;
                 chrome.ResizeBorderThickness = new Thickness(0);
-                topRow.Height = new GridLength(0);
-                bottomRow.Height = new GridLength(0);
                 infoCol.Width = new GridLength(0);
-                stage.Background = Brushes.Black;
-                cover.Background = Brushes.Black;
+                stage.SetResourceReference(Panel.BackgroundProperty, "FullBg");
+                cover.SetResourceReference(Border.BackgroundProperty, "FullBg");
 
                 var hwnd = new WindowInteropHelper(this).Handle;
                 var mi = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
@@ -1964,11 +2005,9 @@ namespace FastViewer
                 StopSlideshow();
                 chrome.CaptionHeight = 48;
                 chrome.ResizeBorderThickness = new Thickness(6);
-                topRow.Height = new GridLength(48);
-                bottomRow.Height = GridLength.Auto;
                 infoCol.Width = new GridLength(infoOpen ? 320 : 0);
-                stage.Background = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20));
-                cover.Background = stage.Background;
+                stage.SetResourceReference(Panel.BackgroundProperty, "StageBg");
+                cover.SetResourceReference(Border.BackgroundProperty, "CoverBg");
                 ResizeMode = ResizeMode.CanResize;
                 Left = boundsBeforeFullscreen.Left;
                 Top = boundsBeforeFullscreen.Top;
@@ -1979,6 +2018,7 @@ namespace FastViewer
                 PlaceBars();
             }
             UpdateWindowFrame();
+            ApplyWindowLook(); // full screen is never see-through
             UpdateControls();
         }
 
@@ -2053,8 +2093,9 @@ namespace FastViewer
             if (!overlayVisible)
             {
                 overlayVisible = true;
-                overlay.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)));
+                overlay.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(fadeInMs)));
                 FadeBars(true);
+                if (springMotion) Rise(transport, 10); // Liquid Glass: the video controls spring up into place
             }
             if (!panning) Cursor = null;
             idleTimer.Stop();
@@ -2082,11 +2123,12 @@ namespace FastViewer
             idleTimer.Stop();
             if (hideDelay <= 0) return; // "Never" in Settings
             bool pausedVideo = shown != null && shown.IsVideo && !shown.Failed && !playing; // keep controls up while paused
-            bool pointerOnControls = transport.IsMouseOver || centerPlayBtn.IsMouseOver;
+            bool pointerOnControls = transport.IsMouseOver || centerPlayBtn.IsMouseOver ||
+                (Floating && (F<FrameworkElement>("TopBar").IsMouseOver || F<FrameworkElement>("BottomBar").IsMouseOver));
             if (snapDir != null || volPopup.IsOpen || openMenus > 0 || files.Count == 0 || !overlayVisible || gridOpen) return;
             if (!leftWindow && ((pausedVideo && !fadePaused) || pointerOnControls)) return;
             overlayVisible = false;
-            overlay.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)));
+            overlay.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(fadeOutMs)));
             FadeBars(false);
             // The pointer goes too: always in full screen, and over a video in the window.
             if (fullscreen || (stage.IsMouseOver && shown != null && shown.IsVideo)) Cursor = Cursors.None;

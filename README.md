@@ -1,7 +1,8 @@
 # FastViewer
 
 A fast photo and video viewer for Windows 10 and 11, laid out like the Windows 11 Photos app.
-Switching between files is instant, videos too.
+Switching between files is instant, videos too. Four looks (Photos, Clean, Liquid Glass, Midnight; dark or light)
+and a choice of which buttons you see.
 
 ## Download
 

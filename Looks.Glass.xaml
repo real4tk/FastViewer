@@ -1,0 +1,236 @@
+<!-- Look "Liquid Glass": the Apple-style look of Image Converter. The window is see-through and Windows blurs
+     whatever is behind it (Look.SeeThrough); bars, panels and cards are frosted glass with a bright rim, a deeper
+     tint sits behind the photo, a glass lens slides behind the chosen item, motion uses springs, icons are
+     SF Symbols-style lines (Icons.Lines.xaml), and the font is Inter (SF Pro when it's installed). -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+  <sys:String x:Key="Look.Name">Liquid Glass</sys:String>
+  <sys:String x:Key="Look.Description">Frosted glass over your blurred desktop. Springy motion.</sys:String>
+  <sys:Int32 x:Key="Look.Order">3</sys:Int32>
+  <sys:Boolean x:Key="Look.HasLight">True</sys:Boolean>
+  <sys:String x:Key="Look.Icons">Lines</sys:String>
+  <sys:Double x:Key="Look.IconStroke">1.6</sys:Double>
+  <sys:Boolean x:Key="Look.BarsFloat">False</sys:Boolean>
+  <sys:Boolean x:Key="Look.SeeThrough">True</sys:Boolean>
+  <sys:Boolean x:Key="Look.Spring">True</sys:Boolean>
+  <sys:Double x:Key="Motion.FadeIn">180</sys:Double>
+  <sys:Double x:Key="Motion.FadeOut">380</sys:Double>
+  <sys:String x:Key="Font.Ui">@Inter</sys:String>
+  <sys:String x:Key="Font.Title">@Inter Display</sys:String>
+  <FontWeight x:Key="Weight.Title">SemiBold</FontWeight>
+  <sys:Double x:Key="Size.PageTitle">30</sys:Double>
+  <CornerRadius x:Key="Radius.Control">10</CornerRadius>
+  <CornerRadius x:Key="Radius.Float">18</CornerRadius>
+  <CornerRadius x:Key="Radius.Card">16</CornerRadius>
+  <CornerRadius x:Key="Radius.Center">40</CornerRadius>
+  <CornerRadius x:Key="Radius.Dialog">22</CornerRadius>
+  <CornerRadius x:Key="Radius.DialogFooter">0,0,22,22</CornerRadius>
+  <sys:Double x:Key="Radius.Window">12</sys:Double>
+
+  <!-- Dark -->
+  <SolidColorBrush x:Key="Dark.WindowBg" Color="#9E141418"/>
+  <SolidColorBrush x:Key="Dark.StageBg" Color="#59000000"/>
+  <SolidColorBrush x:Key="Dark.CoverBg" Color="Transparent"/>
+  <SolidColorBrush x:Key="Dark.FullBg" Color="#000000"/>
+  <LinearGradientBrush x:Key="Dark.TopBarBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#1FFFFFFF" Offset="0"/>
+    <GradientStop Color="#0AFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Dark.BottomBarBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#0AFFFFFF" Offset="0"/>
+    <GradientStop Color="#1AFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Dark.StripBg" Color="Transparent"/>
+  <LinearGradientBrush x:Key="Dark.PanelBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#1CFFFFFF" Offset="0"/>
+    <GradientStop Color="#0DFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Dark.PanelEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#80FFFFFF" Offset="0"/>
+    <GradientStop Color="#1FFFFFFF" Offset="0.33"/>
+    <GradientStop Color="#0DFFFFFF" Offset="0.66"/>
+    <GradientStop Color="#4DFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Dark.PageBg" Color="#F01C1C21"/>
+  <LinearGradientBrush x:Key="Dark.CardBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#1CFFFFFF" Offset="0"/>
+    <GradientStop Color="#0DFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Dark.CardEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#99FFFFFF" Offset="0"/>
+    <GradientStop Color="#24FFFFFF" Offset="0.25"/>
+    <GradientStop Color="#0AFFFFFF" Offset="0.5"/>
+    <GradientStop Color="#1AFFFFFF" Offset="0.75"/>
+    <GradientStop Color="#59FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Dark.NavSelected" Color="Transparent"/>
+  <SolidColorBrush x:Key="Dark.TextMain" Color="#F5F5F7"/>
+  <SolidColorBrush x:Key="Dark.TextSecondary" Color="#B3EBEBF5"/>
+  <SolidColorBrush x:Key="Dark.TextDim" Color="#80EBEBF5"/>
+  <SolidColorBrush x:Key="Dark.Divider" Color="#1FFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.HoverFill" Color="#17FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.ControlFill" Color="#1FFFFFFF"/>
+  <LinearGradientBrush x:Key="Dark.ControlEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#80FFFFFF" Offset="0"/>
+    <GradientStop Color="#1FFFFFFF" Offset="0.33"/>
+    <GradientStop Color="#0DFFFFFF" Offset="0.66"/>
+    <GradientStop Color="#4DFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Dark.ControlText" Color="#F5F5F7"/>
+  <SolidColorBrush x:Key="Dark.ControlHoverText" Color="#FFFFFF"/>
+  <LinearGradientBrush x:Key="Dark.FloatBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#E62C2C33" Offset="0"/>
+    <GradientStop Color="#E624242A" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Dark.FloatEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#99FFFFFF" Offset="0"/>
+    <GradientStop Color="#24FFFFFF" Offset="0.25"/>
+    <GradientStop Color="#0AFFFFFF" Offset="0.5"/>
+    <GradientStop Color="#1AFFFFFF" Offset="0.75"/>
+    <GradientStop Color="#59FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Dark.MenuBg" Color="#F5262629"/>
+  <SolidColorBrush x:Key="Dark.MenuHover" Color="#17FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.MenuEdge" Color="#2EFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.TipBg" Color="#F5262629"/>
+  <SolidColorBrush x:Key="Dark.TipEdge" Color="#2EFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.ArrowBg" Color="#33FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.ArrowEdge" Color="#4DFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.CenterBg" Color="#33FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.CenterHover" Color="#4DFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.CenterEdge" Color="#66FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.SwitchTrack" Color="#52787880"/>
+  <SolidColorBrush x:Key="Dark.SwitchEdge" Color="Transparent"/>
+  <SolidColorBrush x:Key="Dark.SwitchKnob" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.SwitchKnobOn" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.SliderRestFill" Color="#2EFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.SliderThumbBg" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.SliderThumbEdge" Color="#26000000"/>
+  <SolidColorBrush x:Key="Dark.ScrollThumb" Color="#59FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.CaptionHover" Color="#17FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.CloseHover" Color="#FF453A"/>
+  <SolidColorBrush x:Key="Dark.Accent" Color="#0A84FF"/>
+  <SolidColorBrush x:Key="Dark.AccentText" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.ScrimFill" Color="#40000000"/>
+  <SolidColorBrush x:Key="Dark.DialogShade" Color="#66000000"/>
+  <SolidColorBrush x:Key="Dark.DialogBg" Color="#F22A2A30"/>
+  <SolidColorBrush x:Key="Dark.DialogEdge" Color="#33FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.DialogFooter" Color="#14FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.ThumbPlaceholder" Color="#1FFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.ThumbHover" Color="#80FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.BadgeBg" Color="#8C000000"/>
+  <SolidColorBrush x:Key="Dark.LoopRangeFill" Color="#40FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.LoopRangeEdge" Color="#80FFFFFF"/>
+  <LinearGradientBrush x:Key="Dark.LensBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#4DFFFFFF" Offset="0"/>
+    <GradientStop Color="#2EFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Dark.LensEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#99FFFFFF" Offset="0"/>
+    <GradientStop Color="#24FFFFFF" Offset="0.5"/>
+    <GradientStop Color="#59FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+
+  <!-- Light -->
+  <SolidColorBrush x:Key="Light.WindowBg" Color="#9EF5F5F7"/>
+  <SolidColorBrush x:Key="Light.StageBg" Color="#66F2F2F7"/>
+  <SolidColorBrush x:Key="Light.CoverBg" Color="Transparent"/>
+  <SolidColorBrush x:Key="Light.FullBg" Color="#000000"/>
+  <LinearGradientBrush x:Key="Light.TopBarBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#8CFFFFFF" Offset="0"/>
+    <GradientStop Color="#66FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Light.BottomBarBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#66FFFFFF" Offset="0"/>
+    <GradientStop Color="#8CFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Light.StripBg" Color="Transparent"/>
+  <LinearGradientBrush x:Key="Light.PanelBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#B3FFFFFF" Offset="0"/>
+    <GradientStop Color="#8CFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Light.PanelEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+    <GradientStop Color="#66FFFFFF" Offset="0.33"/>
+    <GradientStop Color="#33FFFFFF" Offset="0.66"/>
+    <GradientStop Color="#80FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Light.PageBg" Color="#F0F2F2F6"/>
+  <LinearGradientBrush x:Key="Light.CardBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#B3FFFFFF" Offset="0"/>
+    <GradientStop Color="#8CFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Light.CardEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+    <GradientStop Color="#B3FFFFFF" Offset="0.25"/>
+    <GradientStop Color="#59FFFFFF" Offset="0.5"/>
+    <GradientStop Color="#8CFFFFFF" Offset="0.75"/>
+    <GradientStop Color="#F2FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Light.NavSelected" Color="Transparent"/>
+  <SolidColorBrush x:Key="Light.TextMain" Color="#1D1D1F"/>
+  <SolidColorBrush x:Key="Light.TextSecondary" Color="#C23C3C43"/>
+  <SolidColorBrush x:Key="Light.TextDim" Color="#993C3C43"/>
+  <SolidColorBrush x:Key="Light.Divider" Color="#263C3C43"/>
+  <SolidColorBrush x:Key="Light.HoverFill" Color="#14000000"/>
+  <SolidColorBrush x:Key="Light.ControlFill" Color="#B3FFFFFF"/>
+  <LinearGradientBrush x:Key="Light.ControlEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+    <GradientStop Color="#66FFFFFF" Offset="0.33"/>
+    <GradientStop Color="#33FFFFFF" Offset="0.66"/>
+    <GradientStop Color="#80FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Light.ControlText" Color="#1D1D1F"/>
+  <SolidColorBrush x:Key="Light.ControlHoverText" Color="#000000"/>
+  <LinearGradientBrush x:Key="Light.FloatBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#F0FFFFFF" Offset="0"/>
+    <GradientStop Color="#E6FAFAFC" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Light.FloatEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+    <GradientStop Color="#B3FFFFFF" Offset="0.5"/>
+    <GradientStop Color="#F2FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="Light.MenuBg" Color="#F7FBFBFD"/>
+  <SolidColorBrush x:Key="Light.MenuHover" Color="#14000000"/>
+  <SolidColorBrush x:Key="Light.MenuEdge" Color="#1F000000"/>
+  <SolidColorBrush x:Key="Light.TipBg" Color="#F7FBFBFD"/>
+  <SolidColorBrush x:Key="Light.TipEdge" Color="#1F000000"/>
+  <SolidColorBrush x:Key="Light.ArrowBg" Color="#B3FFFFFF"/>
+  <SolidColorBrush x:Key="Light.ArrowEdge" Color="#FFFFFFFF"/>
+  <SolidColorBrush x:Key="Light.CenterBg" Color="#33FFFFFF"/>
+  <SolidColorBrush x:Key="Light.CenterHover" Color="#4DFFFFFF"/>
+  <SolidColorBrush x:Key="Light.CenterEdge" Color="#66FFFFFF"/>
+  <SolidColorBrush x:Key="Light.SwitchTrack" Color="#29787880"/>
+  <SolidColorBrush x:Key="Light.SwitchEdge" Color="Transparent"/>
+  <SolidColorBrush x:Key="Light.SwitchKnob" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Light.SwitchKnobOn" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Light.SliderRestFill" Color="#293C3C43"/>
+  <SolidColorBrush x:Key="Light.SliderThumbBg" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Light.SliderThumbEdge" Color="#26000000"/>
+  <SolidColorBrush x:Key="Light.ScrollThumb" Color="#593C3C43"/>
+  <SolidColorBrush x:Key="Light.CaptionHover" Color="#14000000"/>
+  <SolidColorBrush x:Key="Light.CloseHover" Color="#FF3B30"/>
+  <SolidColorBrush x:Key="Light.Accent" Color="#007AFF"/>
+  <SolidColorBrush x:Key="Light.AccentText" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Light.ScrimFill" Color="#33000000"/>
+  <SolidColorBrush x:Key="Light.DialogShade" Color="#40000000"/>
+  <SolidColorBrush x:Key="Light.DialogBg" Color="#F7FFFFFF"/>
+  <SolidColorBrush x:Key="Light.DialogEdge" Color="#1F000000"/>
+  <SolidColorBrush x:Key="Light.DialogFooter" Color="#0A000000"/>
+  <SolidColorBrush x:Key="Light.ThumbPlaceholder" Color="#1F000000"/>
+  <SolidColorBrush x:Key="Light.ThumbHover" Color="#80000000"/>
+  <SolidColorBrush x:Key="Light.BadgeBg" Color="#8C000000"/>
+  <SolidColorBrush x:Key="Light.LoopRangeFill" Color="#33000000"/>
+  <SolidColorBrush x:Key="Light.LoopRangeEdge" Color="#66000000"/>
+  <LinearGradientBrush x:Key="Light.LensBg" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+    <GradientStop Color="#F5FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Light.LensEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+    <GradientStop Color="#B3FFFFFF" Offset="0.5"/>
+    <GradientStop Color="#F2FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+</ResourceDictionary>

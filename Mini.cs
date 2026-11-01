@@ -40,12 +40,10 @@ namespace FastViewer
                 boundsBeforeMini = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
                 mini = true;
                 WindowState = WindowState.Normal;
-                topRow.Height = new GridLength(0);
-                bottomRow.Height = new GridLength(0);
                 infoCol.Width = new GridLength(0);
                 chrome.CaptionHeight = 0;
-                stage.Background = Brushes.Black;
-                cover.Background = Brushes.Black;
+                stage.SetResourceReference(System.Windows.Controls.Panel.BackgroundProperty, "FullBg");
+                cover.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "FullBg");
                 MinWidth = 120;
                 MinHeight = 68;
                 Topmost = true;
@@ -57,12 +55,9 @@ namespace FastViewer
                 mini = false;
                 F<FrameworkElement>("MiniBar").Visibility = Visibility.Collapsed;
                 chrome.CaptionHeight = 48;
-                topRow.Height = new GridLength(48);
-                bottomRow.Height = GridLength.Auto;
                 infoCol.Width = new GridLength(infoOpen ? 320 : 0);
-                var bg = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20));
-                stage.Background = bg;
-                cover.Background = bg;
+                stage.SetResourceReference(System.Windows.Controls.Panel.BackgroundProperty, "StageBg");
+                cover.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "CoverBg");
                 MinWidth = NormalMinWidth;
                 MinHeight = NormalMinHeight;
                 Topmost = pinned;
@@ -72,6 +67,8 @@ namespace FastViewer
                 Height = boundsBeforeMini.Height;
                 WindowState = stateBeforeMini;
             }
+            PlaceBars();
+            ApplyWindowLook(); // the mini player is never see-through
             UpdateMiniUi();
             UpdateControls();
             UpdateResponsive();

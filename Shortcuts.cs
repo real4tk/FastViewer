@@ -232,7 +232,6 @@ namespace FastViewer
 
         void RefreshShortcutEditors()
         {
-            var dim = (Brush)Application.Current.Resources["TextSecondary"];
             foreach (var s in shortcuts)
             {
                 if (s.Editors == null) continue;
@@ -241,7 +240,7 @@ namespace FastViewer
                     // A new key goes into the first free box, so an empty box always comes after the set ones.
                     bool waiting = s == capturing && Math.Min(capturingSlot, s.Keys.Count) == k;
                     s.Editors[k].Content = waiting ? "Press a key..." : k < s.Keys.Count ? Display(s.Keys[k]) : "Not set";
-                    s.Editors[k].Foreground = waiting || k < s.Keys.Count ? Brushes.White : dim;
+                    s.Editors[k].SetResourceReference(ForegroundProperty, waiting || k < s.Keys.Count ? "ControlText" : "TextSecondary");
                 }
             }
         }

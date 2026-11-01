@@ -11,4 +11,11 @@ set FW=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319
   /r:"%FW%\System.IO.Compression.dll" /r:"%FW%\System.IO.Compression.FileSystem.dll" ^
   /resource:Theme.xaml,FastViewer.Theme.xaml ^
   /resource:Window.xaml,FastViewer.Window.xaml ^
-  FastViewer.cs Settings.cs Mini.cs VideoInfo.cs AssemblyInfo.cs Playback.cs Convert.cs Extras.cs FeatureTest.cs Updates.cs Shortcuts.cs FolderWatch.cs Background.cs Thumbs.cs Gallery.cs
+  /resource:Icons.Lines.xaml,FastViewer.Icons.Lines.xaml ^
+  /resource:Looks.Photos.xaml,FastViewer.Looks.Photos.xaml ^
+  /resource:Looks.Clean.xaml,FastViewer.Looks.Clean.xaml ^
+  /resource:Looks.Glass.xaml,FastViewer.Looks.Glass.xaml ^
+  /resource:Looks.Midnight.xaml,FastViewer.Looks.Midnight.xaml ^
+  /resource:fonts\Inter-Regular.ttf,FastViewer.fonts.Inter-Regular.ttf ^
+  /resource:fonts\Inter-SemiBold.ttf,FastViewer.fonts.Inter-SemiBold.ttf ^
+  FastViewer.cs Settings.cs Mini.cs VideoInfo.cs AssemblyInfo.cs Playback.cs Convert.cs Extras.cs FeatureTest.cs Updates.cs Shortcuts.cs FolderWatch.cs Background.cs Thumbs.cs Gallery.cs Looks.cs Appearance.cs

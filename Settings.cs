@@ -28,8 +28,7 @@ namespace FastViewer
         static readonly int[] SkipChoices = { 5, 10, 15, 30, 60 };
         int centerButton;         // play/pause in the middle of a video: 0 show, 1 only while paused, 2 hide
         bool fadePaused;          // let the controls fade on a paused video too
-        bool showArrows = true;   // the < > buttons at the sides
-        int filter;               // 0 photos and videos, 1 only videos, 2 only photos
+        int filter;              // 0 photos and videos, 1 only videos, 2 only photos
         int order;                // 0 like File Explorer, 1 name, 2 newest first, 3 oldest first
 
         bool settingsOpen, narrow;
@@ -64,7 +63,13 @@ namespace FastViewer
                 case "strip": showStrip = v == "1"; break;
                 case "centerPlay": centerButton = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "fadePaused": fadePaused = v == "1"; break;
-                case "arrows": showArrows = v == "1"; break;
+                case "arrows": if (v == "0") hiddenButtons.Add("Arrows"); break; // 1.12's switch, now in Settings > Buttons
+                case "look": lookId = v; break;
+                case "lookMode": lookMode = v == "Dark" || v == "Light" ? v : "Auto"; break;
+                case "hide":
+                    hiddenButtons.Clear();
+                    foreach (var id in v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)) hiddenButtons.Add(id.Trim());
+                    break;
                 case "gridNames": gridNames = v == "1"; break;
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 default:
@@ -104,7 +109,9 @@ namespace FastViewer
                 "strip=" + (showStrip ? "1" : "0"),
                 "centerPlay=" + centerButton.ToString(CultureInfo.InvariantCulture),
                 "fadePaused=" + (fadePaused ? "1" : "0"),
-                "arrows=" + (showArrows ? "1" : "0"),
+                "look=" + lookId,
+                "lookMode=" + lookMode,
+                "hide=" + string.Join(",", hiddenButtons),
                 "gridNames=" + (gridNames ? "1" : "0"),
                 "gridSize=" + gridSize.ToString(CultureInfo.InvariantCulture),
                 "lastUpdateCheck=" + lastUpdateCheck.Ticks.ToString(CultureInfo.InvariantCulture),
@@ -180,9 +187,10 @@ namespace FastViewer
 
             var left = F<FrameworkElement>("TopLeft");
             var right = F<FrameworkElement>("TopRight");
-            // Very narrow: these are also in the "..." menu.
-            foreach (var name in new[] { "DeleteBtn", "CopyBtn", "OpenWithBtn" })
-                F<FrameworkElement>(name).Visibility = w < 540 ? Visibility.Collapsed : Visibility.Visible;
+            // Buttons switched off in Settings > Buttons, and in very narrow windows a few extras (also in the "..." menu).
+            Action<string, bool> show = (name, fits) => F<FrameworkElement>(name).Visibility = Shown(name) && fits ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var name in new[] { "DeleteBtn", "CopyBtn", "OpenWithBtn" }) show(name, w >= 540);
+            foreach (var name in new[] { "OpenBtn", "RotateBtn", "MiniBtn" }) show(name, true);
             root.UpdateLayout(); // apply the label changes above before measuring
             // The name stays centred on the window, so it gets the space between the wider side and its mirror.
             double side = Math.Max(left.DesiredSize.Width, right.DesiredSize.Width) + 12;
@@ -190,10 +198,14 @@ namespace FastViewer
             titleText.MaxWidth = Math.Max(0, Math.Min(560, room));
             titleText.Visibility = room < 70 ? Visibility.Hidden : Visibility.Visible;
 
-            F<FrameworkElement>("InfoBtn").Visibility = w < 480 ? Visibility.Collapsed : Visibility.Visible;
+            show("InfoBtn", w >= 480);
             narrow = w < 860;
             UpdateSettingsNav(w);
-            F<FrameworkElement>("ZoomGroup").Visibility = w < 640 ? Visibility.Collapsed : Visibility.Visible;
+            show("ZoomGroup", w >= 640);
+            foreach (var name in new[] { "SlideshowBtn", "GridBtn", "FitBtn", "ZoomBtn", "FullBtn" }) show(name, true);
+            F<FrameworkElement>("ZoomDivider").Visibility = Shown("FullBtn") && (Shown("FitBtn") || Shown("ZoomBtn") || (Shown("ZoomGroup") && w >= 640))
+                ? Visibility.Visible : Visibility.Collapsed;
+            F<RowDefinition>("BottomControlsRow").Height = new GridLength(BottomControlsShown() ? 32 : 0); // Minimal: no bottom bar
             UpdateFacts();
         }
 
@@ -236,13 +248,18 @@ namespace FastViewer
             settingsOpen = true;
             foreach (var refresh in settingsRefresh) refresh(); // things changed by a key or menu since last time (Keep on top...)
             if (settingsList.Children.Count == 0 && settingsPages.Count > 0) ShowSettingsPage(settingsPages[0].Value);
-            F<FrameworkElement>("SettingsPage").Visibility = Visibility.Visible;
+            var page = F<FrameworkElement>("SettingsPage");
+            page.Visibility = Visibility.Visible;
+            PlaceBars(); // looks with floating bars dock them while Settings is open
+            if (springMotion) Rise(page, 18);
+            Dispatcher.BeginInvoke(new Action(delegate { UpdateSettingsLens(false); }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         void CloseSettings()
         {
             settingsOpen = false;
             F<FrameworkElement>("SettingsPage").Visibility = Visibility.Collapsed;
+            PlaceBars();
         }
 
         void BuildSettingsPage()
@@ -251,6 +268,7 @@ namespace FastViewer
             Topmost = pinned;
             OnClick("SettingsBackBtn", CloseSettings);
 
+            AddAppearancePages(); // Appearance and Buttons come first
             AddGroup("Viewing");
             AddCard("", "Zoom preference",
                 "How to show photos and videos that are smaller than the window.",
@@ -272,10 +290,6 @@ namespace FastViewer
                 "The thumbnails are the ones File Explorer uses and load after you stop switching, so switching stays just as fast. " +
                 "To see the whole folder at once, press G or click the grid button in the bottom bar (that works with the strip off too).",
                 Toggle(() => showStrip, v => { showStrip = v; ApplyStrip(); }));
-            AddCard("", "Arrows on the sides",
-                "The < and > buttons at the left and right edge of the picture. Without them you still switch files with the " +
-                "arrow keys, the mouse wheel, the thumbnail strip or the mouse side buttons.",
-                Toggle(() => showArrows, v => { showArrows = v; UpdateControls(); }));
             AddCard("\uE840", "Keep on top",
                 "Keep FastViewer above other windows, even when you click another app. The mini player (Ctrl+M) is always on top.",
                 Toggle(() => pinned, v => { pinned = v; Topmost = pinned || mini; }));
@@ -306,10 +320,6 @@ namespace FastViewer
             AddCard("", "Dim video while controls are showing",
                 "Darkens the video slightly so the controls are easier to see, like Photos.",
                 Toggle(() => dimVideo, v => { dimVideo = v; UpdateScrim(); }));
-            AddCard("", "Play button in the middle",
-                "The big play/pause button over a video. \"Only when paused\" shows a play button on a paused video, like YouTube. " +
-                "Clicking the video pauses and plays either way, and the control bar at the bottom stays.",
-                Dropdown(new[] { "Show", "Only when paused", "Hide" }, () => centerButton, i => { centerButton = i; UpdateControls(); }));
             AddCard("", "Hide controls on a paused video too",
                 "Normally the controls stay while a video is paused. Turn this on to let them (and the dimming) fade after the " +
                 "usual time, so you can look at the paused picture. Moving the mouse brings them back.",
@@ -407,7 +417,9 @@ namespace FastViewer
         {
             switch (name)
             {
-                case "Viewing": return "\uE8B9";
+                case "Appearance": return "\uE790";
+                case "Buttons": return "\uE8B9";
+                case "Viewing": return "\uE91B";
                 case "Videos": return "\uE714";
                 case "Keyboard": return "\uE765";
                 case "Mouse": return "\uE962";
@@ -421,23 +433,28 @@ namespace FastViewer
         void AddGroup(string name)
         {
             settingsPage = new StackPanel();
-            settingsPage.Children.Add(new TextBlock { Text = name, FontSize = 28, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 16) });
+            var heading = new TextBlock { Text = name, Margin = new Thickness(0, 0, 0, 16) };
+            heading.SetResourceReference(TextBlock.FontSizeProperty, "Size.PageTitle");
+            heading.SetResourceReference(TextBlock.FontFamilyProperty, "Font.Title");
+            heading.SetResourceReference(TextBlock.FontWeightProperty, "Weight.Title");
+            settingsPage.Children.Add(heading);
 
-            var indicator = new Border { Width = 3, Height = 16, CornerRadius = new CornerRadius(1.5), Background = (Brush)Application.Current.Resources["Accent"], Visibility = Visibility.Hidden };
+            var indicator = new Border { Width = 3, Height = 16, CornerRadius = new CornerRadius(1.5), Visibility = Visibility.Hidden };
+            indicator.SetResourceReference(Border.BackgroundProperty, "Accent");
             var label = new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(indicator);
-            row.Children.Add(new TextBlock { Text = CategoryIcon(name), FontFamily = Ui.Icons, FontSize = 16, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) });
+            row.Children.Add(new Glyph { Code = CategoryIcon(name), Size = 16, Margin = new Thickness(10, 0, 0, 0) });
             row.Children.Add(label);
             var button = new Button
             {
-                Style = (Style)Application.Current.Resources["Subtle"],
                 Content = row,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(0),
                 Margin = new Thickness(0, 0, 0, 2),
                 ToolTip = name
             };
+            button.SetResourceReference(StyleProperty, "Subtle");
             var page = settingsPage;
             button.Click += delegate { ShowSettingsPage(page); };
             F<StackPanel>("SettingsNav").Children.Add(button);
@@ -446,15 +463,19 @@ namespace FastViewer
 
         void ShowSettingsPage(StackPanel page)
         {
+            if (page == appearancePage) BuildLookPreviews(); // drawn the first time they're needed, not at start-up
             settingsList.Children.Clear();
             settingsList.Children.Add(page);
             foreach (var p in settingsPages)
             {
                 bool on = p.Value == page;
-                p.Key.Background = on ? new SolidColorBrush(Color.FromArgb(0x0F, 0xFF, 0xFF, 0xFF)) : Brushes.Transparent;
-                ((FrameworkElement)((StackPanel)p.Key.Content).Children[0]).Visibility = on ? Visibility.Visible : Visibility.Hidden;
+                if (on) p.Key.SetResourceReference(Button.BackgroundProperty, "NavSelected");
+                else p.Key.Background = Brushes.Transparent;
+                ((FrameworkElement)((StackPanel)p.Key.Content).Children[0]).Visibility = on && !springMotion ? Visibility.Visible : Visibility.Hidden;
             }
             F<System.Windows.Controls.ScrollViewer>("SettingsScroll").ScrollToTop();
+            if (springMotion) Rise(page, 14);
+            UpdateSettingsLens(true);
         }
 
         // Narrow windows: the side menu shows icons only.
@@ -467,25 +488,17 @@ namespace FastViewer
                 ((FrameworkElement)((StackPanel)p.Key.Content).Children[2]).Visibility = slim ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        void AddCard(string glyph, string title, string description, FrameworkElement control)
+        Border AddCard(string glyph, string title, string description, FrameworkElement control)
         {
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            grid.Children.Add(new TextBlock
-            {
-                Text = glyph, FontFamily = Ui.Icons, FontSize = 16,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 20, 0)
-            });
+            grid.Children.Add(new Glyph { Code = glyph, Size = 16, Margin = new Thickness(2, 0, 20, 0) });
             var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             texts.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
-            if (description != null) texts.Children.Add(new TextBlock
-            {
-                Text = description, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0),
-                Foreground = (Brush)Application.Current.Resources["TextSecondary"]
-            });
+            if (description != null) texts.Children.Add(SecondaryText(description));
             Grid.SetColumn(texts, 1);
             grid.Children.Add(texts);
             if (control != null)
@@ -496,17 +509,48 @@ namespace FastViewer
                 grid.Children.Add(control);
             }
 
-            settingsPage.Children.Add(new Border
-            {
-                Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x12, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
-                Padding = description == null ? new Thickness(16, 6, 16, 6) : new Thickness(16, 12, 16, 12),
-                MinHeight = description == null ? 48 : 68,
-                Margin = new Thickness(0, 0, 0, 4),
-                Child = grid
-            });
+            var card = Card(grid, description == null ? new Thickness(16, 6, 16, 6) : new Thickness(16, 12, 16, 12));
+            card.MinHeight = description == null ? 48 : 68;
+            settingsPage.Children.Add(card);
+            return card;
+        }
+
+        // A card whose control sits under its text (the look cards).
+        Border AddWideCard(string glyph, string title, string description, FrameworkElement content)
+        {
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.Children.Add(new Glyph { Code = glyph, Size = 16, Margin = new Thickness(2, 0, 20, 0) });
+            var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            texts.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
+            texts.Children.Add(SecondaryText(description));
+            Grid.SetColumn(texts, 1);
+            grid.Children.Add(texts);
+            Grid.SetRow(content, 1);
+            Grid.SetColumn(content, 1);
+            grid.Children.Add(content);
+            var card = Card(grid, new Thickness(16, 12, 16, 12));
+            settingsPage.Children.Add(card);
+            return card;
+        }
+
+        static TextBlock SecondaryText(string text)
+        {
+            var t = new TextBlock { Text = text, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+            t.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            return t;
+        }
+
+        static Border Card(UIElement child, Thickness padding)
+        {
+            var card = new Border { BorderThickness = new Thickness(1), Padding = padding, Margin = new Thickness(0, 0, 0, 4), Child = child };
+            card.SetResourceReference(Border.BackgroundProperty, "CardBg");
+            card.SetResourceReference(Border.BorderBrushProperty, "CardEdge");
+            card.SetResourceReference(Border.CornerRadiusProperty, "Radius.Card");
+            return card;
         }
 
         readonly List<Action> settingsRefresh = new List<Action>();
@@ -526,11 +570,7 @@ namespace FastViewer
         Button Dropdown(string[] options, Func<int> get, Action<int> set)
         {
             var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0) };
-            var chevron = new TextBlock
-            {
-                Text = "", FontFamily = Ui.Icons, FontSize = 10,
-                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center
-            };
+            var chevron = new Glyph { Code = "\uE70D", Size = 10, HorizontalAlignment = HorizontalAlignment.Right };
             var content = new Grid();
             content.Children.Add(text);
             content.Children.Add(chevron);

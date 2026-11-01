@@ -12,8 +12,57 @@ namespace FastViewer
 {
     partial class ViewerWindow
     {
-        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest;
+        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest, looksTest;
         int preloadOverride;
+
+        // FastViewer.exe <video> --looks <output folder>: every look, dark and light, on the viewer and on
+        // Settings > Appearance; the Buttons page and the presets. Liquid Glass is shown over a stand-in desktop.
+        void RunLooksTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            Action<string> log = text => testLog.Add(text);
+            Func<string, Button> nav = name => settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == name).Key;
+            Action<string> page = name => nav(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            int t = 1800;
+            After(t, () => { if (playing) TogglePlay(); });
+            foreach (var look in Looks.All)
+                foreach (var mode in new[] { "Dark", "Light" })
+                {
+                    var id = look.Id;
+                    var m = mode;
+                    After(t += 300, () => { lookId = id; lookMode = m; ApplyLook(); log(id + " " + m + ": light=" + Looks.Light + ", floating bars=" + Floating + ", see-through=" + seeThrough); });
+                    After(t += 700, () => Snap(id + "_" + m.ToLowerInvariant() + "_1_viewer"));
+                    After(t += 100, () => { OpenSettings(); page("Appearance"); });
+                    After(t += 800, () => { Snap(id + "_" + m.ToLowerInvariant() + "_2_appearance"); CloseSettings(); });
+                }
+            After(t += 300, () => { lookId = "Photos"; lookMode = "Dark"; ApplyLook(); OpenSettings(); page("Buttons"); });
+            After(t += 700, () => Snap("buttons_1_top"));
+            After(t += 100, () => F<ScrollViewer>("SettingsScroll").ScrollToVerticalOffset(560));
+            After(t += 500, () => Snap("buttons_2_more"));
+            After(t += 100, () => { F<ScrollViewer>("SettingsScroll").ScrollToEnd(); });
+            After(t += 500, () => { Snap("buttons_3_end"); CloseSettings(); });
+            After(t += 200, () => { ApplyPreset(1); log("Essentials: hidden " + string.Join(", ", hiddenButtons)); });
+            After(t += 600, () => Snap("preset_essentials_photos"));
+            After(t += 100, () =>
+            {
+                ApplyPreset(2);
+                log("Minimal: hidden " + hiddenButtons.Count + " buttons, middle button " + centerButton + ", bottom bar row " + F<RowDefinition>("BottomControlsRow").Height.Value);
+                log("\"...\" menu, Hidden buttons: " + string.Join(", ", HiddenButtonItems(false).OfType<MenuItem>().Select(i => i.Header)));
+                log("video menu, Hidden buttons: " + string.Join(", ", HiddenButtonItems(true).OfType<MenuItem>().Select(i => i.Header)));
+            });
+            After(t += 600, () => Snap("preset_minimal_photos"));
+            After(t += 100, () => { lookId = "Clean"; ApplyLook(); });
+            After(t += 700, () => Snap("preset_minimal_clean"));
+            After(t += 100, () => { lookId = "Glass"; ApplyLook(); ApplyPreset(0); OpenSettings(); page("Buttons"); });
+            After(t += 900, () => Snap("glass_settings_lens"));
+            After(t += 100, () =>
+            {
+                CloseSettings();
+                log("hidden players in Glass: " + string.Join(", ", slots.Select(s => s.Host.Opacity.ToString("0.00"))) + "; cover " + cover.Visibility);
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ")));
+                Close();
+            });
+        }
         volatile string stallStep = "opening";
 
         // FastViewer.exe <file> --stall <output folder>: plays, seeks, pauses, switches and "hovers" over heavy videos,
@@ -172,7 +221,7 @@ namespace FastViewer
             at(2000, () => { centerButton = 1; UpdateControls(); log("only when paused, playing=" + playing + ": button " + centerPlayBtn.Visibility); Snap("1_playing_no_button"); });
             at(2200, () => { if (playing) TogglePlay(); log("only when paused, paused: button " + centerPlayBtn.Visibility); });
             at(2600, () => Snap("2_paused_play_button"));
-            at(2700, () => { centerButton = 2; UpdateControls(); log("hide, paused: button " + centerPlayBtn.Visibility); showArrows = false; UpdateControls(); log("arrows off: " + F<FrameworkElement>("PrevBtn").Visibility + "/" + F<FrameworkElement>("NextBtn").Visibility); });
+            at(2700, () => { centerButton = 2; UpdateControls(); log("hide, paused: button " + centerPlayBtn.Visibility); hiddenButtons.Add("Arrows"); UpdateControls(); log("arrows off: " + F<FrameworkElement>("PrevBtn").Visibility + "/" + F<FrameworkElement>("NextBtn").Visibility); });
             at(3100, () => Snap("3_no_button_no_arrows"));
             at(3200, () =>
             {
@@ -187,7 +236,7 @@ namespace FastViewer
                 SetVolume(0.5); log("volume while a message with a button shows: " + toast() + " (expected the message stays)");
                 muted = true; ApplyAudio(); HideToast(null);
             });
-            at(3500, () => { centerButton = 0; showArrows = true; UpdateControls(); OpenGrid(); gridNames = true; UpdateGridNamesButton(); LayoutGrid(true); });
+            at(3500, () => { centerButton = 0; hiddenButtons.Remove("Arrows"); UpdateControls(); OpenGrid(); gridNames = true; UpdateGridNamesButton(); LayoutGrid(true); });
             at(4300, () => { Snap("4_grid_names"); log("grid names: row " + GridRow + " for tile " + gridTile + ", tiles " + gridShown.Count); });
             at(4400, () => { gridNames = false; UpdateGridNamesButton(); LayoutGrid(true); log("names off: row " + GridRow); CloseGrid(); });
             at(4600, () => { OpenSettings(); nav("Videos").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); });

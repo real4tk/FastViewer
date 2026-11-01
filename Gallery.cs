@@ -228,6 +228,7 @@ namespace FastViewer
             StopSlideshow();
             gridOpen = true;
             gridPage.Visibility = Visibility.Visible;
+            PlaceBars(); // looks with floating bars dock them while the grid is open
             gridPage.UpdateLayout(); // so the grid knows its width
             FillGrid(true);
             UpdateControls();
@@ -238,6 +239,7 @@ namespace FastViewer
             if (!gridOpen) return;
             gridOpen = false;
             gridPage.Visibility = Visibility.Collapsed;
+            PlaceBars();
             foreach (var t in gridShown.Values) t.Clear();
             gridShown.Clear();
             gridSpare.Clear();
@@ -371,7 +373,7 @@ namespace FastViewer
 
         void UpdateGridNamesButton()
         {
-            F<TextBlock>("GridNamesIcon").Visibility = gridNames ? Visibility.Visible : Visibility.Collapsed;
+            F<FrameworkElement>("GridNamesIcon").Visibility = gridNames ? Visibility.Visible : Visibility.Collapsed;
             F<Button>("GridNamesBtn").ToolTip = gridNames ? "Hide file names" : "Show file names under the thumbnails";
         }
 

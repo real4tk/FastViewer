@@ -1,4 +1,4 @@
-FastViewer 1.13.0 - a fast photo and video viewer for Windows 10 and 11
+FastViewer 1.14.0 - a fast photo and video viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -43,7 +43,8 @@ Handy keys
   Delete               move to Recycle Bin
   Ctrl + mouse wheel   zoom
 
-Settings are in the "..." menu at the top. Every option has a short explanation;
+Settings are in the "..." menu at the top. Appearance picks a look (Photos, Clean, Liquid Glass,
+Midnight; dark or light); Buttons picks which buttons you see. Every option has a short explanation;
 every action's keys can be changed in Settings > Keyboard (two keys each), and the mouse
 buttons in Settings > Mouse. Esc always goes back. X shuffles the folder.
 Closing FastViewer keeps it ready in the background (icon by the clock) so files open instantly.

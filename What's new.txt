@@ -5,6 +5,24 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.14.0  (1 Nov 2026)
+  New
+  - Looks: Settings > Appearance (now at the top) has four, each with a small preview, and it
+    switches right away:
+      Photos        like the Windows 11 Photos app (how FastViewer always looked)
+      Clean         just the picture; quiet controls float over it and fade in when you move the mouse
+      Liquid Glass  Apple-style frosted glass over your blurred desktop, spring motion, line icons
+      Midnight      pure black (or pure white), no boxes, thin text
+    Each can be dark, light, or follow Windows.
+  - Choose your buttons: Settings > Buttons switches any button on or off, with the presets
+    All buttons, Essentials and Minimal. Hidden buttons still work with their keyboard shortcut
+    and from the "..." menus, under "Hidden buttons". Arrows on the sides and the play button in
+    the middle moved here too. Picking Clean suggests the Minimal buttons (you don't have to).
+  - Reset to default for both.
+  Other
+  - If FastViewer ever crashes, the reason is saved in %TEMP%\FastViewer\crash.txt.
+  - Liquid Glass and Midnight use the Inter font (included; SF Pro if you have it installed).
+
 1.13.0  (1 Nov 2026)
   Better
   - Uses much less memory with big photos: they're kept at screen size (a 12 MP photo takes
