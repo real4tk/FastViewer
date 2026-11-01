@@ -12,8 +12,50 @@ namespace FastViewer
 {
     partial class ViewerWindow
     {
-        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest, looksTest, volumeTest, dimTest, syncTest;
+        bool featureTest, uiTest, galleryTest, controlsTest, tweaksTest, memoryTest, stallTest, looksTest, volumeTest, dimTest, syncTest, toastTest;
         int preloadOverride;
+
+        // FastViewer.exe <file> --toast <output folder>: the pop-up message ("Update now") must be clickable in every
+        // look and in full screen, not covered by a floating top bar. Checks what really sits under its buttons.
+        void RunToastTest()
+        {
+            Directory.CreateDirectory(snapDir);
+            Action<string> log = text => testLog.Add(text);
+            Func<FrameworkElement, bool> reachable = el =>
+            {
+                var p = el.TranslatePoint(new Point(el.ActualWidth / 2, el.ActualHeight / 2), root);
+                var hit = root.InputHitTest(p) as DependencyObject;
+                while (hit != null && hit != el) hit = System.Windows.Media.VisualTreeHelper.GetParent(hit) ?? LogicalTreeHelper.GetParent(hit);
+                return hit == el;
+            };
+            int t = 1500;
+            foreach (var look in new[] { "Photos", "Clean", "Glass", "Midnight" })
+                foreach (var full in new[] { false, true })
+                {
+                    var id = look;
+                    var f = full;
+                    After(t += 200, () =>
+                    {
+                        lookId = id; lookMode = "Dark"; ApplyLook();
+                        if (f != fullscreen) ToggleFullscreen();
+                        ShowToast("FastViewer 1.15.1 is available.", "Update now", delegate { }, 0, "update");
+                    });
+                    After(t += 600, () =>
+                    {
+                        var toast = F<FrameworkElement>("Toast");
+                        double top = toast.TranslatePoint(new Point(0, 0), root).Y;
+                        log(string.Format("{0,-8} {1,-11}: message at y {2:0} (window caption {3:0}), \"Update now\" clickable {4}, close clickable {5}",
+                            id, f ? "full screen" : "window", top, chrome.CaptionHeight, reachable(F<FrameworkElement>("ToastBtn")), reachable(F<FrameworkElement>("ToastClose"))));
+                        Snap(id + (f ? "_fullscreen" : "_window"));
+                    });
+                }
+            After(t += 200, () =>
+            {
+                if (fullscreen) ToggleFullscreen();
+                File.WriteAllLines(Path.Combine(snapDir, "log.txt"), testLog.Where(l => !l.StartsWith("snap ") && !l.StartsWith("reveal") && !l.StartsWith("live") && !l.Contains(" ms  ") && !l.StartsWith("look ")));
+                Close();
+            });
+        }
 
         // FastViewer.exe <video> --settings <scratch .ini> --sync <output folder>: another FastViewer window (played by
         // this test, writing the scratch file) changes settings; this window must take them over when it comes to the

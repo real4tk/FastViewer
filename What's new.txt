@@ -5,6 +5,11 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.15.2  (2 Nov 2026)
+  Fixed
+  - In the Clean look and in full screen, the message at the top ("Update now", "Start over",
+    the trim bar) sat under the top bar and couldn't be clicked. It now appears just below it.
+
 1.15.1  (2 Nov 2026)
   Fixed
   - With more than one FastViewer window open (or one waiting in the background), a setting changed

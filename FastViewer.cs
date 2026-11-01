@@ -406,6 +406,7 @@ namespace FastViewer
                 else if (args[i] == "--volume" && i + 1 < args.Length) { snapDir = args[++i]; volumeTest = true; }
                 else if (args[i] == "--dim" && i + 1 < args.Length) { snapDir = args[++i]; dimTest = true; }
                 else if (args[i] == "--sync" && i + 1 < args.Length) { snapDir = args[++i]; syncTest = true; }
+                else if (args[i] == "--toast" && i + 1 < args.Length) { snapDir = args[++i]; toastTest = true; }
                 else if (args[i] == "--settings" && i + 1 < args.Length) { SettingsFile = args[++i]; settingsOverride = true; }
                 else if (args[i] == "--fadetest" && i + 1 < args.Length)
                 {
@@ -651,7 +652,7 @@ namespace FastViewer
                 if (path != null) OpenPath(path);
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
-                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else if (dimTest) RunDimTest(); else if (syncTest) RunSyncTest(); else RunSnapshots(); }
+                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else if (dimTest) RunDimTest(); else if (syncTest) RunSyncTest(); else if (toastTest) RunToastTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
         }
@@ -2000,6 +2001,9 @@ namespace FastViewer
             Panel.SetZIndex(bottom, floating ? 10 : 0);
             double under = (showStrip ? 64 : 0) + (BottomControlsShown() ? 32 : 0); // what the floating bottom bar covers
             transport.Margin = new Thickness(0, 0, 0, floating ? under + 16 : 16);
+            // Messages ("Update now", trim) go below a floating top bar, which would otherwise cover them and their buttons.
+            foreach (var name in new[] { "Toast", "TrimBar" })
+                F<FrameworkElement>(name).Margin = new Thickness(0, floating ? 48 + 14 : 14, 0, 0);
             foreach (var bar in new[] { top, bottom })
             {
                 bar.BeginAnimation(OpacityProperty, null);

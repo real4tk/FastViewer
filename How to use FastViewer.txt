@@ -1,4 +1,4 @@
-FastViewer 1.15.1 - a fast photo and video viewer for Windows 10 and 11
+FastViewer 1.15.2 - a fast photo and video viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
