@@ -78,7 +78,8 @@ namespace FastViewer
                 case "gridNames": gridNames = v == "1"; break;
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 default:
-                    if (key.StartsWith("key.")) savedKeys[key.Substring(4)] = v;
+                    if (LoadCustomOption(key, v)) { } // the custom look (CustomLook.cs)
+                    else if (key.StartsWith("key.")) savedKeys[key.Substring(4)] = v;
                     else if (key.StartsWith("mouse.") && mouseActions.ContainsKey(key.Substring(6))) mouseActions[key.Substring(6)] = v;
                     break;
                 case "lastUpdateCheck": lastUpdateCheck = new DateTime(long.Parse(v, CultureInfo.InvariantCulture)); break;
@@ -129,7 +130,7 @@ namespace FastViewer
                 "miniLong=" + miniLong.ToString(CultureInfo.InvariantCulture),
                 "miniLeft=" + miniLeft.ToString(CultureInfo.InvariantCulture),
                 "miniTop=" + miniTop.ToString(CultureInfo.InvariantCulture)
-            };
+            }.Concat(CustomLines());
         }
 
         bool PassesFilter(string f)
@@ -474,6 +475,7 @@ namespace FastViewer
             switch (name)
             {
                 case "Appearance": return "\uE790";
+                case "Custom look": return "\uE771";
                 case "Buttons": return "\uE8B9";
                 case "Viewing": return "\uE91B";
                 case "Videos": return "\uE714";
@@ -521,6 +523,7 @@ namespace FastViewer
         void ShowSettingsPage(StackPanel page)
         {
             if (page == appearancePage) BuildLookPreviews(); // drawn the first time they're needed, not at start-up
+            if (page == customPage) FillCustomLookPage();
             var before = settingsPages.FirstOrDefault(p => settingsList.Children.Contains(p.Value)).Key;
             settingsList.Children.Clear();
             settingsList.Children.Add(page);

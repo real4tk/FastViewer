@@ -33,6 +33,7 @@ namespace FastViewer
 
         void ApplyLook()
         {
+            if (lookId == CustomId) BuildCustomLook(); // (otherwise only when Settings shows it: starting stays quick)
             var look = Looks.Find(lookId);
             Looks.Apply(look, lookMode);
             barsFloat = look.Flag("Look.BarsFloat");
@@ -53,6 +54,8 @@ namespace FastViewer
             UpdateControls();
             UpdateSettingsLens(false);
             RefreshLookCards();
+            UpdateReadability();
+            if (settingsOpen) foreach (var refresh in settingsRefresh) refresh(); // e.g. "Colours for" on Custom look follows dark/light
         }
 
         // The parts of a look that live in the window itself rather than in its contents.
@@ -277,7 +280,9 @@ namespace FastViewer
                 SaveSettings();
                 foreach (var refresh in settingsRefresh) refresh();
             };
-            AddCard("", "Reset to default", "Back to the Photos look, dark or light like Windows.", reset);
+            AddCard("", "Reset to default", "Back to the Photos look, dark or light like Windows. Your custom look is kept.", reset);
+
+            AddCustomLookPage();
 
             AddGroup("Buttons");
             var presets = new StackPanel { Orientation = Orientation.Horizontal };
@@ -336,13 +341,14 @@ namespace FastViewer
         {
             if (previewsBuilt) return;
             previewsBuilt = true;
-            foreach (var look in Looks.All)
+            if (Looks.Custom == null) BuildCustomLook();
+            foreach (var look in Looks.All.Concat(new[] { Looks.Custom }))
             {
                 var l = look;
                 var frame = new Border { BorderThickness = new Thickness(2), Padding = new Thickness(2), CornerRadius = new CornerRadius(10) };
                 frame.Child = new Border { CornerRadius = new CornerRadius(7), ClipToBounds = true, Child = Mock(look, Looks.IsLight(look, lookMode)) };
                 previewsLight = Looks.Light;
-                var name = new TextBlock { Text = look.Name, FontWeight = FontWeights.SemiBold, Margin = new Thickness(4, 8, 0, 0) };
+                var name = new TextBlock { Text = look.Name, FontWeight = FontWeights.SemiBold, Margin = new Thickness(4, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
                 var text = new TextBlock { Text = look.Description, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 2, 4, 0) };
                 text.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
                 var stack = new StackPanel { Width = 200 };
@@ -351,7 +357,7 @@ namespace FastViewer
                 stack.Children.Add(text);
                 var card = new Button { Content = stack, Padding = new Thickness(6), Height = double.NaN, Margin = new Thickness(0, 0, 12, 12), Tag = look.Id, ToolTip = look.Name, VerticalAlignment = VerticalAlignment.Top };
                 card.SetResourceReference(StyleProperty, "Subtle");
-                System.Windows.Automation.AutomationProperties.SetName(card, look.Name + " look");
+                System.Windows.Automation.AutomationProperties.SetName(card, look.Id == CustomId ? "Custom look: " + look.Name : look.Name + " look");
                 card.Click += delegate
                 {
                     CrossfadeWindow(250); // the whole window fades from the old look to the new one

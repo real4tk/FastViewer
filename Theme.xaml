@@ -471,4 +471,32 @@
       </Setter.Value>
     </Setter>
   </Style>
-</ResourceDictionary>
+  <!-- Text boxes (the custom look's name, a colour's code): the look's control colours, an accent line while typing -->
+  <Style x:Key="SettingsTextBox" TargetType="TextBox">
+    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+    <Setter Property="CaretBrush" Value="{DynamicResource TextMain}"/>
+    <Setter Property="SelectionBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="Background" Value="{DynamicResource ControlFill}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ControlEdge}"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Padding" Value="8,0"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <Grid>
+            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource Radius.Control}">
+              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" Focusable="False"
+                            HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+            </Border>
+            <Border x:Name="Line" Height="2" VerticalAlignment="Bottom" Margin="2,0" CornerRadius="1" Background="{DynamicResource Accent}" Opacity="0"/>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Line" Property="Opacity" Value="1"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style></ResourceDictionary>

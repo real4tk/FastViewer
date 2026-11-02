@@ -5,6 +5,23 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.17.1  (2 Nov 2026)
+  New
+  - Make your own look: Settings > Custom look. Start from any look and change what you like, in plain groups:
+    the main colours (accent, background, bars, pages, cards and menus, text), the font and page titles,
+    corner roundness, docked or floating bars, a see-through window, Windows or line icons, and the motion
+    style and speed. "All colours" lets you set every one of the over 50 parts on its own. Dark and light
+    each get their own colours.
+  - Every change shows on the whole window right away. The colour picker has a shade square, hue,
+    see-through, the colour code, ready-made colours and "Original" to go back.
+  - FastViewer warns when text becomes hard to read with your colours, and text on the accent colour
+    picks black or white by itself.
+  - Share looks: Export saves a small .fvlook file; Import (or dropping the file on FastViewer) uses it
+    straight away, with Undo. "Start over" goes back to a plain copy of the look you started from.
+  - Your look appears as a fifth card on Settings > Appearance, with its own name.
+  Fixed
+  - The pause sign in the big button in the middle of a video sat a little left of centre (most visible in
+    Liquid Glass and Midnight). Play and pause are both centred again.
 1.16.1  (2 Nov 2026)
   Fixed
   - Clicking "..." while its menu was open closed the menu and opened it again right away. Now clicking a

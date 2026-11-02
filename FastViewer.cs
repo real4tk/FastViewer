@@ -870,6 +870,7 @@ namespace FastViewer
         void OnDrop(object sender, DragEventArgs e)
         {
             var paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (paths != null && paths.Length > 0 && paths[0].EndsWith(".fvlook", StringComparison.OrdinalIgnoreCase)) { ImportLook(paths[0]); return; } // a shared look
             if (paths != null && paths.Length > 0) OpenPath(paths[0]);
         }
 
@@ -2617,6 +2618,7 @@ namespace FastViewer
             {
                 Shortcut sc;
                 bool settingsKey = shortcutByKey.TryGetValue(Code(e.Key == Key.System ? e.SystemKey : e.Key, Keyboard.Modifiers), out sc) && sc.Id == "settings";
+                if (e.Key == Key.Escape && Keyboard.FocusedElement is TextBox) { Keyboard.ClearFocus(); e.Handled = true; return; } // Esc while typing: stop typing
                 if (e.Key == Key.Escape || settingsKey) { CloseSettings(); e.Handled = true; } // the Settings key again closes it
                 return;
             }
@@ -2750,6 +2752,7 @@ namespace FastViewer
                 {
                     savedKeys.Clear();
                     hiddenButtons.Clear();
+                    custom.Clear();
                     ResetMouseActions();
                 }
                 var bad = new List<string>();

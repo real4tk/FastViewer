@@ -69,8 +69,12 @@ namespace FastViewer
             return look;
         }
 
+        // The custom look (CustomLook.cs): built from a look plus your changes, not from a file.
+        public static Look Custom;
+
         public static Look Find(string id)
         {
+            if (id == "Custom" && Custom != null) return Custom;
             return (string.IsNullOrEmpty(id) ? null : Load(id)) ?? Load(DefaultId);
         }
 

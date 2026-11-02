@@ -60,6 +60,8 @@ namespace FastViewer
                 case "rates": HuntRates(); break;
                 case "toggles": HuntToggles(); break;
                 case "scrub": HuntScrub(); break;
+                case "custom": HuntCustom(); break;
+                case "showcase": HuntShowcase(); break;
                 default: HuntLog("unknown case " + huntCase); HuntDone(); break;
             }
         }
@@ -551,6 +553,234 @@ namespace FastViewer
                 ClearLoop();
             });
             After(t += 300, HuntDone);
+        }
+
+        // ---------------------------------------------------------------- the custom look (CustomLook.cs); use with --settings <scratch.ini>
+
+        void HuntCustom()
+        {
+            var r = Application.Current.Resources;
+            Func<string, string> res = k => { var v = r[k]; var b = v as SolidColorBrush; return b != null ? ColorText(b.Color) : v is CornerRadius ? ((CornerRadius)v).TopLeft.ToString() : v == null ? "-" : v.ToString(); };
+            Func<StackPanel> page = () => settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Custom look").Value;
+            int t = 1500;
+            After(t, () =>
+            {
+                HuntLog("start: look " + lookId + ", custom values " + custom.Count + ", base " + customBase);
+                OpenSettings();
+                ShowSettingsPage(page());
+            });
+            After(t += 600, () => Snap("custom_page_top"));
+            After(t += 200, () =>
+            {
+                lookMode = "Dark"; ApplyLook();
+                SetCustomColors(new[] { "Accent" }, Color.FromRgb(0xE8, 0x11, 0x23), false, true);
+                HuntLog("accent red: look " + lookId + ", Accent " + res("Accent") + ", text on it " + res("AccentText") + ", saved " + custom["Dark.Accent"]);
+                SetCustomColors(new[] { "Accent" }, Color.FromRgb(0xFF, 0xD6, 0x00), false, true);
+                HuntLog("accent yellow: text on it " + res("AccentText") + " (black reads better)");
+                SetCustomColors(new[] { "WindowBg", "StageBg", "CoverBg", "StripBg" }, Color.FromRgb(0x10, 0x18, 0x30), false, true);
+                SetCustomColors(new[] { "PageBg" }, Color.FromRgb(0x14, 0x1C, 0x36), false, true);
+                SetCustomColors(new[] { "CardBg", "MenuBg", "TipBg", "FloatBg", "DialogBg" }, Color.FromRgb(0x1E, 0x28, 0x4A), false, true);
+                HuntLog("background " + res("StageBg") + ", pages " + res("PageBg") + ", cards " + res("CardBg") + ", menus " + res("MenuBg"));
+                SetCustomValue("roundness", "0");
+                SetCustomValue("font", "Georgia");
+                SetCustomValue("titleWeight", "Bold");
+                SetCustomValue("motionStyle", "springy");
+                SetCustomValue("motionSpeed", "1.4");
+                SetCustomValue("icons", "lines");
+            });
+            After(t += 300, () =>
+            {
+                HuntLog("roundness 0: control bar corners " + res("Radius.Float") + ", cards " + res("Radius.Card") + "; font " + res("Font.Ui") + ", titles " + res("Weight.Title"));
+                HuntLog("motion springy x1.4: style " + Motion.Style + ", normal " + Motion.Normal + " ms, press " + Motion.Press + "; icons " + (Looks.Current.Get("Look.Icons")));
+                Snap("custom_dark_square_georgia");
+                SetCustomValue("roundness", "20");
+                SetCustomValue("bars", "floating");
+            });
+            After(t += 300, () =>
+            {
+                HuntLog("roundness 20: control bar " + res("Radius.Float") + ", cards " + res("Radius.Card") + ", dialog footer " + r["Radius.DialogFooter"] + "; bars float " + barsFloat);
+                CloseSettings();
+            });
+            After(t += 500, () => Snap("custom_viewer_dark"));
+            After(t += 200, () =>
+            {
+                OpenSettings(); ShowSettingsPage(page());
+                lookMode = "Light"; ApplyLook();
+                HuntLog("light: accent " + res("Accent") + " (the dark red/yellow is dark-only), page " + res("PageBg"));
+                SetCustomColors(new[] { "PageBg" }, Color.FromRgb(0xFF, 0xF4, 0xE0), true, true);
+                SetCustomColors(new[] { "TextMain", "ControlText", "ControlHoverText" }, Color.FromRgb(0xFF, 0xF0, 0xD0), true, true);
+            });
+            After(t += 700, () =>
+            {
+                HuntLog("light text almost the page colour: readability warning shown " + (readabilityCard.Visibility == Visibility.Visible) + ": '" + readabilityText.Text + "'");
+                Snap("custom_light_warning");
+                SetCustomColors(new[] { "TextMain", "ControlText", "ControlHoverText" }, Color.FromRgb(0x20, 0x18, 0x10), true, true);
+            });
+            After(t += 700, () =>
+            {
+                HuntLog("dark text again: warning shown " + (readabilityCard.Visibility == Visibility.Visible));
+                lookMode = "Dark"; ApplyLook();
+                HuntLog("back to dark: accent " + res("Accent") + ", page " + res("PageBg"));
+                customName = "Night Sky";
+                SaveSettings();
+                var lines = File.ReadAllLines(SettingsFile).Where(l => l.StartsWith("custom") || l.StartsWith("look=")).ToList();
+                HuntLog("saved: " + lines.Count + " lines, e.g. " + string.Join(" | ", lines.Take(5)));
+                int before = custom.Count;
+                custom.Clear(); customName = "x";
+                LoadSettings(false, true);
+                HuntLog("loaded again: " + custom.Count + " values (had " + before + "), name '" + customName + "', base " + customBase);
+                // export, start over, import, undo
+                string file = Path.Combine(snapDir, "Night Sky.fvlook");
+                File.WriteAllLines(file, LookFileLines());
+                HuntLog("export file: " + File.ReadAllLines(file).Length + " lines, first '" + File.ReadAllLines(file)[0] + "'");
+                StartCustomOver();
+                HuntLog("start over: " + custom.Count + " values, accent " + res("Accent") + ", name '" + customName + "'");
+                ImportLook(file);
+                HuntLog("imported: " + custom.Count + " values, name '" + customName + "', accent " + res("Accent") + ", look " + lookId + ", message '" + F<TextBlock>("ToastText").Text + "'");
+                toastAction();
+                HuntLog("Undo: " + custom.Count + " values, name '" + customName + "'");
+                ImportLook(file);
+                string bad = Path.Combine(snapDir, "bad.fvlook");
+                File.WriteAllText(bad, "hello\nDark.Accent=#FF0000");
+                ImportLook(bad);
+                HuntLog("not a look file: message '" + F<TextBlock>("ToastText").Text + "', still " + custom.Count + " values");
+                string odd = Path.Combine(snapDir, "odd.fvlook");
+                File.WriteAllLines(odd, new[] { "FastViewer look", "name=Odd", "base=Banana", "Dark.Accent=#00FF00", "Dark.Nonsense=#FFFFFF", "roundness=abc", "font=Verdana", "Light.TextMain=notacolour" });
+                ImportLook(odd);
+                HuntLog("odd file: '" + F<TextBlock>("ToastText").Text + "', base " + customBase + ", values " + string.Join(", ", custom.Keys));
+                ImportLook(file);
+                HuntLog("after last import: name '" + customName + "'");
+                ShowSettingsPage(settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Appearance").Value);
+                HuntLog("after showing Appearance: name '" + customName + "'");
+            });
+            After(t += 800, () =>
+            {
+                var card = lookCards.Children.OfType<Button>().FirstOrDefault(c => (string)c.Tag == CustomId);
+                HuntLog("name now '" + customName + "', custom look name '" + Looks.Custom.Name + "'");
+                HuntLog("Appearance: " + lookCards.Children.Count + " look cards, custom card '" + (card == null ? "missing" : (string)card.ToolTip) + "', chosen " + lookId);
+                Snap("custom_appearance_cards");
+                ShowSettingsPage(page());
+                var scroll = F<ScrollViewer>("SettingsScroll");
+                scroll.ScrollToVerticalOffset(700);
+            });
+            After(t += 500, () => Snap("custom_page_middle"));
+            After(t += 100, () => { var scroll = F<ScrollViewer>("SettingsScroll"); scroll.ScrollToEnd(); });
+            After(t += 500, () => Snap("custom_page_end"));
+            After(t += 100, () =>
+            {
+                var showAll = FindAll<Button>(page()).First(b => b.Content as string == "Show all colours");
+                showAll.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                HuntLog("all colours: " + FindAll<Button>(page()).Count(b => (System.Windows.Automation.AutomationProperties.GetName(b) ?? "").EndsWith(" colour")) + " colour buttons on the page");
+                var pick = FindAll<Button>(page()).First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Accent colour");
+                pick.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                HuntLog("clicking a colour in a test: '" + testLog.LastOrDefault() + "'");
+                F<ScrollViewer>("SettingsScroll").ScrollToVerticalOffset(1500);
+            });
+            After(t += 500, () => Snap("custom_all_colours"));
+            After(t += 100, () =>
+            {
+                // the colour maths: every colour survives the trip through hue/shade and back
+                int worst = 0;
+                var rnd = new Random(3);
+                for (int i = 0; i < 2000; i++)
+                {
+                    var c = Color.FromArgb((byte)rnd.Next(256), (byte)rnd.Next(256), (byte)rnd.Next(256), (byte)rnd.Next(256));
+                    double h, s, v;
+                    ToHsv(c, out h, out s, out v);
+                    var back = FromHsv(h, s, v, c.A / 255.0);
+                    worst = Math.Max(worst, Math.Max(Math.Abs(c.R - back.R), Math.Max(Math.Abs(c.G - back.G), Math.Max(Math.Abs(c.B - back.B), Math.Abs(c.A - back.A)))));
+                }
+                HuntLog("2000 random colours to hue/shade and back: largest difference " + worst + " (of 255)");
+                F<ScrollViewer>("SettingsScroll").ScrollToTop();
+                huntPickerInWindow = true;
+            });
+            After(t += 400, () =>
+            {
+                var pick = FindAll<Button>(page()).First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Accent colour");
+                pick.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            });
+            After(t += 500, () =>
+            {
+                Snap("custom_picker");
+                root.Children.Remove(huntPicker);
+                huntPickerInWindow = false;
+            });
+            After(t += 100, () =>
+            {
+                lookId = "Photos"; ApplyLook();
+                HuntLog("Photos again: accent " + res("Accent") + ", corners " + res("Radius.Float") + ", font " + res("Font.Ui") + ", bars float " + barsFloat);
+                HuntDone();
+            });
+        }
+
+        // Pictures of the custom look for the release notes: an example look ("Sunset") made with the editor.
+        void HuntShowcase()
+        {
+            Func<StackPanel> page = () => settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Custom look").Value;
+            Action<string, int, int, int> col = (parts, r, g, b) => SetCustomColors(parts.Split(','), Color.FromRgb((byte)r, (byte)g, (byte)b), false, true);
+            int t = 1500;
+            After(t, () =>
+            {
+                lookMode = "Dark";
+                customName = "Sunset";
+                customBase = "Glass";
+                col("Accent", 0xFF, 0x8A, 0x3D);
+                col("WindowBg,StageBg,CoverBg,StripBg", 0x1A, 0x12, 0x1E);
+                col("TopBarBg,BottomBarBg,PanelBg", 0x24, 0x18, 0x2A);
+                col("PageBg", 0x1E, 0x15, 0x24);
+                col("CardBg,MenuBg,TipBg,FloatBg,DialogBg", 0x2E, 0x20, 0x36);
+                col("TextMain,ControlText,ControlHoverText", 0xFF, 0xF1, 0xE6);
+                col("TextSecondary,TextDim", 0xCF, 0xB8, 0xC8);
+                SetCustomValue("seeThrough", "off");
+                SetCustomValue("roundness", "14");
+                SetCustomValue("motionStyle", "springy");
+                SetCustomValue("icons", "lines");
+            });
+            After(t += 800, () => { int v = files.FindIndex(IsVideoFile); ShowIndex(v, 1); });
+            After(t += 1500, () => { if (playing) TogglePlay(); ShowOverlay(); });
+            After(t += 600, () => Snap("1_viewer_sunset_paused"));
+            After(t += 100, () => { TogglePlay(); ShowOverlay(); });
+            After(t += 600, () => { Snap("2_viewer_sunset_playing"); TogglePlay(); });
+            After(t += 200, () => { OpenSettings(); ShowSettingsPage(page()); });
+            After(t += 700, () => Snap("3_custom_look_page"));
+            After(t += 100, () => { F<ScrollViewer>("SettingsScroll").ScrollToVerticalOffset(560); });
+            After(t += 500, () => Snap("4_custom_look_shapes_motion"));
+            After(t += 100, () =>
+            {
+                F<ScrollViewer>("SettingsScroll").ScrollToTop();
+                huntPickerInWindow = true;
+                FindAll<Button>(page()).First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Accent colour").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            });
+            After(t += 600, () => { Snap("5_colour_picker"); root.Children.Remove(huntPicker); huntPickerInWindow = false; });
+            After(t += 100, () => ShowSettingsPage(settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Appearance").Value));
+            After(t += 700, () => Snap("6_appearance_cards"));
+            After(t += 100, () =>
+            {
+                ShowSettingsPage(page());
+                col("TextMain,ControlText,ControlHoverText", 0x3A, 0x2A, 0x40); // too dark on purple: the warning shows
+            });
+            After(t += 800, () => Snap("7_readability_warning"));
+            After(t += 100, () =>
+            {
+                col("TextMain,ControlText,ControlHoverText", 0xFF, 0xF1, 0xE6);
+                string file = Path.Combine(snapDir, "Sunset.fvlook");
+                File.WriteAllLines(file, LookFileLines());
+                CloseSettings();
+                StartCustomOver();
+                ImportLook(file); // as a friend would: the message offers Undo
+            });
+            After(t += 900, () => Snap("8_imported_from_file"));
+            After(t += 100, HuntDone);
+        }
+
+        static IEnumerable<T> FindAll<T>(DependencyObject root) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            {
+                var c = VisualTreeHelper.GetChild(root, i);
+                if (c is T) yield return (T)c;
+                foreach (var x in FindAll<T>(c)) yield return x;
+            }
         }
 
         // ---------------------------------------------------------------- scrub: dragging the time bar fast, and the dot while playing
@@ -1220,7 +1450,7 @@ namespace FastViewer
                 });
                 return;
             }
-            var looks = new[] { "Photos", "Clean" };
+            var looks = lookOverride != null ? new[] { lookOverride } : new[] { "Photos", "Clean", "Glass", "Midnight" }; // (--look: just that one)
             int photo = files.FindIndex(f => Path.GetFileName(f).StartsWith("01")), video = files.FindIndex(f => Path.GetFileName(f).StartsWith("02")),
                 gif = files.FindIndex(f => f.EndsWith(".gif")), broken = files.FindIndex(f => Path.GetFileName(f).StartsWith("04")),
                 longName = files.FindIndex(f => Path.GetFileName(f).StartsWith("05"));

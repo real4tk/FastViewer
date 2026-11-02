@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.16.1)
+# FastViewer: complete feature list (version 1.17.1)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.2 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -196,8 +196,28 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Switching between files stays instant. Optional "Transition between files: Crossfade" (off by default)
   fades the old file out over the new one, which shows right away (keeps up with fast clicking).
 
+## Custom look (1.17.1, Settings > Custom look)
+- A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
+  setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
+  between windows.
+- Groups: Name; Start from; Colours for Dark / Light (also switches the window to it); Main colours (Accent,
+  Background, Bars, Pages, Cards and menus, Text, Secondary text: each sets a few related parts); Text (font:
+  Segoe UI, Segoe UI Variable, Inter, Bahnschrift, Calibri, Verdana, Georgia, Trebuchet MS, Consolas, Comic
+  Sans MS when installed; page title weight); Shape (corner roundness 0-24 for buttons, cards, menus, the
+  control bar, dialogs and the window; docked or floating bars; see-through window; Windows or line icons);
+  Motion (Smooth, Subtle, Springy, Calm; Normal, Faster, Slower); All colours (every part on its own, 58);
+  Share and start over.
+- Live: colours go straight into the window's resources while a picker is dragged; shapes, fonts and motion
+  re-apply 60 ms later; saved half a second after the last change.
+- Colour picker: shade square, hue bar, see-through bar, colour code (#RRGGBB or #AARRGGBB), 16 ready colours,
+  "Original". Text on the accent picks black or white by itself unless set by hand.
+- Readability warning when text on pages, cards, menus, the top bar or the accent drops under 3:1 contrast.
+- Export / Import of .fvlook files ("FastViewer look" header, name, base, parts); unknown or invalid lines are
+  left out (and counted); dropping a .fvlook on the window imports it; Undo in the message.
+- The page's cards are only built the first time it opens, so starting stays quick.
+
 ## Settings (side menu pages)
-- Appearance (look, dark or light, Animations, Transition between files, mini player volume button), Buttons, Viewing (zoom preference, show filter, order, wrap around, thumbnail strip,
+- Appearance (look, dark or light, Animations, Transition between files, mini player volume button), Custom look, Buttons, Viewing (zoom preference, show filter, order, wrap around, thumbnail strip,
   keep on top, ask before deleting, when you rotate a photo), Videos (continue where you left off,
   autoplay, repeat, when a video ends, dim video, hide controls on paused video, hide controls after,
   skip back/forward, slideshow speed), Keyboard (every action, two keys each, Reset all), Mouse,
@@ -236,9 +256,9 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
-  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness),
+  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look),
   overlap, audit (--pattern
-  full|sizes|scales|contrast: renders every screen and checks overlaps, clipped text, contrast,
+  full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
 - Options: --preload n, --look <Id>, --strip, --grab-always, --settings <scratch.ini>,
   --positions <scratch file>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
