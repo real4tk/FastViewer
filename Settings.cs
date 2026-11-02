@@ -63,6 +63,7 @@ namespace FastViewer
                 case "keepReady": keepReady = v == "1"; break;
                 case "backgroundTold": toldAboutBackground = v == "1"; break;
                 case "miniVolume": miniVolume = v == "1"; break;
+                case "tips": showTips = v != "0"; break;
                 case "animations": animations = AnimationChoices.Contains(v) ? v : "Auto"; break;
                 case "fileTransition": crossfadeFiles = v == "Crossfade"; break;
                 case "strip": showStrip = v == "1"; break;
@@ -116,6 +117,7 @@ namespace FastViewer
                 "keepReady=" + (keepReady ? "1" : "0"),
                 "backgroundTold=" + (toldAboutBackground ? "1" : "0"),
                 "miniVolume=" + (miniVolume ? "1" : "0"),
+                "tips=" + (showTips ? "1" : "0"),
                 "animations=" + animations,
                 "fileTransition=" + (crossfadeFiles ? "Crossfade" : "None"),
                 "strip=" + (showStrip ? "1" : "0"),

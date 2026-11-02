@@ -63,6 +63,7 @@ namespace FastViewer
                 case "custom": HuntCustom(); break;
                 case "showcase": HuntShowcase(); break;
                 case "wheel": HuntWheel(); break;
+                case "tips": HuntTips(); break;
                 case "minivol":
                     After(1500, () => { if (playing) TogglePlay(); miniVolume = true; ToggleMini(); });
                     After(2500, () => { ShowOverlay(); SetVolume(0.45); });
@@ -715,6 +716,43 @@ namespace FastViewer
             {
                 lookId = "Photos"; ApplyLook();
                 HuntLog("Photos again: accent " + res("Accent") + ", corners " + res("Radius.Float") + ", font " + res("Font.Ui") + ", bars float " + barsFloat);
+                HuntDone();
+            });
+        }
+
+        // Settings > Buttons > Tips when pointing at a button (use with --settings <scratch.ini>).
+        void HuntTips()
+        {
+            Func<string, bool> opens = name =>
+            {
+                // what Windows does just before a tooltip appears; "handled" = it won't appear
+                var args = (ToolTipEventArgs)typeof(ToolTipEventArgs).GetConstructor(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                    null, new[] { typeof(bool) }, null).Invoke(new object[] { true });
+                args.RoutedEvent = FrameworkElement.ToolTipOpeningEvent;
+                F<FrameworkElement>(name).RaiseEvent(args);
+                return !args.Handled;
+            };
+            After(1500, () =>
+            {
+                HuntLog("tips on (default " + showTips + "): Next arrow tip opens " + opens("NextBtn") + ", Delete " + opens("DeleteBtn") + ", name for screen readers '" + System.Windows.Automation.AutomationProperties.GetName(F<FrameworkElement>("NextBtn")) + "'");
+                OpenSettings();
+                ShowSettingsPage(settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Buttons").Value);
+            });
+            After(2200, () =>
+            {
+                var card = FindAll<TextBlock>(F<FrameworkElement>("SettingsPage")).FirstOrDefault(tb => tb.Text == "Tips when pointing at a button");
+                var toggle = card == null ? null : FindAll<CheckBox>(VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(card))).FirstOrDefault();
+                HuntLog("Settings > Buttons card " + (card != null) + ", switch on " + (toggle != null && toggle.IsChecked == true));
+                toggle.IsChecked = false;
+                toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                HuntLog("switched off: Next arrow tip opens " + opens("NextBtn") + ", Delete " + opens("DeleteBtn") + ", screen reader name still '" + System.Windows.Automation.AutomationProperties.GetName(F<FrameworkElement>("NextBtn")) + "', saved line " + string.Join("", File.ReadAllLines(SettingsFile).Where(l => l.StartsWith("tips="))));
+                Snap("tips_switch");
+                showTips = true;
+                LoadSettings(false, true);
+                HuntLog("read back from the file: tips " + showTips);
+                toggle.IsChecked = true;
+                toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                HuntLog("switched on again: Next arrow tip opens " + opens("NextBtn"));
                 HuntDone();
             });
         }

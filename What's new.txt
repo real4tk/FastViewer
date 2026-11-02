@@ -5,6 +5,11 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.18.0  (2 Nov 2026)
+  New
+  - Settings > Buttons > "Tips when pointing at a button": switch off the little notes that appear when you
+    point at a button. Screen readers still read every button's name, and the keys stay listed in the "..."
+    menus and Settings > Keyboard.
 1.17.2  (2 Nov 2026)
   Fixed
   - Scrolling very fast through videos could lag a little. Two causes: the protection for slow PCs (which

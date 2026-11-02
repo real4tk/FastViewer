@@ -166,6 +166,23 @@ namespace FastViewer
         };
 
         readonly HashSet<string> hiddenButtons = new HashSet<string>();
+        bool showTips = true; // Settings > Buttons: the little notes that appear when you point at a button
+
+        // Tips off: every tooltip in the window is stopped as it is about to open (names for screen readers stay).
+        static bool tipSwitchInstalled;
+
+        static void InstallTipSwitch()
+        {
+            if (tipSwitchInstalled) return;
+            tipSwitchInstalled = true;
+            EventManager.RegisterClassHandler(typeof(FrameworkElement), FrameworkElement.ToolTipOpeningEvent, new ToolTipEventHandler(OnTipOpening));
+        }
+
+        static void OnTipOpening(object sender, ToolTipEventArgs e)
+        {
+            var w = Window.GetWindow((DependencyObject)sender) as ViewerWindow;
+            if (w != null && !w.showTips) e.Handled = true;
+        }
 
         bool Shown(string id) { return !hiddenButtons.Contains(id); }
         bool BottomControlsShown() { return BottomControls.Any(Shown); }
@@ -298,7 +315,10 @@ namespace FastViewer
             AddCard("", "Choose your buttons",
                 "Hidden buttons keep working: with their keyboard shortcut, and from the \"...\" menus under \"Hidden buttons\". " +
                 "Essentials keeps the everyday ones; Minimal shows only the picture, \"...\" and play.", presets);
-            string bar = null;
+            InstallTipSwitch();
+            AddCard("\uE82F", "Tips when pointing at a button",
+                "Short notes with the button's name and its key. Off: no notes. Screen readers still read every button's name, " +
+                "and the keys stay listed in the \"...\" menus and Settings > Keyboard.", Toggle(() => showTips, v => showTips = v));            string bar = null;
             foreach (var info in AllButtons)
             {
                 if (info.Bar != bar)
