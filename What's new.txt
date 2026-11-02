@@ -5,6 +5,20 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.16.1  (2 Nov 2026)
+  Fixed
+  - Clicking "..." while its menu was open closed the menu and opened it again right away. Now clicking a
+    menu's button again closes it, like everywhere in Windows: the "..." menus, the zoom % menu, the
+    thumbnail size menu in the grid and the drop-down lists in Settings.
+  - Pressing a key again now undoes it everywhere: Ctrl+T leaves trimming and Ctrl+, closes Settings (as G
+    already closed the grid and I the File info).
+  - Switching to the mini player while trimming ends trimming instead of squeezing the trim bar into the
+    small window.
+  - Dragging the time bar quickly while a video played made it stutter, and its sound could keep stuttering
+    long after pausing. While you drag, the video now holds still and shows the frames you pass, then plays on
+    from where you let go.
+  Improved
+  - The dot on the time bar glides with the video at your screen's refresh rate instead of stepping along.
 1.16.0  (2 Nov 2026)
   New
   - Smooth animations everywhere: buttons, switches, menus, Settings, messages, the Delete dialog, the

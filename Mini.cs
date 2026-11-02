@@ -36,6 +36,7 @@ namespace FastViewer
             if (!mini)
             {
                 if (shown == null || shown.Failed) return;
+                if (trimming) EndTrim(); // the trim bar needs the full window
                 if (fullscreen) ToggleFullscreen();
                 if (settingsOpen) CloseSettings();
                 stateBeforeMini = WindowState;

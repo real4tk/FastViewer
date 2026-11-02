@@ -565,13 +565,18 @@ namespace FastViewer
             F<Button>("PrevBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(-1); e.Handled = true; };
             F<Button>("NextBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(1); e.Handled = true; };
 
-            seek.PreviewMouseLeftButtonDown += delegate { seek.BeginAnimation(RangeBase.ValueProperty, null); }; // your click or drag wins over the glide
+            seek.PreviewMouseLeftButtonDown += delegate { StartScrub(); }; // your click or drag wins over the gliding dot
             seek.ValueChanged += delegate
             {
-                if (settingSlider || shown == null || !shown.IsVideo || seek.HasAnimatedProperties) return; // (the thumb gliding on its own)
+                if (settingSlider || shown == null || !shown.IsVideo) return; // (the dot moving with the video)
+                if (scrubbing) { ScrubTo(seek.Value, false); return; }
                 shown.Video.Position = TimeSpan.FromSeconds(seek.Value);
                 UpdateTime();
             };
+            // The drag ends wherever the mouse is let go (also off the time bar, or when the window loses the mouse).
+            PreviewMouseLeftButtonUp += delegate { EndScrub(); };
+            seek.LostMouseCapture += delegate { if (!seek.IsMouseCaptureWithin && Mouse.LeftButton != MouseButtonState.Pressed) EndScrub(); };
+            scrubTimer.Tick += delegate { scrubTimer.Stop(); if (scrubbing) ScrubTo(scrubTarget, true); };
             vol.Value = volume * 100;
             vol.ValueChanged += delegate { if (!settingSlider) SetVolume(vol.Value / 100); };
             zoomSlider.Minimum = 0;
@@ -1571,7 +1576,7 @@ namespace FastViewer
                 SetVolumeSlider(!VolumeSliderOpen);
                 e.Handled = true;
             };
-            Deactivated += delegate { SetVolumeSlider(false); };
+            Deactivated += delegate { SetVolumeSlider(false); EndScrub(); };
         }
 
         void PlaceVolumeSlider(UIElement target, PlacementMode where)
@@ -1708,22 +1713,100 @@ namespace FastViewer
             var pos = s.Video.Position;
             var d = s.Video.NaturalDuration;
             var dur = d.HasTimeSpan ? d.TimeSpan : TimeSpan.Zero;
-            if (!seek.IsMouseCaptureWithin) // don't fight the user while they drag
+            if (!seek.IsMouseCaptureWithin && !scrubbing) // don't fight the user while they drag
             {
                 settingSlider = true;
                 seek.Maximum = Math.Max(0.01, dur.TotalSeconds);
                 double v = Math.Min(pos.TotalSeconds, seek.Maximum);
-                if (playing && Motion.Moves && v > seek.Value && v - seek.Value < 1)
-                    seek.BeginAnimation(RangeBase.ValueProperty, new DoubleAnimation(v, TimeSpan.FromMilliseconds(110))); // steady, like time itself
+                if (playing && Motion.Animates && overlayVisible && transport.IsVisible) GlideSeek(v);
                 else
                 {
-                    seek.BeginAnimation(RangeBase.ValueProperty, null);
+                    Motion.Stop("seekGlide");
                     seek.Value = v;
                 }
                 settingSlider = false;
             }
-            posText.Text = Fmt(pos);
+            posText.Text = Fmt(scrubbing ? TimeSpan.FromSeconds(seek.Value) : pos);
             durText.Text = Fmt(dur);
+        }
+
+        // The time bar's dot moves every screen frame while a video plays: between the position updates (10 a
+        // second) it carries on at the video's speed, and each update gently corrects it. Only while the
+        // controls show; nothing runs when they're hidden or the video is paused.
+        double glideAt;                                    // where the dot was heading from (seconds)...
+        readonly Stopwatch glideClock = new Stopwatch();   // ...this long ago
+        void GlideSeek(double real)
+        {
+            if (Motion.Running("seekGlide"))
+            {
+                double predicted = glideAt + glideClock.Elapsed.TotalSeconds * speed;
+                double off = real - predicted;
+                glideAt = Math.Abs(off) > 0.3 ? real : predicted + off * 0.3; // a jump (loop, seek) moves it at once
+                glideClock.Restart();
+                return;
+            }
+            glideAt = real;
+            glideClock.Restart();
+            seek.Value = real;
+            Motion.Run("seekGlide", delegate
+            {
+                var s = shown;
+                if (s == null || !s.IsVideo || !playing || !overlayVisible || scrubbing || seek.IsMouseCaptureWithin || !transport.IsVisible) return false;
+                settingSlider = true;
+                seek.Value = Math.Min(seek.Maximum, glideAt + glideClock.Elapsed.TotalSeconds * speed);
+                settingSlider = false;
+                return true;
+            });
+        }
+
+        // Dragging the time bar: the video holds still and shows the frames you pass (at most ~20 jumps a second,
+        // always ending exactly where you let go), then plays on if it was playing. Jumping a playing video
+        // dozens of times a second used to garble its sound, which could keep stuttering long after.
+        bool scrubbing, playAfterScrub;
+        Slot scrubSlot; // the video being dragged through (another file may show up meanwhile)
+        double scrubTarget;
+        readonly Stopwatch scrubClock = Stopwatch.StartNew();
+        readonly DispatcherTimer scrubTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+
+        void StartScrub()
+        {
+            var s = shown;
+            Motion.Stop("seekGlide");
+            if (scrubbing || s == null || !s.IsVideo || s.Failed) return;
+            scrubbing = true;
+            scrubSlot = s;
+            playAfterScrub = playing;
+            if (playing) s.Video.Pause(); // quietly: the play button doesn't flip back and forth
+        }
+
+        void ScrubTo(double seconds, bool exact)
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || s != scrubSlot) return;
+            scrubTarget = seconds;
+            if (!exact && scrubClock.ElapsedMilliseconds < 50)
+            {
+                if (!scrubTimer.IsEnabled) scrubTimer.Start(); // the latest place, a moment later
+                return;
+            }
+            scrubTimer.Stop();
+            scrubClock.Restart();
+            s.Poster.Visibility = Visibility.Collapsed;
+            s.Video.Position = TimeSpan.FromSeconds(seconds);
+            scrubSeeks++;
+            UpdateTime();
+        }
+        int scrubSeeks; // (tests)
+
+        void EndScrub()
+        {
+            if (!scrubbing) return;
+            scrubTimer.Stop();
+            var s = shown;
+            if (s == scrubSlot) ScrubTo(seek.Value, true); // exactly where you let go
+            scrubbing = false;
+            if (playAfterScrub && playing && s == scrubSlot && s != null && s.IsVideo) s.Video.Play();
+            scrubSlot = null;
         }
 
         static string Fmt(TimeSpan t)
@@ -2076,12 +2159,49 @@ namespace FastViewer
 
         void ShowMenu(string button, PlacementMode placement, params Control[] items)
         {
-            var menu = new ContextMenu { PlacementTarget = F<Button>(button), Placement = placement, VerticalOffset = 4 };
+            var b = F<Button>(button);
+            if (ClosingOwnMenu(b)) return;
+            var menu = new ContextMenu { PlacementTarget = b, Placement = placement, VerticalOffset = 4 };
             foreach (var i in items) menu.Items.Add(i);
-            if (huntMenuHook != null) { huntMenuHook(menu, F<Button>(button)); return; } // tests: drawn inside the window instead
+            if (huntMenuHook != null) { huntMenuHook(menu, b); return; } // tests: drawn inside the window instead
             openMenus++; // a menu sits outside the window; don't fade the controls under it
             menu.Closed += delegate { openMenus--; };
+            OpenMenu(menu, b);
+        }
+
+        // A menu closes as soon as the mouse is pressed outside it. Pressed on the menu's own button, that same
+        // click would then open it straight back up: like everywhere in Windows, clicking the button again closes it.
+        Button menuClosedOver;
+
+        void OpenMenu(ContextMenu menu, Button b)
+        {
+            menu.Closed += delegate
+            {
+                if (Mouse.LeftButton != MouseButtonState.Pressed || !b.IsVisible) return;
+                var p = Mouse.GetPosition(b);
+                if (p.X >= 0 && p.Y >= 0 && p.X < b.ActualWidth && p.Y < b.ActualHeight) MenuClosedBy(b);
+            };
             menu.IsOpen = true;
+        }
+
+        void MenuClosedBy(Button b)
+        {
+            menuClosedOver = b;
+            // Forgotten once that click is over (also when the mouse is let go somewhere else).
+            MouseButtonEventHandler up = null;
+            up = delegate
+            {
+                PreviewMouseLeftButtonUp -= up;
+                Dispatcher.BeginInvoke(new Action(delegate { menuClosedOver = null; }), DispatcherPriority.Background);
+            };
+            PreviewMouseLeftButtonUp += up;
+        }
+
+        bool ClosingOwnMenu(Button b)
+        {
+            bool own = menuClosedOver == b;
+            menuClosedOver = null; // any menu click ends that press
+            return own;
         }
 
         static MenuItem Heading(string text)
@@ -2495,7 +2615,9 @@ namespace FastViewer
             }
             if (settingsOpen)
             {
-                if (e.Key == Key.Escape) { CloseSettings(); e.Handled = true; }
+                Shortcut sc;
+                bool settingsKey = shortcutByKey.TryGetValue(Code(e.Key == Key.System ? e.SystemKey : e.Key, Keyboard.Modifiers), out sc) && sc.Id == "settings";
+                if (e.Key == Key.Escape || settingsKey) { CloseSettings(); e.Handled = true; } // the Settings key again closes it
                 return;
             }
             if (gridOpen)

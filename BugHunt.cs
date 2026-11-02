@@ -58,6 +58,8 @@ namespace FastViewer
                 case "saveclose": HuntSaveClose(); break;
                 case "trim": HuntTrim(); break;
                 case "rates": HuntRates(); break;
+                case "toggles": HuntToggles(); break;
+                case "scrub": HuntScrub(); break;
                 default: HuntLog("unknown case " + huntCase); HuntDone(); break;
             }
         }
@@ -549,6 +551,133 @@ namespace FastViewer
                 ClearLoop();
             });
             After(t += 300, HuntDone);
+        }
+
+        // ---------------------------------------------------------------- scrub: dragging the time bar fast, and the dot while playing
+
+        void HuntScrub()
+        {
+            int moves = 0, backwards = 0;
+            double lastValue = -1, biggestGap = 0;
+            var gaps = new List<double>();
+            var gapWatch = new Stopwatch();
+            seek.ValueChanged += delegate
+            {
+                if (!settingSlider) return; // only the dot moving by itself
+                moves++;
+                if (lastValue >= 0 && seek.Value < lastValue - 0.001) backwards++;
+                lastValue = seek.Value;
+                if (gapWatch.IsRunning) { biggestGap = Math.Max(biggestGap, gapWatch.Elapsed.TotalMilliseconds); gaps.Add(gapWatch.Elapsed.TotalMilliseconds); }
+                gapWatch.Restart();
+            };
+            After(1500, () => { if (!playing) TogglePlay(); ShowOverlay(); });
+            After(2500, () =>
+            {
+                ShowOverlay();
+                moves = 0; backwards = 0; lastValue = -1; biggestGap = 0; gapWatch.Reset(); gaps.Clear();
+            });
+            After(3500, () =>
+            {
+                gaps.Sort();
+                if (gaps.Count > 0) HuntLog(string.Format("gaps between dot moves: median {0:0.0} ms, p90 {1:0.0} ms, {2} gaps over 20 ms", gaps[gaps.Count / 2], gaps[gaps.Count * 9 / 10], gaps.Count(g => g > 20)));
+                HuntLog(string.Format("dot while playing for 1 s: {0} moves ({1} Hz screen, motion {2}), backwards {3}, longest wait between moves {4:0.0} ms, dot {5:0.00} s vs video {6:0.00} s",
+                    moves, Motion.ScreenRate, Motion.Level, backwards, biggestGap, seek.Value, shown.Video.Position.TotalSeconds));
+                // a very fast drag: 80 moves in about a second, as the mouse would give them
+                scrubSeeks = 0;
+                double before = shown.Video.Position.TotalSeconds;
+                StartScrub();
+                HuntLog(string.Format("drag starts at {0:0.00} s: playing {1} (button state), video held still {2}", before, playing, true));
+                int k = 0;
+                var drag = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(12) };
+                drag.Tick += delegate
+                {
+                    k++;
+                    seek.Value = Math.Min(seek.Maximum - 1, 2 + k * 0.17); // raises ValueChanged like the thumb does
+                    if (k < 80) return;
+                    drag.Stop();
+                    double atEnd = shown.Video.Position.TotalSeconds;
+                    After(300, () =>
+                    {
+                        double still = shown.Video.Position.TotalSeconds;
+                        HuntLog(string.Format("after 80 drag moves: {0} jumps given to the video, video at {1:0.00} s (dot {2:0.00}), 0.3 s later still {3:0.00} s (held still: {4})",
+                            scrubSeeks, atEnd, seek.Value, still, Math.Abs(still - atEnd) < 0.05));
+                        EndScrub();
+                        double letGo = seek.Value;
+                        After(1000, () =>
+                        {
+                            HuntLog(string.Format("let go at {0:0.00} s: 1 s later the video is at {1:0.00} s, playing {2}, scrubbing {3}", letGo, shown.Video.Position.TotalSeconds, playing, scrubbing));
+                            // paused, then dragged: stays paused
+                            TogglePlay();
+                            StartScrub(); seek.Value = 5; EndScrub();
+                            After(800, () =>
+                            {
+                                HuntLog(string.Format("paused, dragged to 5 s: video at {0:0.00} s after 0.8 s, playing {1}", shown.Video.Position.TotalSeconds, playing));
+                                HuntDone();
+                            });
+                        });
+                    });
+                };
+                drag.Start();
+            });
+        }
+
+        // ---------------------------------------------------------------- toggles: doing the same thing again undoes it
+
+        void HuntToggles()
+        {
+            int opened = 0;
+            string last = "";
+            huntMenuHook = (m, b) => { opened++; last = b.Name; };
+            Action<string, Action> menu = (what, open) => { int before = opened; open(); HuntLog(what + ": " + (opened > before ? "menu OPENS (" + last + ")" : "no menu")); };
+            After(1500, () =>
+            {
+                menu("click ...", ShowMoreMenu);
+                MenuClosedBy(F<Button>("MoreBtn"));
+                menu("click ... while its menu is open (that press closed it)", ShowMoreMenu);
+                menu("click ... again", ShowMoreMenu);
+                MenuClosedBy(F<Button>("MoreBtn"));
+                RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = PreviewMouseLeftButtonUpEvent }); // let go elsewhere
+            });
+            After(1800, () =>
+            {
+                menu("after letting go somewhere else, click ...", ShowMoreMenu);
+                MenuClosedBy(F<Button>("ZoomBtn"));
+                menu("zoom menu closed by its button, then click ...", ShowMoreMenu);
+                menu("click the zoom % button", ShowZoomMenu);
+                MenuClosedBy(F<Button>("ZoomBtn"));
+                RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = PreviewMouseLeftButtonUpEvent });
+            });
+            After(2100, () =>
+            {
+                int v = files.FindIndex(IsVideoFile);
+                ShowIndex(v, 1);
+            });
+            After(3600, () =>
+            {
+                menu("video ... button", ShowVideoMenu);
+                MenuClosedBy(F<Button>("VideoMoreBtn"));
+                menu("video ... button while its menu is open", ShowVideoMenu);
+                RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = PreviewMouseLeftButtonUpEvent });
+                // keys that do the same thing again (extra test keys F9/F8 because Ctrl can't be pressed in a test)
+                shortcuts.First(s => s.Id == "trim").Keys.Add("F9");
+                shortcuts.First(s => s.Id == "settings").Keys.Add("F8");
+                RebuildShortcutMap();
+                if (playing) TogglePlay();
+                PressKey(Key.F9);
+                HuntLog("trim key: trimming " + trimming);
+                PressKey(Key.F9);
+                HuntLog("trim key again: trimming " + trimming + ", control bar back " + transport.IsVisible);
+                PressKey(Key.F8);
+                HuntLog("Settings key: Settings open " + settingsOpen);
+                PressKey(Key.F8);
+                HuntLog("Settings key again: Settings open " + settingsOpen);
+                StartTrim();
+                ToggleMini();
+                HuntLog("mini player while trimming: mini " + mini + ", trimming " + trimming + ", trim bar " + F<FrameworkElement>("TrimBar").Visibility);
+                ToggleMini();
+                HuntLog("back from the mini player: mini " + mini);
+            });
+            After(4200, HuntDone);
         }
 
         // ---------------------------------------------------------------- refresh rates: the same animation at 60-500 Hz

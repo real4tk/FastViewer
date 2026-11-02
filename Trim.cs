@@ -328,6 +328,7 @@ namespace FastViewer
                 case "loopA": if (s != null) SetTrimEnd('A', s.Video.Position.TotalSeconds, true); return true;
                 case "loopB": if (s != null) SetTrimEnd('B', s.Video.Position.TotalSeconds, true); return true;
                 case "loopStop": case "previous": case "next": case "first": case "last": return true; // stay with this video
+                case "trim": EndTrim(); return true; // the trim key again leaves, like G for the grid
             }
             return false;
         }

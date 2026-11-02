@@ -656,6 +656,7 @@ namespace FastViewer
             settingsRefresh.Add(delegate { text.Text = options[at()]; });
             b.Click += delegate
             {
+                if (ClosingOwnMenu(b)) return;
                 var menu = new ContextMenu { PlacementTarget = b, Placement = PlacementMode.Bottom, MinWidth = b.ActualWidth, VerticalOffset = 2 };
                 for (int i = 0; i < options.Length; i++)
                 {
@@ -667,7 +668,7 @@ namespace FastViewer
                         SaveSettings();
                     }));
                 }
-                menu.IsOpen = true;
+                OpenMenu(menu, b);
             };
             return b;
         }

@@ -529,13 +529,14 @@ namespace FastViewer
         void ShowGridSizeMenu()
         {
             var b = F<Button>("GridSizeBtn");
+            if (ClosingOwnMenu(b)) return;
             var menu = new ContextMenu { PlacementTarget = b, Placement = PlacementMode.Bottom, VerticalOffset = 4, MinWidth = 160 };
             for (int i = 0; i < GridSizeNames.Length; i++)
             {
                 int choice = i;
                 menu.Items.Add(Item(GridSizeNames[i], gridSize == i ? "" : null, delegate { SetGridSize(choice); }));
             }
-            menu.IsOpen = true;
+            OpenMenu(menu, b);
         }
 
         void SetGridSize(int size)

@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.16.0)
+# FastViewer: complete feature list (version 1.16.1)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -73,7 +73,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - File: Save as, Copy, Copy file path, Show in folder, Delete.
 - View: Rotate, Save rotation to file, Mini player, Keep on top, Slideshow, Shuffle, All files in folder,
   File info; "Hidden buttons" section for buttons switched off in Settings > Buttons; Settings.
-- Every item shows its current keyboard shortcut.
+- Every item shows its current keyboard shortcut. Clicking a menu's button again closes the menu (all menus,
+  also the zoom %, grid size and Settings drop-downs).
 
 ## Photos
 - Zoom: mouse wheel (if set to zoom) or Ctrl+wheel, +/- keys and buttons, zoom slider, zoom menu (Fit,
@@ -90,7 +91,9 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 ## Videos
 - Floating control bar: play/pause, skip back/forward (5/10/15/30/60 s, shown inside the icons),
   volume (point at the speaker for a slider, click to mute, wheel changes volume; on a touch screen a tap
-  opens the slider), time, seek bar, duration, Repeat, video "..." menu.
+  opens the slider), time, seek bar, duration, Repeat, video "..." menu. The seek bar's dot moves every screen
+  frame while playing (with animations on); dragging it holds the video still and shows the frames passed (at
+  most ~20 jumps a second, ending exactly where you let go), then plays on if it was playing.
 - Play/pause button in the middle (Show / Only when paused / Hide); click the video to play/pause
   (configurable); double-click for full screen.
 - Video dims slightly while controls show (optional); controls can also fade on a paused video (optional).
@@ -128,7 +131,9 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Actions without a default key (assignable): thumbnail strip, slower/faster/normal speed, save a frame,
   make compatible copy, save rotation to file, actual size, keep on top, copy file path, show in folder,
   open with, close window.
-- Esc always goes back: leaves full screen, mini player, slideshow, grid or Settings.
+- Esc always goes back: leaves full screen, mini player, slideshow, grid or Settings. A key pressed again
+  undoes itself: G closes the grid, I File info, Ctrl+T leaves trimming, Ctrl+, closes Settings, Ctrl+M/F/F5
+  leave the mini player, full screen, slideshow. Entering the mini player ends trimming.
 - Mouse wheel: next/previous (default) or zoom; Ctrl+wheel always zooms. Over the speaker: volume;
   over the time bar: jump 5 s.
 - Mouse buttons (Settings > Mouse): back/forward side buttons, middle button, double-click and click on a
@@ -231,7 +236,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
-  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz),
+  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
