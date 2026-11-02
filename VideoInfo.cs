@@ -85,6 +85,65 @@ namespace FastViewer
             return 1 / 30.0;
         }
 
+        // For error messages. True: an MP4/MOV whose boxes are all there; false: an MP4/MOV that's cut off or
+        // damaged (or empty); null: another kind of file (MKV, AVI...) that can't be checked this way.
+        public static bool? LooksComplete(string file)
+        {
+            try
+            {
+                using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    if (fs.Length < 8) return false;
+                    long pos = 0, size, header;
+                    string type;
+                    bool first = true, moov = false;
+                    while (pos < fs.Length)
+                    {
+                        if (!ReadHeader(fs, pos, fs.Length, out size, out type, out header))
+                            return first ? (bool?)null : false; // a box runs past the end of the file: cut off
+                        if (first && type != "ftyp") return null;
+                        first = false;
+                        if (type == "moov") moov = true;
+                        pos += size;
+                    }
+                    return moov;
+                }
+            }
+            catch { return null; }
+        }
+
+        // The video track's format code ("avc1", "hvc1", ...), or null.
+        public static string VideoCodec(string file)
+        {
+            try
+            {
+                using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    long moov, moovEnd;
+                    if (!FindChild(fs, 0, fs.Length, "moov", out moov, out moovEnd)) return null;
+                    long pos = moov, size, header;
+                    string type;
+                    while (ReadHeader(fs, pos, moovEnd, out size, out type, out header))
+                    {
+                        if (type == "trak" && IsVideoTrack(fs, pos + header, pos + size))
+                        {
+                            long mdia, mdiaEnd, minf, minfEnd, stbl, stblEnd, stsd, stsdEnd;
+                            if (!FindChild(fs, pos + header, pos + size, "mdia", out mdia, out mdiaEnd)) return null;
+                            if (!FindChild(fs, mdia, mdiaEnd, "minf", out minf, out minfEnd)) return null;
+                            if (!FindChild(fs, minf, minfEnd, "stbl", out stbl, out stblEnd)) return null;
+                            if (!FindChild(fs, stbl, stblEnd, "stsd", out stsd, out stsdEnd)) return null;
+                            var b = new byte[8];
+                            fs.Position = stsd + 8 + 4; // version/flags, entry count, then the first entry's size and type
+                            return fs.Read(b, 0, 4) == 4 ? Encoding.ASCII.GetString(b, 0, 4) : null;
+                        }
+                        pos += size;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
         // How much of a track's start players skip, in seconds: the first "edit list" entry of the
         // track (handler "vide" or "soun"). Phones use it to hide pre-roll; encoders for start-up delay.
         public static double EditStart(string file, string handler)

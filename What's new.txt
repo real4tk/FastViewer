@@ -5,6 +5,42 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.15.6  (2 Nov 2026)
+  Improved (a look at every screen, look and window size)
+  - Keyboard and screen readers: Settings can now be used with the keyboard alone (Tab, Space or Enter,
+    arrow keys in menus, Esc to go back), with a clear focus ring. Every button has a name that screen
+    readers read out. In a shortcut box, Delete removes the key and Tab moves on.
+  - Tooltips and menus always show the keys you set: after changing a shortcut they used to show the old one.
+  - Small windows: the time bar stays (the skip and repeat buttons make room instead), the play button in the
+    middle gets smaller, the Delete message fits, the Info button no longer sits on the zoom box, and the
+    Settings side menu scrolls so every page can be reached.
+  - Clean look: the File info pane is no longer covered by the floating bars.
+  - Files that can't be opened get a plain explanation ("This file is empty", "This video is incomplete,
+    for example a download that didn't finish"...) and an "Open with another app" button. A video that
+    failed while you switched very fast gets another try when you go back to it.
+  - An empty window no longer shows the last file's details, arrows and file buttons.
+  - Easier to read: darker hint text in the light looks and stronger backgrounds behind the side arrows,
+    so they show on bright photos too.
+  - While Settings is open, the file buttons (Delete, Copy, Rotate, Open with) are off, as in the grid.
+  - Slideshow: the button turns into "Stop slideshow", a short message says how to stop it, and full screen
+    shows only the Close button in the corner.
+  - The first time FastViewer stays ready in the background after you close it, a notice by the clock
+    says so (and how to quit). Preload changes right away instead of after a restart.
+  - Trim shows long clips as "(20:00 long)" instead of seconds. File info dates are in English.
+  - Settings > Keyboard has an icon for every action. A shortened file name in the title bar shows in full
+    when you point at it.
+  - A grey Windows accent colour made buttons and switches look switched off: FastViewer uses blue then.
+  Fixed
+  - Changing Preload in one FastViewer window could make another open window crash on its next switch.
+1.15.5  (2 Nov 2026)
+  Fixed
+  - "Couldn't check for updates: The remote server returned an error: (403) Forbidden." GitHub answers
+    only 60 update questions an hour per internet connection. When it says no, FastViewer now asks
+    GitHub's normal releases page instead (which has no such limit), and if that fails too it says
+    "GitHub is busy right now. FastViewer will try again later." and quietly tries again later.
+    Updates still only ever download from FastViewer's own GitHub releases.
+  - In full screen, Settings' Back button and title sat under the top bar's buttons. The top bar now
+    stays above Settings, like in the window.
 1.15.4  (2 Nov 2026)
   Fixed (found in a big stress test: thousands of fast switches, odd files, broken settings)
   - A video you skipped past just as it was starting (next, then quickly back) kept playing out of

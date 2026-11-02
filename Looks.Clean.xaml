@@ -50,7 +50,7 @@
   <SolidColorBrush x:Key="Dark.NavSelected" Color="#14FFFFFF"/>
   <SolidColorBrush x:Key="Dark.TextMain" Color="#EDEDED"/>
   <SolidColorBrush x:Key="Dark.TextSecondary" Color="#9A9A9A"/>
-  <SolidColorBrush x:Key="Dark.TextDim" Color="#6F6F6F"/>
+  <SolidColorBrush x:Key="Dark.TextDim" Color="#8F8F8F"/>
   <SolidColorBrush x:Key="Dark.Divider" Color="#2A2A2A"/>
   <SolidColorBrush x:Key="Dark.HoverFill" Color="#14FFFFFF"/>
   <SolidColorBrush x:Key="Dark.ControlFill" Color="Transparent"/>
@@ -64,7 +64,7 @@
   <SolidColorBrush x:Key="Dark.MenuEdge" Color="#262626"/>
   <SolidColorBrush x:Key="Dark.TipBg" Color="#1C1C1C"/>
   <SolidColorBrush x:Key="Dark.TipEdge" Color="#262626"/>
-  <SolidColorBrush x:Key="Dark.ArrowBg" Color="#4D000000"/>
+  <SolidColorBrush x:Key="Dark.ArrowBg" Color="#B3000000"/>
   <SolidColorBrush x:Key="Dark.ArrowEdge" Color="Transparent"/>
   <SolidColorBrush x:Key="Dark.CenterBg" Color="#4D000000"/>
   <SolidColorBrush x:Key="Dark.CenterHover" Color="#73000000"/>
@@ -116,8 +116,8 @@
   <SolidColorBrush x:Key="Light.CardEdge" Color="Transparent"/>
   <SolidColorBrush x:Key="Light.NavSelected" Color="#0F000000"/>
   <SolidColorBrush x:Key="Light.TextMain" Color="#1C1C1C"/>
-  <SolidColorBrush x:Key="Light.TextSecondary" Color="#6B6B6B"/>
-  <SolidColorBrush x:Key="Light.TextDim" Color="#9A9A9A"/>
+  <SolidColorBrush x:Key="Light.TextSecondary" Color="#5E5E5E"/>
+  <SolidColorBrush x:Key="Light.TextDim" Color="#666666"/>
   <SolidColorBrush x:Key="Light.Divider" Color="#E3E3E3"/>
   <SolidColorBrush x:Key="Light.HoverFill" Color="#0F000000"/>
   <SolidColorBrush x:Key="Light.ControlFill" Color="Transparent"/>

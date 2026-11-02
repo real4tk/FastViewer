@@ -327,6 +327,7 @@ namespace FastViewer
                 stack.Children.Add(text);
                 var card = new Button { Content = stack, Padding = new Thickness(6), Height = double.NaN, Margin = new Thickness(0, 0, 12, 12), Tag = look.Id, ToolTip = look.Name, VerticalAlignment = VerticalAlignment.Top };
                 card.SetResourceReference(StyleProperty, "Subtle");
+                System.Windows.Automation.AutomationProperties.SetName(card, look.Name + " look");
                 card.Click += delegate
                 {
                     lookId = l.Id;

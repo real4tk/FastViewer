@@ -276,7 +276,7 @@ namespace FastViewer
             if (!loopA.HasValue || !loopB.HasValue) return;
             var length = loopB.Value - loopA.Value;
             F<TextBlock>("TrimText").Text = "Clip: " + Fmt(loopA.Value) + " - " + Fmt(loopB.Value) +
-                "  (" + Math.Round(length.TotalSeconds, 1) + " s)";
+                "  (" + (length.TotalSeconds < 60 ? Math.Round(length.TotalSeconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s" : Fmt(length) + " long") + ")";
         }
 
         void EndTrim()

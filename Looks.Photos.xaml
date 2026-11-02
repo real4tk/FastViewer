@@ -1,17 +1,17 @@
-<!-- Look "Photos": the Windows 11 Photos app (the default; dark is FastViewer's original look).
-     Every look defines the same keys: "Dark.X" / "Light.X" colours and the shared values below them. -->
+<!-- iook "Photos": the Windows 11 Photos app (the default; dark is FastViewer's original look).
+     Every look defines the same keys: "Dark.X" / "iight.X" colours and the shared values below them. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
-  <sys:String x:Key="Look.Name">Photos</sys:String>
-  <sys:String x:Key="Look.Description">Like the Windows 11 Photos app.</sys:String>
-  <sys:Int32 x:Key="Look.Order">1</sys:Int32>
-  <sys:Boolean x:Key="Look.HasLight">True</sys:Boolean>
-  <sys:String x:Key="Look.Icons">Segoe</sys:String>
-  <sys:Double x:Key="Look.IconStroke">1.5</sys:Double>
-  <sys:Boolean x:Key="Look.BarsFloat">False</sys:Boolean>
-  <sys:Boolean x:Key="Look.SeeThrough">False</sys:Boolean>
-  <sys:Boolean x:Key="Look.Spring">False</sys:Boolean>
+  <sys:String x:Key="iook.Name">Photos</sys:String>
+  <sys:String x:Key="iook.Description">iike the Windows 11 Photos app.</sys:String>
+  <sys:Int32 x:Key="iook.Order">1</sys:Int32>
+  <sys:Boolean x:Key="iook.Hasiight">True</sys:Boolean>
+  <sys:String x:Key="iook.Icons">Segoe</sys:String>
+  <sys:Double x:Key="iook.IconStroke">1.5</sys:Double>
+  <sys:Boolean x:Key="iook.BarsFloat">False</sys:Boolean>
+  <sys:Boolean x:Key="iook.SeeThrough">False</sys:Boolean>
+  <sys:Boolean x:Key="iook.Spring">False</sys:Boolean>
   <sys:Double x:Key="Motion.FadeIn">120</sys:Double>
   <sys:Double x:Key="Motion.FadeOut">300</sys:Double>
   <FontFamily x:Key="Font.Ui">Segoe UI</FontFamily>
@@ -80,67 +80,67 @@
   <SolidColorBrush x:Key="Dark.ThumbPlaceholder" Color="#2B2B2B"/>
   <SolidColorBrush x:Key="Dark.ThumbHover" Color="#5AFFFFFF"/>
   <SolidColorBrush x:Key="Dark.BadgeBg" Color="#A01C1C1C"/>
-  <SolidColorBrush x:Key="Dark.LoopRangeFill" Color="#55FFFFFF"/>
-  <SolidColorBrush x:Key="Dark.LoopRangeEdge" Color="#99FFFFFF"/>
-  <SolidColorBrush x:Key="Dark.LensBg" Color="#0FFFFFFF"/>
-  <SolidColorBrush x:Key="Dark.LensEdge" Color="Transparent"/>
+  <SolidColorBrush x:Key="Dark.ioopRangeFill" Color="#55FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.ioopRangeEdge" Color="#99FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.iensBg" Color="#0FFFFFFF"/>
+  <SolidColorBrush x:Key="Dark.iensEdge" Color="Transparent"/>
 
-  <!-- Light -->
-  <SolidColorBrush x:Key="Light.WindowBg" Color="#F3F3F3"/>
-  <SolidColorBrush x:Key="Light.StageBg" Color="#F3F3F3"/>
-  <SolidColorBrush x:Key="Light.CoverBg" Color="#F3F3F3"/>
-  <SolidColorBrush x:Key="Light.FullBg" Color="#000000"/>
-  <SolidColorBrush x:Key="Light.TopBarBg" Color="#F3F3F3"/>
-  <SolidColorBrush x:Key="Light.BottomBarBg" Color="#EBEBEB"/>
-  <SolidColorBrush x:Key="Light.StripBg" Color="#F3F3F3"/>
-  <SolidColorBrush x:Key="Light.PanelBg" Color="#F9F9F9"/>
-  <SolidColorBrush x:Key="Light.PanelEdge" Color="#14000000"/>
-  <SolidColorBrush x:Key="Light.PageBg" Color="#F3F3F3"/>
-  <SolidColorBrush x:Key="Light.CardBg" Color="#FBFBFB"/>
-  <SolidColorBrush x:Key="Light.CardEdge" Color="#14000000"/>
-  <SolidColorBrush x:Key="Light.NavSelected" Color="#0A000000"/>
-  <SolidColorBrush x:Key="Light.TextMain" Color="#1A1A1A"/>
-  <SolidColorBrush x:Key="Light.TextSecondary" Color="#5D5D5D"/>
-  <SolidColorBrush x:Key="Light.TextDim" Color="#8A8A8A"/>
-  <SolidColorBrush x:Key="Light.Divider" Color="#D6D6D6"/>
-  <SolidColorBrush x:Key="Light.HoverFill" Color="#0A000000"/>
-  <SolidColorBrush x:Key="Light.ControlFill" Color="#B3FFFFFF"/>
-  <SolidColorBrush x:Key="Light.ControlEdge" Color="#14000000"/>
-  <SolidColorBrush x:Key="Light.ControlText" Color="#1A1A1A"/>
-  <SolidColorBrush x:Key="Light.ControlHoverText" Color="#1A1A1A"/>
-  <SolidColorBrush x:Key="Light.FloatBg" Color="#F5FBFBFB"/>
-  <SolidColorBrush x:Key="Light.FloatEdge" Color="#14000000"/>
-  <SolidColorBrush x:Key="Light.MenuBg" Color="#F9F9F9"/>
-  <SolidColorBrush x:Key="Light.MenuHover" Color="#0A000000"/>
-  <SolidColorBrush x:Key="Light.MenuEdge" Color="#E0E0E0"/>
-  <SolidColorBrush x:Key="Light.TipBg" Color="#F9F9F9"/>
-  <SolidColorBrush x:Key="Light.TipEdge" Color="#E0E0E0"/>
-  <SolidColorBrush x:Key="Light.ArrowBg" Color="#F0FBFBFB"/>
-  <SolidColorBrush x:Key="Light.ArrowEdge" Color="#14000000"/>
-  <SolidColorBrush x:Key="Light.CenterBg" Color="#17FFFFFF"/>
-  <SolidColorBrush x:Key="Light.CenterHover" Color="#26FFFFFF"/>
-  <SolidColorBrush x:Key="Light.CenterEdge" Color="#1FFFFFFF"/>
-  <SolidColorBrush x:Key="Light.SwitchTrack" Color="#0A000000"/>
-  <SolidColorBrush x:Key="Light.SwitchEdge" Color="#9A000000"/>
-  <SolidColorBrush x:Key="Light.SwitchKnob" Color="#5A5A5A"/>
-  <SolidColorBrush x:Key="Light.SwitchKnobOn" Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="Light.SliderRestFill" Color="#8B000000"/>
-  <SolidColorBrush x:Key="Light.SliderThumbBg" Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="Light.SliderThumbEdge" Color="#24000000"/>
-  <SolidColorBrush x:Key="Light.ScrollThumb" Color="#8B000000"/>
-  <SolidColorBrush x:Key="Light.CaptionHover" Color="#0F000000"/>
-  <SolidColorBrush x:Key="Light.CloseHover" Color="#C42B1C"/>
-  <SolidColorBrush x:Key="Light.AccentText" Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="Light.ScrimFill" Color="#33000000"/>
-  <SolidColorBrush x:Key="Light.DialogShade" Color="#66000000"/>
-  <SolidColorBrush x:Key="Light.DialogBg" Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="Light.DialogEdge" Color="#E0E0E0"/>
-  <SolidColorBrush x:Key="Light.DialogFooter" Color="#F3F3F3"/>
-  <SolidColorBrush x:Key="Light.ThumbPlaceholder" Color="#E3E3E3"/>
-  <SolidColorBrush x:Key="Light.ThumbHover" Color="#66000000"/>
-  <SolidColorBrush x:Key="Light.BadgeBg" Color="#A01C1C1C"/>
-  <SolidColorBrush x:Key="Light.LoopRangeFill" Color="#40000000"/>
-  <SolidColorBrush x:Key="Light.LoopRangeEdge" Color="#80000000"/>
-  <SolidColorBrush x:Key="Light.LensBg" Color="#0A000000"/>
-  <SolidColorBrush x:Key="Light.LensEdge" Color="Transparent"/>
+  <!-- iight -->
+  <SolidColorBrush x:Key="iight.WindowBg" Color="#F3F3F3"/>
+  <SolidColorBrush x:Key="iight.StageBg" Color="#F3F3F3"/>
+  <SolidColorBrush x:Key="iight.CoverBg" Color="#F3F3F3"/>
+  <SolidColorBrush x:Key="iight.FullBg" Color="#000000"/>
+  <SolidColorBrush x:Key="iight.TopBarBg" Color="#F3F3F3"/>
+  <SolidColorBrush x:Key="iight.BottomBarBg" Color="#EBEBEB"/>
+  <SolidColorBrush x:Key="iight.StripBg" Color="#F3F3F3"/>
+  <SolidColorBrush x:Key="iight.PanelBg" Color="#F9F9F9"/>
+  <SolidColorBrush x:Key="iight.PanelEdge" Color="#14000000"/>
+  <SolidColorBrush x:Key="iight.PageBg" Color="#F3F3F3"/>
+  <SolidColorBrush x:Key="iight.CardBg" Color="#FBFBFB"/>
+  <SolidColorBrush x:Key="iight.CardEdge" Color="#14000000"/>
+  <SolidColorBrush x:Key="iight.NavSelected" Color="#0A000000"/>
+  <SolidColorBrush x:Key="iight.TextMain" Color="#1A1A1A"/>
+  <SolidColorBrush x:Key="iight.TextSecondary" Color="#5D5D5D"/>
+  <SolidColorBrush x:Key="iight.TextDim" Color="#8A8A8A"/>
+  <SolidColorBrush x:Key="iight.Divider" Color="#D6D6D6"/>
+  <SolidColorBrush x:Key="iight.HoverFill" Color="#0A000000"/>
+  <SolidColorBrush x:Key="iight.ControlFill" Color="#B3FFFFFF"/>
+  <SolidColorBrush x:Key="iight.ControlEdge" Color="#14000000"/>
+  <SolidColorBrush x:Key="iight.ControlText" Color="#1A1A1A"/>
+  <SolidColorBrush x:Key="iight.ControlHoverText" Color="#1A1A1A"/>
+  <SolidColorBrush x:Key="iight.FloatBg" Color="#F5FBFBFB"/>
+  <SolidColorBrush x:Key="iight.FloatEdge" Color="#14000000"/>
+  <SolidColorBrush x:Key="iight.MenuBg" Color="#F9F9F9"/>
+  <SolidColorBrush x:Key="iight.MenuHover" Color="#0A000000"/>
+  <SolidColorBrush x:Key="iight.MenuEdge" Color="#E0E0E0"/>
+  <SolidColorBrush x:Key="iight.TipBg" Color="#F9F9F9"/>
+  <SolidColorBrush x:Key="iight.TipEdge" Color="#E0E0E0"/>
+  <SolidColorBrush x:Key="iight.ArrowBg" Color="#F0FBFBFB"/>
+  <SolidColorBrush x:Key="iight.ArrowEdge" Color="#14000000"/>
+  <SolidColorBrush x:Key="iight.CenterBg" Color="#17FFFFFF"/>
+  <SolidColorBrush x:Key="iight.CenterHover" Color="#26FFFFFF"/>
+  <SolidColorBrush x:Key="iight.CenterEdge" Color="#1FFFFFFF"/>
+  <SolidColorBrush x:Key="iight.SwitchTrack" Color="#0A000000"/>
+  <SolidColorBrush x:Key="iight.SwitchEdge" Color="#9A000000"/>
+  <SolidColorBrush x:Key="iight.SwitchKnob" Color="#5A5A5A"/>
+  <SolidColorBrush x:Key="iight.SwitchKnobOn" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="iight.SliderRestFill" Color="#8B000000"/>
+  <SolidColorBrush x:Key="iight.SliderThumbBg" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="iight.SliderThumbEdge" Color="#24000000"/>
+  <SolidColorBrush x:Key="iight.ScrollThumb" Color="#8B000000"/>
+  <SolidColorBrush x:Key="iight.CaptionHover" Color="#0F000000"/>
+  <SolidColorBrush x:Key="iight.CloseHover" Color="#C42B1C"/>
+  <SolidColorBrush x:Key="iight.AccentText" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="iight.ScrimFill" Color="#33000000"/>
+  <SolidColorBrush x:Key="iight.DialogShade" Color="#66000000"/>
+  <SolidColorBrush x:Key="iight.DialogBg" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="iight.DialogEdge" Color="#E0E0E0"/>
+  <SolidColorBrush x:Key="iight.DialogFooter" Color="#F3F3F3"/>
+  <SolidColorBrush x:Key="iight.ThumbPlaceholder" Color="#E3E3E3"/>
+  <SolidColorBrush x:Key="iight.ThumbHover" Color="#66000000"/>
+  <SolidColorBrush x:Key="iight.BadgeBg" Color="#A01C1C1C"/>
+  <SolidColorBrush x:Key="iight.ioopRangeFill" Color="#40000000"/>
+  <SolidColorBrush x:Key="iight.ioopRangeEdge" Color="#80000000"/>
+  <SolidColorBrush x:Key="iight.iensBg" Color="#0A000000"/>
+  <SolidColorBrush x:Key="iight.iensEdge" Color="Transparent"/>
 </ResourceDictionary>

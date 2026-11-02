@@ -113,7 +113,73 @@ namespace FastViewer
                     int code = Parse(k);
                     if (code != 0 && !shortcutByKey.ContainsKey(code)) shortcutByKey[code] = s;
                 }
+            UpdateShortcutHints();
         }
+
+        // Button -> what it does and its action: the tooltip shows the action's key as it is now (keys can be
+        // changed in Settings), and a screen reader reads the words.
+        static readonly string[,] ButtonHints =
+        {
+            { "OpenBtn", "Open", "open" }, { "DeleteBtn", "Delete", "delete" }, { "CopyBtn", "Copy", "copy" },
+            { "RotateBtn", "Rotate", "rotate" }, { "MoreBtn", "See more", "" }, { "MiniBtn", "Mini player: just the video, always on top", "mini" },
+            { "OpenWithBtn", "Open with another app", "openWith" }, { "MinBtn", "Minimize", "" }, { "MaxBtn", "Maximize", "" },
+            { "CloseBtn", "Close", "close" }, { "PrevBtn", "Previous", "previous" }, { "NextBtn", "Next", "next" },
+            { "PlayBtn", "Play / Pause", "play" }, { "MuteBtn", "Mute", "mute" }, { "LoopBtn", "Repeat", "repeat" },
+            { "VideoMoreBtn", "More video options", "" }, { "GridBtn", "All files in this folder", "grid" },
+            { "InfoBtn", "File info", "info" }, { "FitBtn", "Fit to window", "fit" }, { "ZoomBtn", "Zoom", "" },
+            { "ZoomOutBtn", "Zoom out", "zoomOut" }, { "ZoomInBtn", "Zoom in", "zoomIn" }, { "FullBtn", "Full screen", "fullscreen" },
+            { "InfoCloseBtn", "Close file info", "info" }, { "MiniExitBtn", "Back to the full window", "mini" }, { "MiniCloseBtn", "Close", "close" },
+            { "SettingsBackBtn", "Back (Esc)", "" }, { "GridBackBtn", "Back (Esc)", "" }, { "ToastClose", "Close message", "" },
+            { "TrimStartBtn", "Start the clip at the current moment", "loopA" }, { "TrimEndBtn", "End the clip at the current moment", "loopB" },
+            { "GridSizeBtn", "Thumbnail size (Ctrl + mouse wheel)", "" }
+        };
+
+        static string WithKey(string text, string key) { return key.Length == 0 ? text : text + " (" + key + ")"; }
+
+        void UpdateShortcutHints()
+        {
+            if (root == null) return;
+            for (int i = 0; i < ButtonHints.GetLength(0); i++)
+            {
+                var b = F<Button>(ButtonHints[i, 0]);
+                if (b == null) continue;
+                string text = ButtonHints[i, 1], id = ButtonHints[i, 2];
+                if (b.Name == "MaxBtn" && WindowState == WindowState.Maximized) text = "Restore";
+                b.ToolTip = id.Length == 0 ? text : WithKey(text, KeyOf(id));
+                System.Windows.Automation.AutomationProperties.SetName(b, text.Replace(" (Esc)", ""));
+            }
+            var vol = F<Button>("VolBtn");
+            vol.ToolTip = WithKey("Mute", KeyOf("mute")) + ". Point at it for the volume slider";
+            System.Windows.Automation.AutomationProperties.SetName(vol, "Mute");
+            SetSlideshowButton();
+            UpdateSkipButtons();
+            centerPlayBtn.ToolTip = WithKey(playing ? "Pause" : "Play", KeyOf("play"));
+            System.Windows.Automation.AutomationProperties.SetName(centerPlayBtn, playing ? "Pause" : "Play");
+            foreach (var s in new[] { new[] { "Seek", "Position in the video" }, new[] { "Vol", "Volume" }, new[] { "ZoomSlider", "Zoom" } })
+                System.Windows.Automation.AutomationProperties.SetName(F<FrameworkElement>(s[0]), s[1]);
+            if (files.Count == 0) message.Text = EmptyMessage();
+        }
+
+        // What an empty window says (also names the key that opens a file, if it has one).
+        string EmptyMessage()
+        {
+            string key = KeyOf("open");
+            return "Drop a photo, video or folder here\nor " + (key.Length > 0 ? "press " + key : "click Open") + " to open one";
+        }
+
+        static readonly Dictionary<string, string> ActionIcons = new Dictionary<string, string>
+        {
+            { "next", "" }, { "previous", "" }, { "first", "" }, { "last", "" }, { "shuffle", "" },
+            { "grid", "" }, { "strip", "" }, { "play", "" }, { "skipBack", "" }, { "skipForward", "" },
+            { "back5", "" }, { "forward5", "" }, { "frameBack", "" }, { "frameForward", "" },
+            { "loopA", "" }, { "loopB", "" }, { "loopStop", "" }, { "repeat", "" }, { "volumeUp", "" },
+            { "volumeDown", "" }, { "mute", "" }, { "speedDown", "" }, { "speedUp", "" }, { "speedNormal", "" },
+            { "trim", "" }, { "saveFrame", "" }, { "compatible", "" }, { "rotate", "" }, { "saveRotation", "" },
+            { "zoomIn", "" }, { "zoomOut", "" }, { "fit", "" }, { "actualSize", "" }, { "fullscreen", "" },
+            { "mini", "" }, { "pin", "" }, { "slideshow", "" }, { "info", "" }, { "open", "" },
+            { "saveAs", "" }, { "copy", "" }, { "copyPath", "" }, { "showInFolder", "" }, { "openWith", "" },
+            { "delete", "" }, { "settings", "" }, { "close", "" }
+        };
 
         IEnumerable<string> ShortcutLines()
         {
@@ -225,14 +291,20 @@ namespace FastViewer
                     var b = new Button
                     {
                         Style = (Style)Application.Current.Resources["Filled"], MinWidth = 130, Height = 32,
-                        Margin = new Thickness(k == 0 ? 0 : 8, 0, 0, 0), ToolTip = "Click to change, right-click to remove"
+                        Margin = new Thickness(k == 0 ? 0 : 8, 0, 0, 0), ToolTip = "Click to change; right-click (or Delete) to remove"
                     };
                     b.Click += delegate { StartCapture(sc, slot); };
                     b.MouseRightButtonUp += delegate(object o, MouseButtonEventArgs e) { RemoveKey(sc, slot); e.Handled = true; };
+                    b.KeyDown += delegate(object o, KeyEventArgs e) // the keyboard's way to remove a key
+                    {
+                        if (capturing == null && (e.Key == Key.Delete || e.Key == Key.Back)) { RemoveKey(sc, slot); e.Handled = true; }
+                    };
+                    System.Windows.Automation.AutomationProperties.SetName(b, sc.Name + ", key " + (slot + 1));
                     sc.Editors[k] = b;
                     boxes.Children.Add(b);
                 }
-                AddCard("", sc.Name, null, boxes);
+                string icon;
+                AddCard(ActionIcons.TryGetValue(sc.Id, out icon) ? icon : "", sc.Name, null, boxes);
             }
             RefreshShortcutEditors();
         }
@@ -280,6 +352,12 @@ namespace FastViewer
             if (capturing == null) return false;
             if (!settingsOpen) { capturing = null; return false; } // only while Settings shows the key box
             Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (key == Key.Tab) // Tab moves on through Settings (keyboard use), it isn't taken as a shortcut
+            {
+                capturing = null;
+                RefreshShortcutEditors();
+                return false;
+            }
             if (key == Key.LeftCtrl || key == Key.RightCtrl || key == Key.LeftShift || key == Key.RightShift ||
                 key == Key.LeftAlt || key == Key.RightAlt || key == Key.LWin || key == Key.RWin) return true; // wait for the real key
             var s = capturing;

@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -60,6 +61,7 @@ namespace FastViewer
                 case "autoUpdate": autoUpdate = v == "1"; break;
                 case "playNext": playNextAtEnd = v == "1"; break;
                 case "keepReady": keepReady = v == "1"; break;
+                case "backgroundTold": toldAboutBackground = v == "1"; break;
                 case "strip": showStrip = v == "1"; break;
                 case "centerPlay": centerButton = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "fadePaused": fadePaused = v == "1"; break;
@@ -108,6 +110,7 @@ namespace FastViewer
                 "autoUpdate=" + (autoUpdate ? "1" : "0"),
                 "playNext=" + (playNextAtEnd ? "1" : "0"),
                 "keepReady=" + (keepReady ? "1" : "0"),
+                "backgroundTold=" + (toldAboutBackground ? "1" : "0"),
                 "strip=" + (showStrip ? "1" : "0"),
                 "centerPlay=" + centerButton.ToString(CultureInfo.InvariantCulture),
                 "fadePaused=" + (fadePaused ? "1" : "0"),
@@ -201,7 +204,12 @@ namespace FastViewer
             titleText.MaxWidth = Math.Max(0, Math.Min(560, room));
             titleText.Visibility = room < 70 ? Visibility.Hidden : Visibility.Visible;
 
-            show("InfoBtn", w >= 480);
+            // The Info button sits in the middle of the bottom bar: only where it doesn't run into the groups on either side.
+            var leftGroup = F<FrameworkElement>("BottomLeft"); var rightGroup = F<FrameworkElement>("BottomRight");
+            leftGroup.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            rightGroup.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double half = (w - root.Margin.Left - root.Margin.Right) / 2;
+            show("InfoBtn", w >= 480 && half - 26 > 8 + leftGroup.DesiredSize.Width && half + 26 < 2 * half - 6 - rightGroup.DesiredSize.Width);
             narrow = w < 860;
             UpdateSettingsNav(w);
             show("ZoomGroup", w >= 640);
@@ -238,8 +246,10 @@ namespace FastViewer
         {
             F<TextBlock>("BackText").Text = skipBack.ToString(CultureInfo.InvariantCulture);
             F<TextBlock>("FwdText").Text = skipForward.ToString(CultureInfo.InvariantCulture);
-            F<Button>("BackBtn").ToolTip = "Back " + skipBack + " seconds (J)";
-            F<Button>("FwdBtn").ToolTip = "Forward " + skipForward + " seconds (L)";
+            F<Button>("BackBtn").ToolTip = WithKey("Back " + skipBack + " seconds", KeyOf("skipBack"));
+            F<Button>("FwdBtn").ToolTip = WithKey("Forward " + skipForward + " seconds", KeyOf("skipForward"));
+            System.Windows.Automation.AutomationProperties.SetName(F<Button>("BackBtn"), "Back " + skipBack + " seconds");
+            System.Windows.Automation.AutomationProperties.SetName(F<Button>("FwdBtn"), "Forward " + skipForward + " seconds");
         }
 
         // ---------------------------------------------------------------- settings page
@@ -256,12 +266,36 @@ namespace FastViewer
             page.Visibility = Visibility.Visible;
             PlaceBars(); // looks with floating bars dock them while Settings is open
             if (springMotion) Rise(page, 18);
-            Dispatcher.BeginInvoke(new Action(delegate { UpdateSettingsLens(false); }), System.Windows.Threading.DispatcherPriority.Loaded);
+            UpdateControls(); // the file buttons are off while Settings is open
+            Dispatcher.BeginInvoke(new Action(delegate
+            {
+                UpdateSettingsLens(false);
+                // Keyboard: start on the page in the side menu (Tab goes on into the page, Esc goes back).
+                var current = settingsPages.FirstOrDefault(p => settingsList.Children.Contains(p.Value)).Key;
+                if (settingsOpen && current != null) Keyboard.Focus(current);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        // Settings can be used with the keyboard: its buttons, switches and menus take part in Tab
+        // (the viewer's buttons don't, so its keys keep working as shortcuts).
+        static void MakeKeyboardReachable(object d)
+        {
+            var dep = d as DependencyObject;
+            if (dep == null) return;
+            var c = dep as Control;
+            if (c is Button || c is CheckBox)
+            {
+                c.Focusable = true;
+                c.IsTabStop = true;
+            }
+            foreach (var child in LogicalTreeHelper.GetChildren(dep)) MakeKeyboardReachable(child);
         }
 
         void CloseSettings()
         {
             settingsOpen = false;
+            UpdateControls();
+            if (IsKeyboardFocusWithin) Keyboard.Focus(this); // back to the viewer's keys
             if (capturing != null) // a key box was still waiting: leaving Settings cancels it
             {
                 capturing = null;
@@ -377,9 +411,9 @@ namespace FastViewer
             AddCard("\uE81E", "Preload",
                 "How many files ahead and behind FastViewer gets ready, so switching is instant. With 1, clicking faster than about " +
                 "5 times a second can make videos wait a moment; 2 keeps up with very fast clicking. More uses more memory. " +
-                "Takes effect the next time you open FastViewer.",
+                "Changes right away.",
                 Dropdown(new[] { "1 file each way (least memory)", "2 files each way (recommended)", "3 files each way" },
-                    () => preloadAhead - 1, i => preloadAhead = i + 1));
+                    () => preloadAhead - 1, i => SetPreload(i + 1)));
             var speedUp = new Button { Style = (Style)Application.Current.Resources["Filled"], Content = "Speed up", MinWidth = 120, Height = 32 };
             speedUp.Click += delegate { SpeedUpStartup(); };
             AddCard("\uE945", "Start even faster",
@@ -463,6 +497,7 @@ namespace FastViewer
                 Margin = new Thickness(0, 0, 0, 2),
                 ToolTip = name
             };
+            System.Windows.Automation.AutomationProperties.SetName(button, name);
             button.SetResourceReference(StyleProperty, "Subtle");
             var page = settingsPage;
             button.Click += delegate { ShowSettingsPage(page); };
@@ -475,6 +510,9 @@ namespace FastViewer
             if (page == appearancePage) BuildLookPreviews(); // drawn the first time they're needed, not at start-up
             settingsList.Children.Clear();
             settingsList.Children.Add(page);
+            MakeKeyboardReachable(page);
+            MakeKeyboardReachable(F<FrameworkElement>("SettingsNav"));
+            MakeKeyboardReachable(F<FrameworkElement>("SettingsBackBtn"));
             foreach (var p in settingsPages)
             {
                 bool on = p.Value == page;
@@ -512,6 +550,8 @@ namespace FastViewer
             grid.Children.Add(texts);
             if (control != null)
             {
+                if (string.IsNullOrEmpty(System.Windows.Automation.AutomationProperties.GetName(control)))
+                    System.Windows.Automation.AutomationProperties.SetName(control, title); // what a screen reader says for the switch or menu
                 control.Margin = new Thickness(24, 0, 0, 0);
                 control.VerticalAlignment = VerticalAlignment.Center;
                 Grid.SetColumn(control, 2);

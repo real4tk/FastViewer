@@ -78,6 +78,7 @@ namespace FastViewer
     partial class ViewerWindow
     {
         bool keepReady = true;   // Settings > Speed > Stay ready in the background
+        bool toldAboutBackground; // the one-time "FastViewer is still ready" notice was shown
         bool quitting;
         Mutex instanceMutex;
         volatile int pipeGeneration; // a pipe thread stops when this moves on
@@ -222,6 +223,18 @@ namespace FastViewer
 
             Hide();
             ShowTray();
+            if (!toldAboutBackground) // the first time only: closing didn't quit, so say where FastViewer went
+            {
+                toldAboutBackground = true;
+                SaveSettings();
+                try
+                {
+                    tray.ShowBalloonTip(8000, "FastViewer is still ready",
+                        "It waits here so the next photo or video opens instantly. Right-click this icon to quit. " +
+                        "You can turn this off in Settings > Speed.", System.Windows.Forms.ToolTipIcon.Info);
+                }
+                catch { }
+            }
             GC.Collect();
             GC.WaitForPendingFinalizers();
             SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1)); // hand unused memory back to Windows
@@ -252,8 +265,11 @@ namespace FastViewer
             Thumbs.Clear();
             StopWatching();
             titleText.Text = "";
-            message.Text = "Drop a photo, video or folder here\nor press Ctrl+O to open one";
+            message.Text = EmptyMessage();
+            F<FrameworkElement>("MessageBtn").Visibility = Visibility.Collapsed;
             UpdateControls();
+            UpdateFacts();   // no file: no details or zoom from the last one
+            UpdateZoomUi();
         }
 
         void ShowTray()

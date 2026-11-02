@@ -13,6 +13,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace FastViewer
@@ -20,6 +21,7 @@ namespace FastViewer
     partial class ViewerWindow
     {
         bool huntTest;
+        Action<ContextMenu, Button> huntMenuHook; // tests: a menu is drawn inside the window instead of popping up on the screen
         string huntCase = "torture", huntPattern = "mixed";
         int huntCount, huntEvery;
 
@@ -44,6 +46,14 @@ namespace FastViewer
                 case "sizes": HuntSizes(); break;
                 case "ghost": HuntGhost(); break;
                 case "positions": HuntPositions(); break;
+                case "overlap": HuntOverlap(); break;
+                case "audit": HuntAudit(); break;
+                case "ux": HuntUx(); break;
+                case "updatemsg":
+                    After(1500, () => CheckForUpdates(true));
+                    After(2500, () => HuntLog("message after checking: '" + F<TextBlock>("ToastText").Text + "' (shown " + (F<FrameworkElement>("Toast").Visibility == Visibility.Visible) + ")"));
+                    After(7000, () => { HuntLog("message after the quiet retry: '" + F<TextBlock>("ToastText").Text + "'"); HuntDone(); });
+                    break;
                 case "saveclose": HuntSaveClose(); break;
                 default: HuntLog("unknown case " + huntCase); HuntDone(); break;
             }
@@ -630,6 +640,516 @@ namespace FastViewer
                 HuntLog("after Close: window visible " + IsVisible + ", still saving " + converting);
                 File.WriteAllLines(Path.Combine(snapDir, "log.txt"), huntLog);
             });
+        }
+
+        // ---------------------------------------------------------------- Settings under the top bar
+
+        // Where an element is in the window, or Rect.Empty when it isn't showing.
+        Rect HuntBox(FrameworkElement el)
+        {
+            if (el == null || !el.IsVisible || el.ActualWidth <= 0 || el.Opacity <= 0.01) return Rect.Empty;
+            for (DependencyObject p = el; p != null; p = System.Windows.Media.VisualTreeHelper.GetParent(p))
+            {
+                var fe = p as UIElement;
+                if (fe != null && fe.Opacity <= 0.01) return Rect.Empty;
+            }
+            return el.TransformToAncestor(root).TransformBounds(new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+        }
+
+        // Every visible button and text of the top bar that sits on Settings' Back button or title.
+        string HuntTopBarOverlaps()
+        {
+            var hits = new List<string>();
+            var under = new[] { "SettingsBackBtn", "SettingsTitle" }.Select(n => new { Name = n, Box = HuntBox(F<FrameworkElement>(n)) }).ToList();
+            var topBar = F<Panel>("TopBar");
+            var parts = new List<FrameworkElement>();
+            Action<DependencyObject> walk = null;
+            walk = d =>
+            {
+                for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(d); i++)
+                {
+                    var c = System.Windows.Media.VisualTreeHelper.GetChild(d, i);
+                    if (c is Button || (c is TextBlock && ((TextBlock)c).Text.Length > 0 && ((FrameworkElement)c).Name == "TitleText")) parts.Add((FrameworkElement)c);
+                    else walk(c);
+                }
+            };
+            walk(topBar);
+            bool barOnTop = Panel.GetZIndex(topBar) >= Panel.GetZIndex(F<FrameworkElement>("SettingsPage"));
+            foreach (var p in parts)
+            {
+                var box = HuntBox(p);
+                if (box.IsEmpty) continue;
+                foreach (var u in under)
+                    if (!u.Box.IsEmpty && box.IntersectsWith(u.Box))
+                        hits.Add((string.IsNullOrEmpty(p.Name) ? p.GetType().Name : p.Name) + " on " + u.Name + (barOnTop ? "" : " (hidden behind it)"));
+            }
+            return hits.Count == 0 ? "no overlap" : "OVERLAP: " + string.Join(", ", hits);
+        }
+
+        void HuntOverlap()
+        {
+            int t = 1500;
+            foreach (var look in new[] { "Photos", "Clean" })
+                foreach (var full in new[] { false, true })
+                    foreach (var w in full ? new double[] { 0 } : new double[] { 380, 520, 700, 860, 1100, 1440 })
+                    {
+                        string id = look; bool f = full; double width = w;
+                        After(t += 150, () =>
+                        {
+                            lookId = id; lookMode = "Dark"; ApplyLook();
+                            if (f != fullscreen) ToggleFullscreen();
+                            if (!f) { Width = width; Height = 700; }
+                            if (!settingsOpen) OpenSettings();
+                            ShowOverlay();
+                        });
+                        After(t += 450, () =>
+                        {
+                            HuntLog(string.Format("{0,-6} {1,-11} {2,5:0} wide: {3}", id, f ? "full screen" : "window", ActualWidth, HuntTopBarOverlaps()));
+                            if (width == 520 || width == 1440 || f) Snap("overlap_" + id + (f ? "_full" : "_" + width));
+                        });
+                    }
+            After(t += 200, () => { if (settingsOpen) CloseSettings(); if (fullscreen) ToggleFullscreen(); HuntDone(); });
+        }
+
+        // ---------------------------------------------------------------- UI audit: every screen, look, size and scale
+
+        // The visible buttons, sliders, switches and texts (texts inside buttons count as the button).
+        List<FrameworkElement> HuntLeaves()
+        {
+            var list = new List<FrameworkElement>();
+            Action<DependencyObject> walk = null;
+            walk = d =>
+            {
+                int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(d);
+                for (int i = 0; i < n; i++)
+                {
+                    var c = System.Windows.Media.VisualTreeHelper.GetChild(d, i) as FrameworkElement;
+                    if (c == null || !c.IsVisible) continue;
+                    if (c is Button || c is System.Windows.Controls.Primitives.ToggleButton || c is Slider || c is MenuItem) { list.Add(c); continue; }
+                    var tb = c as TextBlock;
+                    if (tb != null) { if (!string.IsNullOrWhiteSpace(tb.Text)) list.Add(tb); continue; }
+                    walk(c);
+                }
+            };
+            walk(root);
+            return list;
+        }
+
+        // The page or bar (child of the window's main grid) an element belongs to.
+        FrameworkElement HuntLayer(DependencyObject d)
+        {
+            while (d != null)
+            {
+                var p = System.Windows.Media.VisualTreeHelper.GetParent(d);
+                if (p == root) return d as FrameworkElement;
+                d = p;
+            }
+            return null;
+        }
+
+        // Hidden under a page that's drawn on top of it (Settings, the grid, the Delete dialog).
+        bool HuntCovered(FrameworkElement el, Rect box)
+        {
+            var layer = HuntLayer(el);
+            int mine = layer == null ? -1 : root.Children.IndexOf(layer);
+            foreach (var name in new[] { "GridPage", "SettingsPage", "Dialog" })
+            {
+                var page = F<FrameworkElement>(name);
+                if (page == layer || !page.IsVisible) continue;
+                int theirs = root.Children.IndexOf(page);
+                bool above = Panel.GetZIndex(page) > (layer == null ? 0 : Panel.GetZIndex(layer)) ||
+                             (Panel.GetZIndex(page) == (layer == null ? 0 : Panel.GetZIndex(layer)) && theirs > mine);
+                if (above && HuntBox(page).Contains(new Point(box.X + box.Width / 2, box.Y + box.Height / 2))) return true;
+            }
+            return false;
+        }
+
+        static bool HuntInside(DependencyObject child, DependencyObject parent)
+        {
+            for (var d = child; d != null; d = System.Windows.Media.VisualTreeHelper.GetParent(d)) if (d == parent) return true;
+            return false;
+        }
+
+        static string HuntName(FrameworkElement el)
+        {
+            if (!string.IsNullOrEmpty(el.Name)) return el.Name;
+            var tb = el as TextBlock;
+            if (tb != null) return "\"" + (tb.Text.Length > 30 ? tb.Text.Substring(0, 30) + "..." : tb.Text) + "\"";
+            var b = el as ContentControl;
+            if (b != null && b.Content is string) return el.GetType().Name + " \"" + b.Content + "\"";
+            var mi = el as MenuItem;
+            if (mi != null && mi.Header is string) return "menu \"" + mi.Header + "\"";
+            var tip = el.ToolTip as string;
+            return el.GetType().Name + (tip != null ? " (" + tip + ")" : "");
+        }
+
+        // Overlapping controls, text that doesn't fit, controls cut off by the window edge.
+        List<string> HuntLayoutProblems()
+        {
+            var problems = new List<string>();
+            var leaves = HuntLeaves().Select(e => new { El = e, Box = HuntBox(e) }).Where(x => !x.Box.IsEmpty && !HuntCovered(x.El, x.Box)).ToList();
+            var win = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
+            double dpi = Dpi();
+            for (int i = 0; i < leaves.Count; i++)
+            {
+                var a = leaves[i];
+                if (a.Box.Right > win.Right + 1 || a.Box.Bottom > win.Bottom + 1 || a.Box.Left < -1 || a.Box.Top < -1)
+                {
+                    // inside a scrolling list it's just scrolled off
+                    bool scrolled = false;
+                    for (var d = (DependencyObject)a.El; d != null; d = System.Windows.Media.VisualTreeHelper.GetParent(d)) if (d is ScrollViewer) { scrolled = true; break; }
+                    if (!scrolled) problems.Add("cut off by the window edge: " + HuntName(a.El));
+                }
+                var tb = a.El as TextBlock;
+                if (tb != null && tb.Inlines.Count <= 1)
+                {
+                    var ft = new System.Windows.Media.FormattedText(tb.Text, System.Globalization.CultureInfo.CurrentUICulture, tb.FlowDirection,
+                        new System.Windows.Media.Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch), tb.FontSize, Brushes.Black, dpi);
+                    if (tb.TextWrapping == TextWrapping.NoWrap && ft.WidthIncludingTrailingWhitespace > tb.ActualWidth + 1.5)
+                        problems.Add((tb.TextTrimming == TextTrimming.None ? "text cut off: " : "text shortened with ...: ") + HuntName(tb) +
+                                     string.Format(" (needs {0:0}, has {1:0})", ft.WidthIncludingTrailingWhitespace, tb.ActualWidth));
+                }
+                for (int j = i + 1; j < leaves.Count; j++)
+                {
+                    var b = leaves[j];
+                    if (HuntInside(a.El, b.El) || HuntInside(b.El, a.El)) continue;
+                    var x = Rect.Intersect(a.Box, b.Box);
+                    if (x.IsEmpty || x.Width * x.Height < 6) continue;
+                    if (a.El is MenuItem && b.El is MenuItem) continue;
+                    problems.Add("overlap: " + HuntName(a.El) + " / " + HuntName(b.El) + string.Format(" ({0:0}x{1:0} px)", x.Width, x.Height));
+                }
+            }
+            return problems;
+        }
+
+        static double HuntLum(Color c)
+        {
+            Func<double, double> ch = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4); };
+            return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B);
+        }
+
+        static Color HuntOver(Color top, Color under)
+        {
+            double a = top.A / 255.0;
+            return Color.FromRgb((byte)(top.R * a + under.R * (1 - a)), (byte)(top.G * a + under.G * (1 - a)), (byte)(top.B * a + under.B * (1 - a)));
+        }
+
+        // Contrast of the look's text colours on its backgrounds (4.5 is the usual minimum for normal text, 3 for large text and icons).
+        void HuntContrast(string label)
+        {
+            Func<string, Color?> col = k => { var b = Application.Current.Resources[k] as SolidColorBrush; return b == null ? (Color?)null : b.Color; };
+            var window = col("WindowBg") ?? Colors.Black;
+            var pairs = new[]
+            {
+                new[] { "TextMain", "PageBg" }, new[] { "TextSecondary", "PageBg" }, new[] { "TextSecondary", "CardBg" }, new[] { "TextDim", "CardBg" },
+                new[] { "TextDim", "MenuBg" }, new[] { "TextMain", "MenuBg" }, new[] { "ControlText", "TopBarBg" }, new[] { "TextSecondary", "BottomBarBg" },
+                new[] { "TextMain", "FloatBg" }, new[] { "AccentText", "Accent" }, new[] { "ControlText", "ControlFill" }, new[] { "TextMain", "TipBg" },
+                new[] { "TextMain", "ArrowBg" }, new[] { "TextSecondary", "StageBg" }
+            };
+            var parts = new List<string>();
+            foreach (var p in pairs)
+            {
+                var fg = col(p[0]); var bg = col(p[1]);
+                if (fg == null || bg == null) continue;
+                // see-through backgrounds: over the window colour, and for things over a picture also over white
+                var bgs = new List<Color> { HuntOver(bg.Value, window) };
+                if (p[1] == "FloatBg" || p[1] == "ArrowBg" || p[1] == "TopBarBg") bgs.Add(HuntOver(bg.Value, Colors.White));
+                double worst = bgs.Select(b => { var f = HuntOver(fg.Value, b); double l1 = HuntLum(f), l2 = HuntLum(b); return (Math.Max(l1, l2) + 0.05) / (Math.Min(l1, l2) + 0.05); }).Min();
+                parts.Add(string.Format("{0} on {1} {2:0.0}{3}", p[0], p[1], worst, worst < 3 ? " LOW" : worst < 4.5 ? " (large text only)" : ""));
+            }
+            HuntLog("contrast " + label + ": " + string.Join("; ", parts));
+        }
+
+        // Buttons a screen reader can't name, and what Tab reaches.
+        void HuntAccessibility(string where)
+        {
+            var unnamed = new List<string>();
+            int buttons = 0, focusable = 0;
+            Action<DependencyObject> walk = null;
+            walk = d =>
+            {
+                for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(d); i++)
+                {
+                    var c = System.Windows.Media.VisualTreeHelper.GetChild(d, i);
+                    var el = c as Control;
+                    if (el != null && el.IsVisible && (el is Button || el is CheckBox || el is Slider))
+                    {
+                        buttons++;
+                        if (el.Focusable && el.IsTabStop) focusable++;
+                        var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(el);
+                        string name = peer == null ? "" : peer.GetName();
+                        if (string.IsNullOrWhiteSpace(name)) unnamed.Add(HuntName(el));
+                        continue;
+                    }
+                    walk(c);
+                }
+            };
+            walk(root);
+            HuntLog(string.Format("screen reader, {0}: {1} controls, {2} reachable with Tab, {3} without a name: {4}", where, buttons, focusable, unnamed.Count, string.Join(", ", unnamed.Distinct())));
+            var order = new List<string>();
+            Keyboard.Focus(this);
+            for (int k = 0; k < 12; k++)
+            {
+                var before = Keyboard.FocusedElement;
+                var from = Keyboard.FocusedElement as UIElement ?? this;
+                from.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                var now = Keyboard.FocusedElement as FrameworkElement;
+                if (now == null || now == before) break;
+                order.Add(HuntName(now));
+            }
+            HuntLog("Tab, " + where + ": " + (order.Count == 0 ? "reaches nothing" : string.Join(" > ", order)));
+        }
+
+        void HuntAudit()
+        {
+            // --pattern picks the size set: "sizes" (every size, main states), "scales" (125%, 150%), else "full" (every state at medium size)
+            var audit = huntPattern == "mixed" ? "full" : huntPattern;
+            if (audit == "contrast") // every look, dark and light
+            {
+                After(1500, () =>
+                {
+                    foreach (var lk in new[] { "Photos", "Clean", "Glass", "Midnight" })
+                        foreach (var mode in new[] { "Dark", "Light" })
+                        {
+                            lookId = lk; lookMode = mode; ApplyLook();
+                            HuntContrast(lk + " " + mode.ToLowerInvariant());
+                        }
+                    HuntDone();
+                });
+                return;
+            }
+            var looks = new[] { "Photos", "Clean" };
+            int photo = files.FindIndex(f => Path.GetFileName(f).StartsWith("01")), video = files.FindIndex(f => Path.GetFileName(f).StartsWith("02")),
+                gif = files.FindIndex(f => f.EndsWith(".gif")), broken = files.FindIndex(f => Path.GetFileName(f).StartsWith("04")),
+                longName = files.FindIndex(f => Path.GetFileName(f).StartsWith("05"));
+            var steps = new List<KeyValuePair<string, Action>>(); // state name, set-up
+            Action reset = () =>
+            {
+                huntMenuHook = null;
+                if (huntMenuHost != null) { root.Children.Remove(huntMenuHost); huntMenuHost = null; }
+                dialog.Visibility = Visibility.Collapsed;
+                HideToast(null);
+                if (trimming) EndTrim();
+                if (settingsOpen) CloseSettings();
+                CloseGrid();
+                if (infoOpen) ToggleInfo();
+                if (mini) ToggleMini();
+                if (slideshow) StopSlideshow();
+                if (fullscreen) ToggleFullscreen();
+                if (showStrip) { showStrip = false; ApplyStrip(); }
+            };
+            Action<int> show = i => { if (i >= 0) ShowIndex(i, 1); };
+            Action pause = () => { if (playing) TogglePlay(); };
+            Action<string, Action> state = (n, a) => steps.Add(new KeyValuePair<string, Action>(n, a));
+            Action<string, string> menuState = (n, which) => state(n, () =>
+            {
+                huntMenuHook = (menu, button) =>
+                {
+                    // A ContextMenu can't sit in the window: its items move to a Menu drawn the same way (Theme.xaml).
+                    var look = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+                        "<ControlTemplate TargetType='Menu' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>" +
+                        "<Border Background='{DynamicResource MenuBg}' BorderBrush='{DynamicResource MenuEdge}' BorderThickness='1' " +
+                        "CornerRadius='{DynamicResource Radius.Float}' Padding='4' MinWidth='220'><StackPanel IsItemsHost='True'/></Border></ControlTemplate>");
+                    var copy = new Menu { Template = look, FontSize = 14 };
+                    copy.SetResourceReference(Control.ForegroundProperty, "TextMain");
+                    copy.SetResourceReference(Control.FontFamilyProperty, "Font.Ui");
+                    var items = menu.Items.Cast<object>().ToList();
+                    menu.Items.Clear();
+                    foreach (var it in items) copy.Items.Add(it);
+                    var host = new Border { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Child = copy };
+                    Grid.SetRowSpan(host, 3);
+                    Panel.SetZIndex(host, 100);
+                    var p = button.TranslatePoint(new Point(0, 0), root);
+                    root.Children.Add(host);
+                    host.UpdateLayout();
+                    double x = Math.Max(0, Math.Min(p.X, root.ActualWidth - host.ActualWidth)), y = which == "up" ? p.Y - host.ActualHeight - 4 : p.Y + button.ActualHeight + 4;
+                    host.Margin = new Thickness(x, Math.Max(0, y), 0, 0);
+                    huntMenuHost = host;
+                };
+            });
+
+            state("photo", () => show(photo));
+            state("photo_controls_hidden", () => { show(photo); });
+            state("video_playing", () => show(video));
+            state("video_paused", () => { show(video); });
+            state("gif", () => show(gif));
+            if (audit == "full")
+            {
+                state("info_pane", () => { show(photo); ToggleInfo(); });
+                state("strip", () => { show(photo); showStrip = true; ApplyStrip(); });
+                state("grid", () => { show(photo); OpenGrid(); });
+                state("grid_names", () => { show(photo); gridNames = true; OpenGrid(); });
+                state("broken_file", () => show(broken));
+                state("long_name", () => show(longName));
+                state("delete_dialog", () => { show(photo); AskDelete(); });
+                state("toast_update", () => { show(photo); ShowToast("FastViewer 1.16.0 is available.", "Update now", delegate { }, 0, "update"); });
+                state("toast_resume", () => { show(video); ShowToast("Continuing where you left off (02:31)", "Start over", delegate { }, 0, "resume"); });
+                state("trim", () => { show(video); StartTrim(); });
+                state("full_photo", () => { show(photo); ToggleFullscreen(); });
+                state("full_video", () => { show(video); ToggleFullscreen(); });
+                state("slideshow", () => { show(photo); ToggleSlideshow(); });
+                state("mini_video", () => { show(video); ToggleMini(); });
+                state("mini_photo", () => { show(photo); ToggleMini(); });
+                menuState("menu_more", "down");
+                menuState("menu_video", "up");
+                menuState("menu_zoom", "up");
+                foreach (var page in settingsPages.Select(p => ((TextBlock)p.Value.Children[0]).Text).ToList())
+                {
+                    var pg = page;
+                    state("settings_" + pg.Replace(" ", ""), () =>
+                    {
+                        show(photo);
+                        OpenSettings();
+                        settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == pg).Key.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    });
+                }
+                state("empty", () => { LetGoOfFiles(); });
+            }
+            else
+            {
+                state("settings_Viewing", () =>
+                {
+                    show(photo); OpenSettings();
+                    settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Viewing").Key.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                });
+                state("grid", () => { show(photo); OpenGrid(); });
+                state("delete_dialog", () => { show(photo); AskDelete(); });
+                state("toast_update", () => { show(photo); ShowToast("FastViewer 1.16.0 is available.", "Update now", delegate { }, 0, "update"); });
+                state("full_video", () => { show(video); ToggleFullscreen(); });
+            }
+
+            var profiles = audit == "sizes"
+                ? new[] { "380x260", "640x440", "1100x720", "1600x1000", "max" }
+                : audit == "scales" ? new[] { "1100x720@1.25", "1000x640@1.5" } : new[] { "1100x720" };
+            string folder = files.Count > 0 ? files[0] : null;
+            int t = 1500;
+            foreach (var look in looks)
+                foreach (var prof in profiles)
+                {
+                    string lk = look, pf = prof;
+                    After(t += 100, () =>
+                    {
+                        reset();
+                        lookId = lk; lookMode = "Dark"; ApplyLook();
+                        double scale = pf.Contains("@") ? double.Parse(pf.Split('@')[1], System.Globalization.CultureInfo.InvariantCulture) : 1;
+                        root.LayoutTransform = scale == 1 ? Transform.Identity : new ScaleTransform(scale, scale);
+                        if (pf == "max") WindowState = WindowState.Maximized;
+                        else
+                        {
+                            WindowState = WindowState.Normal;
+                            var wh = pf.Split('@')[0].Split('x');
+                            Width = double.Parse(wh[0]) * scale; Height = double.Parse(wh[1]) * scale;
+                        }
+                        HuntContrast(lk + " dark");
+                    });
+                    if (pf == profiles[0])
+                    {
+                        After(t += 400, () => { show(photo); HuntAccessibility(lk + " viewer"); OpenSettings(); });
+                        After(t += 500, () => { HuntAccessibility(lk + " Settings"); CloseSettings(); lookMode = "Light"; ApplyLook(); HuntContrast(lk + " light"); lookMode = "Dark"; ApplyLook(); });
+                    }
+                    foreach (var st in steps)
+                    {
+                        var s = st;
+                        After(t += 150, () =>
+                        {
+                            reset();
+                            if (files.Count == 0 && folder != null) OpenPath(folder);
+                            s.Value();
+                            if (s.Key == "menu_video") show(video);
+                            if (s.Key == "menu_more" || s.Key == "menu_zoom") show(photo);
+                            ShowOverlay();
+                        });
+                        After(t += s.Key.StartsWith("video") || s.Key == "menu_video" || s.Key.Contains("gif") || s.Key.StartsWith("full_video") || s.Key.StartsWith("mini_video") ? 1600 : 900, () =>
+                        {
+                            if (s.Key == "video_paused") pause();
+                            if (s.Key == "photo_controls_hidden") { idleTimer.Stop(); HideOverlay(); }
+                            if (s.Key == "menu_more") ShowMoreMenu();
+                            if (s.Key == "menu_video") { pause(); ShowOverlay(); ShowVideoMenu(); }
+                            if (s.Key == "menu_zoom") ShowZoomMenu();
+                        });
+                        After(t += s.Key == "photo_controls_hidden" ? 700 : 250, () =>
+                        {
+                            string name = lk + "_" + pf.Replace("@", "_at_") + "_" + s.Key;
+                            var problems = HuntLayoutProblems();
+                            HuntLog(name + ": " + (problems.Count == 0 ? "ok" : string.Join(" | ", problems.Distinct())));
+                            Snap(name);
+                        });
+                    }
+                }
+            After(t += 300, () => { reset(); root.LayoutTransform = Transform.Identity; WindowState = WindowState.Normal; HuntDone(); });
+        }
+        Border huntMenuHost;
+
+        // ---------------------------------------------------------------- UX fixes that pictures can't show
+
+        void HuntUx()
+        {
+            Func<string, string> tip = n => (F<FrameworkElement>(n).ToolTip as string) ?? "-";
+            Func<string> menuKeys = () =>
+            {
+                string r = "";
+                huntMenuHook = (menu, button) => { r = string.Join(", ", menu.Items.OfType<MenuItem>().Where(m => m.InputGestureText.Length > 0).Select(m => m.Header + "=" + m.InputGestureText)); menu.Items.Clear(); };
+                ShowVideoMenu();
+                huntMenuHook = null;
+                return r;
+            };
+            int t = 1500;
+            int video = files.FindIndex(IsVideoFile);
+            After(t, () =>
+            {
+                HuntLog("tooltips: next '" + tip("NextBtn") + "', delete '" + tip("DeleteBtn") + "', repeat '" + tip("LoopBtn") + "', back '" + tip("BackBtn") + "', slideshow '" + tip("SlideshowBtn") + "'");
+                HuntLog("title tooltip: '" + (titleText.ToolTip as string) + "'");
+                if (video >= 0) ShowIndex(video, 1);
+            });
+            After(t += 1500, () =>
+            {
+                if (playing) TogglePlay();
+                HuntLog("video menu keys: " + menuKeys());
+                // rebind: Next gets N, Repeat gets Q, Trim loses its key
+                OpenSettings();
+                StartCapture(shortcuts.First(s => s.Id == "next"), 0); CaptureKey(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(this), 0, Key.N) { RoutedEvent = Keyboard.KeyDownEvent });
+                StartCapture(shortcuts.First(s => s.Id == "repeat"), 0); CaptureKey(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(this), 0, Key.Q) { RoutedEvent = Keyboard.KeyDownEvent });
+                RemoveKey(shortcuts.First(s => s.Id == "trim"), 0);
+                StartCapture(shortcuts.First(s => s.Id == "mute"), 1);
+                bool tabTaken = CaptureKey(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(this), 0, Key.Tab) { RoutedEvent = Keyboard.KeyDownEvent });
+                HuntLog("Tab while a key box waits: taken as a shortcut " + tabTaken + ", mute keys [" + string.Join(",", shortcuts.First(s => s.Id == "mute").Keys) + "]");
+                CloseSettings();
+                HuntLog("after rebinding: next '" + tip("NextBtn") + "', repeat '" + tip("LoopBtn") + "'; video menu keys: " + menuKeys());
+                foreach (var s in shortcuts) s.Keys = s.Defaults.ToList();
+                RebuildShortcutMap();
+                HuntLog("file buttons in Settings: " + string.Join(", ", new[] { "DeleteBtn", "CopyBtn", "RotateBtn", "OpenWithBtn" }.Select(n => { OpenSettings(); bool on = F<Button>(n).IsEnabled; CloseSettings(); return n + (on ? " on" : " off"); })));
+            });
+            // Preload now and from another window (that used to crash the next switch)
+            After(t += 500, () =>
+            {
+                HuntLog("players: " + slots.Length + " (preload " + preloadAhead + ")");
+                SetPreload(3);
+                HuntLog("Preload set to 3: " + slots.Length + " players");
+            });
+            for (int k = 0; k < 15; k++) After(t += 120, () => Go(1));
+            After(t += 1500, () =>
+            {
+                HuntLog("15 switches with preload 3: showing " + HuntSlot(shown) + ", ready players " + slots.Count(x => x.Ready));
+                SetPreload(1);
+                HuntLog("Preload set to 1: " + slots.Length + " players");
+                preloadAhead = 3; // what another window's saved setting does (SyncSettings loads it)
+                if (slots.Length != 2 * preloadAhead + 2) SetPreload(preloadAhead);
+                HuntLog("another window set Preload to 3: " + slots.Length + " players");
+            });
+            for (int k = 0; k < 15; k++) After(t += 120, () => Go(1));
+            After(t += 1500, () =>
+            {
+                HuntLog("15 more switches: showing " + HuntSlot(shown) + " (no crash)");
+                ToggleSlideshow();
+                HuntLog("slideshow on: button '" + tip("SlideshowBtn") + "', message '" + F<TextBlock>("ToastText").Text + "', min/max buttons " + F<FrameworkElement>("MinBtn").Visibility + "/" + F<FrameworkElement>("MaxBtn").Visibility);
+                StopSlideshow();
+                if (fullscreen) ToggleFullscreen();
+                HuntLog("slideshow off: button '" + tip("SlideshowBtn") + "', min/max " + F<FrameworkElement>("MinBtn").Visibility + "/" + F<FrameworkElement>("MaxBtn").Visibility);
+                StartTrim();
+                HuntLog("trim: '" + F<TextBlock>("TrimText").Text + "'");
+                EndTrim();
+            });
+            After(t += 300, HuntDone);
         }
 
         // ---------------------------------------------------------------- odd window sizes

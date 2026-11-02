@@ -3,6 +3,7 @@
 <Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:fv="clr-namespace:FastViewer;assembly=FastViewer"
+      xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
       Background="{DynamicResource WindowBg}" UseLayoutRounding="True"
       TextElement.Foreground="{DynamicResource TextMain}" TextElement.FontFamily="{DynamicResource Font.Ui}" TextElement.FontSize="14">
   <Grid.RowDefinitions>
@@ -13,8 +14,9 @@
 
   <!-- Top command bar (doubles as the title bar) -->
   <Grid x:Name="TopBar" Background="{DynamicResource TopBarBg}">
+    <!-- Hit-testable (FastViewer.cs drags the window from it) so a shortened name can show in full as a tooltip -->
     <TextBlock x:Name="TitleText" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12"
-               TextTrimming="CharacterEllipsis" MaxWidth="560" IsHitTestVisible="False"/>
+               TextTrimming="CharacterEllipsis" MaxWidth="560" Background="Transparent" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
     <StackPanel x:Name="TopLeft" Orientation="Horizontal" HorizontalAlignment="Left" Margin="14,0,0,0">
       <Button x:Name="OpenBtn" Style="{StaticResource Filled}" Margin="0,0,12,0" ToolTip="Open (Ctrl+O)">
         <StackPanel Orientation="Horizontal">
@@ -67,9 +69,13 @@
 
     <Grid x:Name="Stage" Background="{DynamicResource StageBg}" ClipToBounds="True"/>
 
-    <TextBlock x:Name="Message" Foreground="{DynamicResource TextSecondary}" FontSize="16" TextAlignment="Center"
-               TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40"
-               IsHitTestVisible="False"/>
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
+      <TextBlock x:Name="Message" Foreground="{DynamicResource TextSecondary}" FontSize="16" TextAlignment="Center"
+                 TextWrapping="Wrap" IsHitTestVisible="False"/>
+      <!-- A file FastViewer can't open: offer another app -->
+      <Button x:Name="MessageBtn" Style="{StaticResource Filled}" Height="32" Margin="0,18,0,0" HorizontalAlignment="Center"
+              Content="Open with another app" Visibility="Collapsed"/>
+    </StackPanel>
 
     <Grid x:Name="Overlay">
       <!-- Darkens the video slightly while the controls are showing, like Photos -->
@@ -221,7 +227,7 @@
       <RowDefinition x:Name="BottomControlsRow" Height="32"/>
     </Grid.RowDefinitions>
     <Canvas x:Name="Strip" Height="64" Background="{DynamicResource StripBg}" ClipToBounds="True" Visibility="Collapsed"/>
-    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Left" Margin="8,0,0,0">
+    <StackPanel x:Name="BottomLeft" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Left" Margin="8,0,0,0">
       <Button x:Name="SlideshowBtn" Style="{StaticResource Small}" Margin="0,0,2,0" ToolTip="Start slideshow (F5)">
         <fv:Glyph Code="&#xE786;" Size="14"/>
       </Button>
@@ -244,7 +250,7 @@
       <fv:Glyph Code="&#xE946;" Size="14"/>
     </Button>
 
-    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,6,0">
+    <StackPanel x:Name="BottomRight" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,6,0">
       <Button x:Name="FitBtn" Style="{StaticResource Small}" Margin="0,0,6,0" ToolTip="Fit to window (0)">
         <fv:Glyph Code="&#xE9A6;" Size="14"/>
       </Button>
@@ -308,7 +314,7 @@
   </Grid>
 
   <!-- Settings page (cards are added in code) -->
-  <Grid x:Name="SettingsPage" Grid.Row="1" Grid.RowSpan="2" Background="{DynamicResource PageBg}" Visibility="Collapsed">
+  <Grid x:Name="SettingsPage" Grid.Row="1" Grid.RowSpan="2" Background="{DynamicResource PageBg}" Visibility="Collapsed" KeyboardNavigation.TabNavigation="Cycle">
     <Grid.ColumnDefinitions>
       <ColumnDefinition x:Name="SettingsNavCol" Width="230"/>
       <ColumnDefinition Width="*"/>
@@ -322,12 +328,15 @@
         <TextBlock x:Name="SettingsTitle" Text="Settings" FontSize="20" FontFamily="{DynamicResource Font.Title}" FontWeight="{DynamicResource Weight.Title}"
                    VerticalAlignment="Center" Margin="10,0,0,0"/>
       </StackPanel>
-      <Grid>
-        <!-- Liquid Glass: a glass "lens" slides behind the chosen page -->
-        <Border x:Name="SettingsLens" Background="{DynamicResource LensBg}" BorderBrush="{DynamicResource LensEdge}" BorderThickness="1"
-                CornerRadius="{DynamicResource Radius.Control}" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0"/>
-        <StackPanel x:Name="SettingsNav"/>
-      </Grid>
+      <!-- Scrolls in short windows, so every page stays reachable -->
+      <ScrollViewer x:Name="SettingsNavScroll" VerticalScrollBarVisibility="Auto" Focusable="False">
+        <Grid>
+          <!-- Liquid Glass: a glass "lens" slides behind the chosen page -->
+          <Border x:Name="SettingsLens" Background="{DynamicResource LensBg}" BorderBrush="{DynamicResource LensEdge}" BorderThickness="1"
+                  CornerRadius="{DynamicResource Radius.Control}" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0"/>
+          <StackPanel x:Name="SettingsNav"/>
+        </Grid>
+      </ScrollViewer>
     </DockPanel>
     <ScrollViewer x:Name="SettingsScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" Focusable="False">
       <StackPanel x:Name="SettingsList" MaxWidth="900" Margin="20,18,36,40"/>
@@ -335,7 +344,8 @@
   </Grid>
   <!-- Delete confirmation, styled like a Windows content dialog -->
   <Grid x:Name="Dialog" Grid.RowSpan="3" Background="{DynamicResource DialogShade}" Visibility="Collapsed">
-    <Border Width="440" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource DialogBg}"
+    <!-- 440 wide, narrower in a small window (the text wraps) -->
+    <Border MaxWidth="440" Margin="16" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="{DynamicResource DialogBg}"
             BorderBrush="{DynamicResource DialogEdge}" BorderThickness="1" CornerRadius="{DynamicResource Radius.Dialog}">
       <StackPanel>
         <StackPanel Margin="24">

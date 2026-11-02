@@ -107,7 +107,12 @@ namespace FastViewer
                 {
                     var p = key == null ? null : key.GetValue("AccentPalette") as byte[];
                     int i = forLight ? 16 : 4;
-                    if (p != null && p.Length >= i + 3) return Color.FromRgb(p[i], p[i + 1], p[i + 2]);
+                    if (p != null && p.Length >= i + 3)
+                    {
+                        // A grey accent (Windows allows it) makes accent buttons and switches look switched off: use blue then.
+                        int max = Math.Max(p[i], Math.Max(p[i + 1], p[i + 2])), min = Math.Min(p[i], Math.Min(p[i + 1], p[i + 2]));
+                        if (max - min >= 28) return Color.FromRgb(p[i], p[i + 1], p[i + 2]);
+                    }
                 }
             }
             catch { }
@@ -392,6 +397,7 @@ namespace FastViewer
                 else if (args[i] == "--front") testInFront = true;
                 else if (args[i] == "--update-feed" && i + 1 < args.Length) updateFeed = args[++i];
                 else if (args[i] == "--update-test") updateTestAccept = true;
+                else if (args[i] == "--update-page" && i + 1 < args.Length) updatePage = args[++i];
                 else if (args[i] == "--updated") { } // restarted by the updater (see InstallUpdate)
                 else if (args[i] == "--positions" && i + 1 < args.Length) { PositionsFile = args[++i]; positionsOverride = true; }
                 else if (args[i] == "--preload" && i + 1 < args.Length) preloadOverride = int.Parse(args[++i]);
@@ -427,6 +433,7 @@ namespace FastViewer
                 else if (path == null) path = args[i];
             }
             bool testMode = selfTestInterval > 0 || snapDir != null || fadeTestLog != null;
+            testRun = args.Any(a => a.StartsWith("--") && a != "--updated"); // any test option: GitHub is never contacted
 
             Title = "FastViewer";
             Width = 1200;
@@ -504,27 +511,7 @@ namespace FastViewer
 
             if (preloadOverride > 0) preloadAhead = preloadOverride; // test runs
             slots = new Slot[2 * preloadAhead + 2];
-            for (int i = 0; i < slots.Length; i++)
-            {
-                var s = new Slot();
-                NewVideoPlayer(s);
-                s.Picture.Stretch = Stretch.Uniform;
-                RenderOptions.SetBitmapScalingMode(s.Picture, BitmapScalingMode.HighQuality);
-                var transforms = new TransformGroup();
-                transforms.Children.Add(s.Zoom);
-                transforms.Children.Add(s.Pan);
-                s.Host.RenderTransform = transforms;
-                s.Poster.Stretch = Stretch.Uniform;
-                s.Poster.Visibility = Visibility.Collapsed;
-                RenderOptions.SetBitmapScalingMode(s.Poster, BitmapScalingMode.HighQuality);
-                s.Rotor.LayoutTransform = s.Rotation;
-                s.Rotor.Children.Add(s.Poster);
-                s.Rotor.Children.Add(s.Picture);
-                s.Host.Children.Add(s.Rotor);
-                s.Host.IsHitTestVisible = false;
-                stage.Children.Add(s.Host);
-                slots[i] = s;
-            }
+            for (int i = 0; i < slots.Length; i++) slots[i] = NewSlot();
             cover.SetResourceReference(Border.BackgroundProperty, "CoverBg");
             cover.IsHitTestVisible = false;
             Panel.SetZIndex(cover, 1);
@@ -560,6 +547,14 @@ namespace FastViewer
             OnClick("FullBtn", ToggleFullscreen);
             OnClick("DialogOk", ConfirmDelete);
             OnClick("DialogCancel", delegate { dialog.Visibility = Visibility.Collapsed; });
+            OnClick("MessageBtn", OpenWith);
+            // The file name sits in the title bar: it moves the window (and double-click maximizes) like the rest of it.
+            titleText.MouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e)
+            {
+                if (fullscreen || mini) return;
+                if (e.ClickCount == 2) WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+                else try { DragMove(); } catch { }
+            };
             // Previous/next react on press, not release: feels snappier when clicking through quickly.
             F<Button>("PrevBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(-1); e.Handled = true; };
             F<Button>("NextBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(1); e.Handled = true; };
@@ -580,6 +575,7 @@ namespace FastViewer
             stage.SizeChanged += delegate
             {
                 transport.Width = Math.Max(240, Math.Min(720, stage.ActualWidth - 96));
+                UpdateControls(); // which control-bar buttons fit
                 if (shown != null) ClampPan(shown);
                 UpdateZoomUi();
                 UpdateScrim();
@@ -654,7 +650,7 @@ namespace FastViewer
 
             Loaded += delegate
             {
-                message.Text = "Drop a photo, video or folder here\nor press Ctrl+O to open one";
+                message.Text = EmptyMessage();
                 UpdateWindowFrame();
                 InitShortcuts();
                 BuildSettingsPage();
@@ -673,6 +669,55 @@ namespace FastViewer
                 if (snapDir != null) { if (huntTest) RunHunt(); else if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else if (dimTest) RunDimTest(); else if (syncTest) RunSyncTest(); else if (toastTest) RunToastTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
+        }
+
+        // One player slot, added to the stage (below the cover).
+        Slot NewSlot()
+        {
+            var s = new Slot();
+            NewVideoPlayer(s);
+            s.Picture.Stretch = Stretch.Uniform;
+            RenderOptions.SetBitmapScalingMode(s.Picture, BitmapScalingMode.HighQuality);
+            var transforms = new TransformGroup();
+            transforms.Children.Add(s.Zoom);
+            transforms.Children.Add(s.Pan);
+            s.Host.RenderTransform = transforms;
+            s.Poster.Stretch = Stretch.Uniform;
+            s.Poster.Visibility = Visibility.Collapsed;
+            RenderOptions.SetBitmapScalingMode(s.Poster, BitmapScalingMode.HighQuality);
+            s.Rotor.LayoutTransform = s.Rotation;
+            s.Rotor.Children.Add(s.Poster);
+            s.Rotor.Children.Add(s.Picture);
+            s.Host.Children.Add(s.Rotor);
+            s.Host.IsHitTestVisible = false;
+            stage.Children.Insert(0, s.Host);
+            if (glassSlots) s.Host.Opacity = HiddenSlotOpacity;
+            return s;
+        }
+
+        // Settings > Preload: takes effect right away. More slots are added; spare ones are closed.
+        void SetPreload(int ahead)
+        {
+            if (preloadOverride > 0) { preloadAhead = preloadOverride; return; } // test runs keep theirs
+            preloadAhead = Math.Max(1, Math.Min(3, ahead));
+            int want = 2 * preloadAhead + 2;
+            var list = slots.ToList();
+            while (list.Count < want) list.Add(NewSlot());
+            foreach (var s in list.Where(x => x != shown && x != wanted && x != revealing).OrderBy(x => x.File == null ? -1 : x.LastUsed).ToList())
+            {
+                if (list.Count <= want) break;
+                s.Token++;
+                s.Video.Stop();
+                s.Video.Close();
+                s.Video.Source = null;
+                s.Picture.Source = null;
+                s.Poster.Source = null;
+                s.Gif = null;
+                stage.Children.Remove(s.Host);
+                list.Remove(s);
+            }
+            slots = list.ToArray();
+            if (files.Count > 0) ShowIndex(index, lastDir); // gets the new number of files ready
         }
 
         // A video player for the slot, at the bottom of its layers (below the first-frame picture and the photo).
@@ -841,6 +886,7 @@ namespace FastViewer
             }
             string name = Path.GetFileName(files[index]);
             titleText.Text = name;
+            titleText.ToolTip = name; // the whole name, also when it's shortened with "..."
             Title = name + " - FastViewer";
             TryShow();
             RequestStripUpdate();
@@ -854,6 +900,7 @@ namespace FastViewer
             {
                 if (string.Equals(s.File, file, StringComparison.OrdinalIgnoreCase))
                 {
+                    if (s.Failed && s.IsVideo && s != shown && file == files[index]) Load(s, file); // a video that failed gets another try when you go back to it
                     s.LastUsed = ++useCounter;
                     keep.Add(s);
                     return s;
@@ -929,7 +976,7 @@ namespace FastViewer
                         s.Reduced = bmp != null && !IsGifFile(file) && Math.Max(bmp.PixelWidth, bmp.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
                         s.Ready = true;
                         s.Failed = bmp == null;
-                        s.Error = error;
+                        s.Error = error == null ? null : FriendlyError(file, error, false);
                         if (s == wanted) TryShow();
                     }));
                 });
@@ -1073,14 +1120,13 @@ namespace FastViewer
 
         void OnLoadFailed(Slot s, Exception ex)
         {
+            if (s.IsVideo) try { s.Video.Pause(); s.Video.IsMuted = true; } catch { } // a player that failed (even mid-play) stays still and silent
+            if (s == revealing) StopRevealWatch();
             s.Ready = true;
             s.Failed = true;
             string msg = ex == null ? "Unknown error" : ex.Message;
             if (selfTestInterval > 0) testLog.Add("  FAILED " + Path.GetFileName(s.File) + ": " + msg);
-            if (msg.Contains("C00D5212") || msg.Contains("C00D36C4") || msg.Contains("C00D36B4") || msg.Contains("C00D11B1"))
-                msg = "The video codec isn't installed on this PC.\n" +
-                      "iPhone/HEVC videos need \"HEVC Video Extensions\" from the Microsoft Store.";
-            s.Error = msg;
+            s.Error = FriendlyError(s.File, msg, true);
             if (s == wanted) TryShow();
         }
 
@@ -1334,6 +1380,7 @@ namespace FastViewer
         {
             var c = shown;
             message.Text = c.Failed ? "Can't open " + Path.GetFileName(c.File) + "\n\n" + c.Error : "";
+            F<FrameworkElement>("MessageBtn").Visibility = c.Failed ? Visibility.Visible : Visibility.Collapsed;
             UpdateControls();
             UpdateFacts();
             UpdateZoomUi();
@@ -1487,13 +1534,18 @@ namespace FastViewer
             bool center = centerButton == 0 || (centerButton == 1 && !playing); // Settings > Videos
             centerPlayBtn.Visibility = isVideo && center ? Visibility.Visible : Visibility.Collapsed;
             F<FrameworkElement>("PrevBtn").Visibility = F<FrameworkElement>("NextBtn").Visibility =
-                Shown("Arrows") ? Visibility.Visible : Visibility.Collapsed; // Settings > Buttons
+                Shown("Arrows") && files.Count > 1 ? Visibility.Visible : Visibility.Collapsed; // Settings > Buttons; nothing to go to: none
+            // A narrow control bar keeps its time bar: the skip and repeat buttons go first (they're on keys and in "...").
+            double room = transport.Width;
             foreach (var id in new[] { "PlayBtn", "BackBtn", "FwdBtn", "VolBtn", "LoopBtn" })
-                F<FrameworkElement>(id).Visibility = Shown(id) ? Visibility.Visible : Visibility.Collapsed;
+            {
+                bool fits = id == "PlayBtn" || (id == "VolBtn" ? room >= 300 : room >= 440);
+                F<FrameworkElement>(id).Visibility = Shown(id) && fits ? Visibility.Visible : Visibility.Collapsed;
+            }
             playGlyph.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
             pauseGlyph.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
             UpdateScrim();
-            centerPlayBtn.ToolTip = playing ? "Pause (Space)" : "Play (Space)";
+            centerPlayBtn.ToolTip = WithKey(playing ? "Pause" : "Play", KeyOf("play"));
             playIcon.Code = playing ? "\uE769" : "\uE768";
             if (loop) loopIcon.SetResourceReference(Glyph.ForegroundProperty, "Accent");
             else loopIcon.ClearValue(Glyph.ForegroundProperty);
@@ -1505,11 +1557,11 @@ namespace FastViewer
             settingSlider = false;
             volText.Text = Math.Round(volume * 100).ToString(CultureInfo.InvariantCulture);
             fullIcon.Code = fullscreen ? "\uE73F" : "\uE740";
-            // While the grid is open the file buttons are off: the file they'd act on isn't on screen.
-            bool hasFile = CurrentFile != null && !gridOpen;
+            // While the grid or Settings is open the file buttons are off: the file they'd act on isn't on screen.
+            bool hasFile = CurrentFile != null && !gridOpen && !settingsOpen;
             foreach (var name in new[] { "DeleteBtn", "CopyBtn", "MoreBtn", "OpenWithBtn", "SlideshowBtn", "InfoBtn", "GridBtn" })
                 F<Button>(name).IsEnabled = hasFile;
-            F<Button>("RotateBtn").IsEnabled = F<Button>("MiniBtn").IsEnabled = !gridOpen;
+            F<Button>("RotateBtn").IsEnabled = F<Button>("MiniBtn").IsEnabled = hasFile;
             UpdateTime();
         }
 
@@ -1549,6 +1601,9 @@ namespace FastViewer
             slideshow = true;
             if (!fullscreen) ToggleFullscreen();
             ScheduleSlide();
+            SetSlideshowButton();
+            string stop = KeyOf("slideshow");
+            ShowToast("Slideshow: " + slideSeconds + " seconds a photo. Press Esc" + (stop.Length > 0 ? " or " + stop : "") + " to stop.", null, null, 3, "slideshow");
         }
 
         void ScheduleSlide()
@@ -1559,10 +1614,59 @@ namespace FastViewer
             slideTimer.Start();
         }
 
+        // The slideshow button turns into "Stop slideshow" while one runs.
+        void SetSlideshowButton()
+        {
+            var b = F<Button>("SlideshowBtn");
+            var g = b.Content as Glyph;
+            if (g != null) g.Code = slideshow ? "" : "";
+            string text = slideshow ? "Stop slideshow" : "Start slideshow";
+            b.ToolTip = WithKey(text, KeyOf("slideshow"));
+            System.Windows.Automation.AutomationProperties.SetName(b, text);
+        }
+
+        // Dates in the Info pane, in the same language as the rest of FastViewer ("2 November 2026, 01:31").
+        static string InfoDate(DateTime d)
+        {
+            return d.ToString("d MMMM yyyy, HH:mm", CultureInfo.GetCultureInfo("en-GB"));
+        }
+
+        // What went wrong opening a file, in plain words (Windows' own messages are technical and sometimes wrong).
+        static string FriendlyError(string file, string raw, bool video)
+        {
+            raw = raw ?? "";
+            long length = -1;
+            try { length = new FileInfo(file).Length; } catch { }
+            if (raw.Contains("too long") || raw.Contains("PathTooLong"))
+                return "The file's name and folder path are too long for Windows. Move it to a folder with a shorter path.";
+            if (length == 0) return "This file is empty (0 bytes): nothing was saved in it.";
+            if (raw.Contains("being used by another process"))
+                return "Another app has this file open and isn't sharing it. Close it there, then try again.";
+            if (raw.Contains("Access to the path") || raw.Contains("denied"))
+                return "Windows doesn't allow FastViewer to open this file.";
+            if (!video)
+                return raw.Contains("No imaging component") || raw.Contains("not valid") || raw.Contains("0x88982F")
+                    ? "This file is damaged, or it isn't really a photo."
+                    : "Windows couldn't read this photo (" + raw + ")";
+            bool? complete = VideoInfo.LooksComplete(file);
+            if (complete == false) return "This video file is damaged or incomplete (for example a download that didn't finish).";
+            if (complete == true)
+            {
+                string codec = VideoInfo.VideoCodec(file);
+                if (codec == "avc1" || codec == "avc3" || codec == "mp4v") // formats Windows always plays: it was busy (very fast switching, little memory)
+                    return "Windows couldn't play this video just now. Go to another file and back to try again.";
+                return codec == "hvc1" || codec == "hev1"
+                    ? "This is an HEVC video (iPhones and many phones record these). Windows needs\n\"HEVC Video Extensions\" from the Microsoft Store to play it."
+                    : "Windows can't play the kind of video in this file (" + (codec ?? "unknown format") + ").";
+            }
+            return "Windows can't play this video. It may be damaged, or it needs a codec that isn't installed.";
+        }
+
         void StopSlideshow()
         {
             slideshow = false;
             slideTimer.Stop();
+            SetSlideshowButton();
         }
 
         // ---------------------------------------------------------------- file details, info pane
@@ -1620,6 +1724,7 @@ namespace FastViewer
         {
             infoOpen = !infoOpen;
             infoCol.Width = new GridLength(infoOpen && !fullscreen ? 320 : 0);
+            PlaceBars(); // floating bars (Clean) dock while the pane is open, so they don't cover it
             if (infoOpen) FillInfo();
         }
 
@@ -1633,8 +1738,8 @@ namespace FastViewer
             AddInfo("Folder", fi.DirectoryName);
             try
             {
-                AddInfo("Date modified", fi.LastWriteTime.ToString("f"));
-                AddInfo("Date created", fi.CreationTime.ToString("f"));
+                AddInfo("Date modified", InfoDate(fi.LastWriteTime));
+                AddInfo("Date created", InfoDate(fi.CreationTime));
                 AddInfo("Size", FormatSize(fi.Length) + "  (" + fi.Length.ToString("N0") + " bytes)");
             }
             catch { }
@@ -1776,6 +1881,7 @@ namespace FastViewer
         {
             var menu = new ContextMenu { PlacementTarget = F<Button>(button), Placement = placement, VerticalOffset = 4 };
             foreach (var i in items) menu.Items.Add(i);
+            if (huntMenuHook != null) { huntMenuHook(menu, F<Button>(button)); return; } // tests: drawn inside the window instead
             openMenus++; // a menu sits outside the window; don't fade the controls under it
             menu.Closed += delegate { openMenus--; };
             menu.IsOpen = true;
@@ -1822,16 +1928,16 @@ namespace FastViewer
                                Math.Abs(speed - value) < 0.01 ? "" : null, delegate { SetSpeed(value); }));
             }
             items.Add(new Separator());
-            items.Add(Item("Repeat", loop ? "" : null, ToggleLoop, "R"));
+            items.Add(Item("Repeat", loop ? "" : null, ToggleLoop, KeyOf("repeat")));
             items.Add(Item("Save a frame", "", SaveFrame, KeyOf("saveFrame")));
             items.Add(new Separator());
-            items.Add(Item("Previous frame", "\uE76B", delegate { StepFrame(-1); }, ","));
-            items.Add(Item("Next frame", "\uE76C", delegate { StepFrame(1); }, "."));
-            items.Add(Item("Loop from here (A)", "\uE8EE", SetLoopStart, "["));
-            items.Add(Item("Loop until here (B)", "\uE8EE", SetLoopEnd, "]"));
-            if (loopA != null || loopB != null) items.Add(Item("Stop A-B loop", "\uE711", ClearLoop, "\\"));
+            items.Add(Item("Previous frame", "\uE76B", delegate { StepFrame(-1); }, KeyOf("frameBack")));
+            items.Add(Item("Next frame", "\uE76C", delegate { StepFrame(1); }, KeyOf("frameForward")));
+            items.Add(Item("Loop from here (A)", "\uE8EE", SetLoopStart, KeyOf("loopA")));
+            items.Add(Item("Loop until here (B)", "\uE8EE", SetLoopEnd, KeyOf("loopB")));
+            if (loopA != null || loopB != null) items.Add(Item("Stop A-B loop", "\uE711", ClearLoop, KeyOf("loopStop")));
             items.Add(new Separator());
-            items.Add(Item("Trim...", "\uE7A8", StartTrim, "Ctrl+T"));
+            items.Add(Item("Trim...", "\uE7A8", StartTrim, KeyOf("trim")));
             items.Add(Item("Make compatible copy...", "\uE8C8", MakeCompatibleCopy, KeyOf("compatible")));
             items.AddRange(HiddenButtonItems(true));
             ShowMenu("VideoMoreBtn", PlacementMode.Top, items.ToArray());
@@ -1840,8 +1946,8 @@ namespace FastViewer
         void ShowZoomMenu()
         {
             ShowMenu("ZoomBtn", PlacementMode.Top,
-                Item("Fit to window", "", delegate { SetZoom(1, StageCenter()); }, "0"),
-                Item("Actual size (100%)", null, delegate { ZoomToPercent(100); }),
+                Item("Fit to window", "", delegate { SetZoom(1, StageCenter()); }, KeyOf("fit")),
+                Item("Actual size (100%)", null, delegate { ZoomToPercent(100); }, KeyOf("actualSize")),
                 Item("200%", null, delegate { ZoomToPercent(200); }),
                 Item("400%", null, delegate { ZoomToPercent(400); }));
         }
@@ -2005,6 +2111,7 @@ namespace FastViewer
         void UpdateWindowFrame()
         {
             maxIcon.Code = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
+            F<Button>("MaxBtn").ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
             // A maximized window hangs over the screen edge by its (invisible) border; pad it back in.
             if (WindowState == WindowState.Maximized && !fullscreen)
             {
@@ -2016,8 +2123,9 @@ namespace FastViewer
         }
 
         // The top and bottom bars float over the picture and fade with the other controls in full screen, and
-        // always in looks like Clean (Look.BarsFloat), except while Settings or the grid is open.
-        bool Floating { get { return !mini && (fullscreen || (barsFloat && !settingsOpen && !gridOpen)); } }
+        // always in looks like Clean (Look.BarsFloat), except while Settings or the grid is open. Settings docks them in
+        // full screen too (they'd sit on its Back button and title); the grid covers them there instead.
+        bool Floating { get { return !mini && !settingsOpen && (fullscreen || (barsFloat && !gridOpen && !infoOpen)); } }
 
         void PlaceBars()
         {
@@ -2082,6 +2190,7 @@ namespace FastViewer
                 Width = (mi.Monitor.Right - mi.Monitor.Left) / d;
                 Height = (mi.Monitor.Bottom - mi.Monitor.Top) / d;
                 ResizeMode = ResizeMode.NoResize;
+                F<FrameworkElement>("MinBtn").Visibility = F<FrameworkElement>("MaxBtn").Visibility = Visibility.Collapsed; // full screen: only Close
                 PlaceBars();
             }
             else
@@ -2094,6 +2203,7 @@ namespace FastViewer
                 stage.SetResourceReference(Panel.BackgroundProperty, "StageBg");
                 cover.SetResourceReference(Border.BackgroundProperty, "CoverBg");
                 ResizeMode = ResizeMode.CanResize;
+                F<FrameworkElement>("MinBtn").Visibility = F<FrameworkElement>("MaxBtn").Visibility = Visibility.Visible;
                 Left = boundsBeforeFullscreen.Left;
                 Top = boundsBeforeFullscreen.Top;
                 Width = boundsBeforeFullscreen.Width;
@@ -2310,6 +2420,7 @@ namespace FastViewer
             int oldFilter = filter, oldOrder = order;
             LoadSettings(false, true);
             if (root == null) return;
+            if (slots.Length != 2 * preloadAhead + 2) SetPreload(preloadAhead); // Preload changed in another window: as many players as it needs
             ApplyLook();
             if (shortcuts != null)
             {

@@ -149,11 +149,11 @@ namespace FastViewer
             }
         }
 
-        // A small mini player gets a smaller play button (and no control bar, see UpdateControls).
+        // A small window or mini player gets a smaller play button (a small mini player also no control bar, see UpdateControls).
         void UpdateMiniUi()
         {
             if (centerPlayBtn == null) return;
-            double k = mini && stage.ActualWidth < 420 ? 0.6 : 1;
+            double k = stage.ActualWidth < 520 || stage.ActualHeight < 340 ? 0.6 : 1; // small windows and the mini player
             centerPlayBtn.LayoutTransform = new ScaleTransform(k, k);
             if (shown != null) UpdateControls();
         }

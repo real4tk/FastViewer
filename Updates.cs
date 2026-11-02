@@ -14,6 +14,7 @@ using System.Reflection;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace FastViewer
 {
@@ -24,8 +25,11 @@ namespace FastViewer
 
         bool autoUpdate = true;          // check when FastViewer starts, at most about once a day (Settings)
         DateTime lastUpdateCheck;
-        string updateFeed;               // test runs: --update-feed <local .json>
+        string updateFeed;               // test runs: --update-feed <local .json, or a file saying "refused" to act like GitHub saying no>
+        string updatePage;               // test runs: --update-page <local file holding where releases/latest leads>
         bool updateTestAccept;           // test runs: --update-test (accepts the update by itself)
+        bool testRun;                    // started with any --option: never contacts GitHub (see Feed)
+        DispatcherTimer updateRetry;
 
         class Release
         {
@@ -33,13 +37,22 @@ namespace FastViewer
             public string ZipUrl;
         }
 
+        // GitHub said no: too many questions from this internet connection for now (it allows 60 an hour).
+        class RefusedException : Exception
+        {
+            public RefusedException() : base("GitHub is busy right now") { }
+        }
+
         static Version CurrentVersion { get { return Assembly.GetExecutingAssembly().GetName().Version; } }
+
+        const string DownloadPrefix = "https://github.com/" + UpdateRepo + "/releases/download/";
 
         string Feed
         {
             get
             {
                 if (updateFeed != null) return updateFeed;
+                if (testRun) return null; // tests only ever use a local feed, so they can't use up GitHub's limit
                 return UpdateRepo.Length == 0 ? null : "https://api.github.com/repos/" + UpdateRepo + "/releases/latest";
             }
         }
@@ -65,26 +78,47 @@ namespace FastViewer
             string feed = Feed;
             if (feed == null)
             {
-                if (manual) ShowToast("Updates aren't set up in this version yet.", null, null, 4, null);
+                if (manual) ShowToast(testRun ? "Test run: updates are only checked with a local test feed." : "Updates aren't set up in this version yet.", null, null, 4, null);
                 return;
             }
+            if (updateRetry != null) updateRetry.Stop();
             if (manual) ShowToast("Checking for updates...", null, null, 0, "update");
             var thread = new Thread(delegate()
             {
                 Release latest = null;
                 string error = null;
+                bool busy = false;
                 try { latest = FetchLatest(feed); }
-                catch (Exception ex) { error = ex.Message; }
+                catch (Exception ex)
+                {
+                    // GitHub's API answers only 60 questions an hour per internet connection. The normal releases
+                    // page has no such limit: ask that instead.
+                    busy = IsRefusal(ex);
+                    try
+                    {
+                        latest = FetchFromReleasesPage();
+                        if (updateTestAccept) Log("API refused or failed (" + ex.Message + "), used the releases page");
+                    }
+                    catch (Exception ex2)
+                    {
+                        busy |= IsRefusal(ex2);
+                        error = ex.Message;
+                    }
+                }
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    if (updateTestAccept) Log("checked: " + (error ?? (latest == null ? "no usable release" : latest.Version + " at " + latest.ZipUrl)));
-                    lastUpdateCheck = DateTime.Now;
-                    SaveSettings();
+                    if (updateTestAccept) Log("checked: " + (error != null ? (busy ? "busy: " : "error: ") + error : latest == null ? "no usable release" : latest.Version + " at " + latest.ZipUrl));
                     if (error != null)
                     {
-                        if (manual) ShowToast("Couldn't check for updates: " + error, null, null, 6, "update");
+                        // Not counted as a check: FastViewer tries again by itself in a while (and when it next starts).
+                        RetryUpdateCheckLater();
+                        if (manual)
+                            ShowToast(busy ? "GitHub is busy right now. FastViewer will try again later."
+                                           : "Couldn't reach GitHub to check for updates. FastViewer will try again later.", null, null, 6, "update");
                         return;
                     }
+                    lastUpdateCheck = DateTime.Now;
+                    SaveSettings();
                     if (latest == null || latest.Version <= CurrentVersion)
                     {
                         if (manual) ShowToast("You have the latest version (" + CurrentVersion.ToString(3) + ").", null, null, 4, "update");
@@ -100,11 +134,32 @@ namespace FastViewer
             thread.Start();
         }
 
+        // A quiet second try, half an hour later, while this window stays open.
+        void RetryUpdateCheckLater()
+        {
+            if (updateRetry == null)
+            {
+                updateRetry = new DispatcherTimer { Interval = TimeSpan.FromMinutes(updateTestAccept ? 0.05 : 30) };
+                updateRetry.Tick += delegate { updateRetry.Stop(); if (autoUpdate || updateTestAccept) CheckForUpdates(false); };
+            }
+            updateRetry.Stop();
+            updateRetry.Start();
+        }
+
+        static bool IsRefusal(Exception ex)
+        {
+            if (ex is RefusedException) return true;
+            var web = ex as WebException;
+            var response = web == null ? null : web.Response as HttpWebResponse;
+            return response != null && ((int)response.StatusCode == 403 || (int)response.StatusCode == 429);
+        }
+
         Release FetchLatest(string feed)
         {
             string json;
             if (File.Exists(feed)) json = File.ReadAllText(feed);
             else using (var web = NewWebClient()) json = web.DownloadString(feed);
+            if (json.Trim() == "refused") throw new RefusedException(); // test runs: GitHub saying no
 
             var data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
             Version version;
@@ -115,13 +170,56 @@ namespace FastViewer
                 var asset = (Dictionary<string, object>)item;
                 string name = (string)asset["name"], url = (string)asset["browser_download_url"];
                 if (!name.StartsWith("FastViewer", StringComparison.OrdinalIgnoreCase) || !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
-                // Only download from this FastViewer's own GitHub page (or a local file in test runs).
-                bool trusted = updateFeed != null
-                    ? File.Exists(url)
-                    : url.StartsWith("https://github.com/" + UpdateRepo + "/releases/download/", StringComparison.OrdinalIgnoreCase);
-                if (trusted) release.ZipUrl = url;
+                if (Trusted(url)) release.ZipUrl = url;
             }
             return release.ZipUrl == null ? null : release;
+        }
+
+        // Only download from this FastViewer's own GitHub page (or a local file in test runs).
+        bool Trusted(string url)
+        {
+            return updateFeed != null ? File.Exists(url) || url.StartsWith(DownloadPrefix, StringComparison.OrdinalIgnoreCase)
+                                      : url.StartsWith(DownloadPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // github.com/<repo>/releases/latest leads to .../releases/tag/v1.15.4; the zip of that release is always
+        // FastViewer-1.15.4.zip (that's how releases are made), and it's only offered if it's really there.
+        Release FetchFromReleasesPage()
+        {
+            string location;
+            if (testRun)
+            {
+                if (updatePage == null) throw new Exception("no releases page in this test");
+                location = File.ReadAllText(updatePage).Trim();
+                if (location == "refused") throw new RefusedException();
+            }
+            else
+            {
+                var request = (HttpWebRequest)WebRequest.Create("https://github.com/" + UpdateRepo + "/releases/latest");
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+                request.AllowAutoRedirect = false;
+                request.Method = "HEAD";
+                request.UserAgent = "FastViewer/" + CurrentVersion.ToString(3);
+                request.Timeout = 15000;
+                using (var response = (HttpWebResponse)request.GetResponse()) location = response.Headers["Location"] ?? "";
+            }
+            const string marker = "/releases/tag/";
+            int at = location.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return null;
+            string tag = Uri.UnescapeDataString(location.Substring(at + marker.Length).Trim('/'));
+            Version version;
+            if (!Version.TryParse(tag.TrimStart('v', 'V'), out version)) return null;
+            version = Normalize(version);
+            string zip = DownloadPrefix + Uri.EscapeDataString(tag) + "/FastViewer-" + version.ToString(3) + ".zip";
+            if (!testRun)
+            {
+                var check = (HttpWebRequest)WebRequest.Create(zip);
+                check.Method = "HEAD";
+                check.UserAgent = "FastViewer/" + CurrentVersion.ToString(3);
+                check.Timeout = 15000;
+                using (check.GetResponse()) { } // throws if the release has no such zip
+            }
+            return new Release { Version = version, ZipUrl = zip };
         }
 
         static Version Normalize(Version v) // 1.8.0 and 1.8.0.0 are the same version
@@ -151,6 +249,7 @@ namespace FastViewer
                     Directory.CreateDirectory(temp);
                     string zip = Path.Combine(temp, "update.zip"), fresh = Path.Combine(temp, "FastViewer.exe");
                     if (File.Exists(release.ZipUrl)) File.Copy(release.ZipUrl, zip);
+                    else if (testRun) throw new Exception("test run: would download " + release.ZipUrl); // tests never download from GitHub
                     else using (var web = NewWebClient()) web.DownloadFile(release.ZipUrl, zip);
 
                     using (var archive = ZipFile.OpenRead(zip))

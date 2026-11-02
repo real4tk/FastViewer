@@ -13,8 +13,19 @@
     <Setter Property="HorizontalAlignment" Value="Center"/>
   </Style>
 
-  <!-- Buttons: one template, a translucent layer shows on hover. -->
-  <ControlTemplate x:Key="ButtonTemplate" TargetType="Button">
+  <!-- Keyboard focus (Tab in Settings): a rounded ring around the control, like Windows 11. Only shown when
+       the keyboard moved the focus, never on mouse clicks. -->
+  <Style x:Key="FocusRing">
+    <Setter Property="Control.Template">
+      <Setter.Value>
+        <ControlTemplate>
+          <Border Margin="-3" BorderThickness="2" BorderBrush="{DynamicResource TextMain}" CornerRadius="7" SnapsToDevicePixels="True"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- Buttons: one template, a translucent layer shows on hover. -->  <ControlTemplate x:Key="ButtonTemplate" TargetType="Button">
     <Grid>
       <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
               BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource Radius.Control}"/>
@@ -49,6 +60,7 @@
     <Setter Property="HorizontalContentAlignment" Value="Center"/>
     <Setter Property="VerticalAlignment" Value="Center"/>
     <Setter Property="Focusable" Value="False"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
     <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
     <Style.Triggers>
       <Trigger Property="IsMouseOver" Value="True">
@@ -136,6 +148,7 @@
   <Style x:Key="ToggleSwitch" TargetType="CheckBox">
     <Setter Property="OverridesDefaultStyle" Value="True"/>
     <Setter Property="Focusable" Value="False"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
     <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
     <Setter Property="VerticalAlignment" Value="Center"/>
     <Setter Property="Template">
