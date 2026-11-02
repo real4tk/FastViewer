@@ -190,7 +190,7 @@ namespace FastViewer
                 t.MouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e)
                 {
                     int d = ((Tile)o).Offset;
-                    if (((Tile)o).File != null && d != 0) ShowIndex(index + d, Math.Sign(d));
+                    if (((Tile)o).File != null && d != 0 && !DialogOpen) ShowIndex(index + d, Math.Sign(d));
                     e.Handled = true;
                 };
                 strip.Children.Add(t);

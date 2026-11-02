@@ -101,12 +101,12 @@ namespace FastViewer
                 sortedFiles = sortedList;
                 var have = new HashSet<string>(sortedList, StringComparer.OrdinalIgnoreCase);
                 list = files.Where(have.Contains).ToList();
+                var known = new HashSet<string>(list, StringComparer.OrdinalIgnoreCase);
                 var random = new Random();
-                foreach (var f in sortedList.Where(f => !list.Contains(f, StringComparer.OrdinalIgnoreCase)))
-                {
-                    int at = Math.Max(0, list.FindIndex(x => string.Equals(x, current, StringComparison.OrdinalIgnoreCase))) + 1;
-                    list.Insert(at + random.Next(Math.Max(1, list.Count - at + 1)), f);
-                }
+                // (inserting after the current file never moves it, so its place is looked up once)
+                int at = Math.Max(0, list.FindIndex(x => string.Equals(x, current, StringComparison.OrdinalIgnoreCase))) + 1;
+                foreach (var f in sortedList.Where(f => !known.Contains(f)))
+                    list.Insert(Math.Min(list.Count, at + random.Next(Math.Max(1, list.Count - at + 1))), f);
             }
             if (list.SequenceEqual(files, StringComparer.OrdinalIgnoreCase)) return;
             int oldIndex = index;

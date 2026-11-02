@@ -5,6 +5,30 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.15.4  (2 Nov 2026)
+  Fixed (found in a big stress test: thousands of fast switches, odd files, broken settings)
+  - A video you skipped past just as it was starting (next, then quickly back) kept playing out of
+    sight, with sound, and was already over when you went to it.
+  - The Delete message named one file, but if the mouse wheel, a mouse side button or the slideshow
+    moved on while it was open, OK deleted the file shown by then. Now it always deletes the file it
+    names, and nothing moves on while it's open.
+  - A damaged or hand-edited settings.ini could stop FastViewer from starting at all, or quietly reset
+    every setting after one unreadable line. Unreadable lines are now skipped (and noted in
+    %TEMP%\FastViewer\crash.txt) and odd values are kept within range.
+  - Leaving Settings while a shortcut box said "Press a key..." made the next key you pressed
+    anywhere become that shortcut.
+  - With "Also save it to the file" on, a photo you rotated and then quickly left wasn't saved.
+  - Updating with a second FastViewer window open (or one waiting in the background) failed with
+    "Windows doesn't allow changing files". Updating now works, and the FastViewer waiting in the
+    background makes way for the new version.
+  - Folders with thousands of files sorted by date (or with shuffle on) froze FastViewer for seconds,
+    also each time a file was added. Now well under half a second.
+  - Animated GIFs used far too much memory (over 2 GB for a folder of HD GIFs): only the GIF on
+    screen keeps its frames now.
+  - Closing the window while "Saving clip" or "Make compatible copy" was still busy left a broken,
+    half-written video. The window now disappears and FastViewer closes once the video is saved.
+  - Where you left off in videos: several FastViewer windows wiped out each other's places, and the
+    list of 300 forgot videos you had just watched again.
 1.15.3  (2 Nov 2026)
   Fixed
   - The mouse wheel over the speaker button changes the volume again (it stopped in 1.15.0, when

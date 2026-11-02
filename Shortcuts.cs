@@ -278,6 +278,7 @@ namespace FastViewer
         bool CaptureKey(KeyEventArgs e)
         {
             if (capturing == null) return false;
+            if (!settingsOpen) { capturing = null; return false; } // only while Settings shows the key box
             Key key = e.Key == Key.System ? e.SystemKey : e.Key;
             if (key == Key.LeftCtrl || key == Key.RightCtrl || key == Key.LeftShift || key == Key.RightShift ||
                 key == Key.LeftAlt || key == Key.RightAlt || key == Key.LWin || key == Key.RWin) return true; // wait for the real key

@@ -47,12 +47,12 @@ namespace FastViewer
                 case "wheelZooms": wheelZooms = v == "1"; break;
                 case "actualSize": smallActualSize = v == "1"; break;
                 case "wrap": wrapAround = v == "1"; break;
-                case "hideDelay": hideDelay = double.Parse(v, CultureInfo.InvariantCulture); break;
-                case "slideSeconds": slideSeconds = int.Parse(v, CultureInfo.InvariantCulture); break;
-                case "filter": filter = int.Parse(v, CultureInfo.InvariantCulture); break;
-                case "order": order = int.Parse(v, CultureInfo.InvariantCulture); break;
-                case "skipBack": skipBack = int.Parse(v, CultureInfo.InvariantCulture); break;
-                case "skipForward": skipForward = int.Parse(v, CultureInfo.InvariantCulture); break;
+                case "hideDelay": hideDelay = Clamp(Num(v), 0, 60, 2.5); break;
+                case "slideSeconds": slideSeconds = (int)Clamp(Num(v), 1, 60, 4); break;
+                case "filter": filter = (int)Clamp(Num(v), 0, 2, 0); break;
+                case "order": order = (int)Clamp(Num(v), 0, 3, 0); break;
+                case "skipBack": skipBack = (int)Clamp(Num(v), 1, 600, 10); break;
+                case "skipForward": skipForward = (int)Clamp(Num(v), 1, 600, 30); break;
                 case "pinned": pinned = v == "1"; break;
                 case "preload": preloadAhead = Math.Max(1, Math.Min(3, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "resume": resumeVideos = v == "1"; break;
@@ -77,11 +77,13 @@ namespace FastViewer
                     else if (key.StartsWith("mouse.") && mouseActions.ContainsKey(key.Substring(6))) mouseActions[key.Substring(6)] = v;
                     break;
                 case "lastUpdateCheck": lastUpdateCheck = new DateTime(long.Parse(v, CultureInfo.InvariantCulture)); break;
-                case "miniLong": miniLong = double.Parse(v, CultureInfo.InvariantCulture); break;
-                case "miniLeft": miniLeft = double.Parse(v, CultureInfo.InvariantCulture); break;
-                case "miniTop": miniTop = double.Parse(v, CultureInfo.InvariantCulture); break;
+                case "miniLong": miniLong = Clamp(Num(v), 120, 4000, 480); break;
+                case "miniLeft": miniLeft = Num(v); break;
+                case "miniTop": miniTop = Num(v); break;
             }
         }
+
+        static double Num(string v) { return double.Parse(v, NumberStyles.Float, CultureInfo.InvariantCulture); }
 
         IEnumerable<string> OptionLines()
         {
@@ -133,11 +135,12 @@ namespace FastViewer
         {
             if (order < 2) return; // 0: Explorer order is applied afterwards; 1: name order is already done
             var dates = list.ToDictionary(f => f, f => File.GetLastWriteTime(f), StringComparer.OrdinalIgnoreCase);
-            var named = list.ToList(); // stable tie-break on name
+            var named = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); // stable tie-break on name
+            for (int i = 0; i < list.Count; i++) named[list[i]] = i;
             list.Sort((a, b) =>
             {
                 int c = dates[a].CompareTo(dates[b]);
-                if (c == 0) return named.IndexOf(a).CompareTo(named.IndexOf(b));
+                if (c == 0) return named[a].CompareTo(named[b]); // (copied or unzipped files often share a time)
                 return order == 2 ? -c : c;
             });
         }
@@ -259,6 +262,11 @@ namespace FastViewer
         void CloseSettings()
         {
             settingsOpen = false;
+            if (capturing != null) // a key box was still waiting: leaving Settings cancels it
+            {
+                capturing = null;
+                RefreshShortcutEditors();
+            }
             F<FrameworkElement>("SettingsPage").Visibility = Visibility.Collapsed;
             PlaceBars();
         }
@@ -583,8 +591,9 @@ namespace FastViewer
                 Height = 32,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch
             };
-            text.Text = options[get()];
-            settingsRefresh.Add(delegate { text.Text = options[get()]; });
+            Func<int> at = () => Math.Max(0, Math.Min(options.Length - 1, get())); // never past the list, whatever settings.ini says
+            text.Text = options[at()];
+            settingsRefresh.Add(delegate { text.Text = options[at()]; });
             b.Click += delegate
             {
                 var menu = new ContextMenu { PlacementTarget = b, Placement = PlacementMode.Bottom, MinWidth = b.ActualWidth, VerticalOffset = 2 };
@@ -618,6 +627,7 @@ namespace FastViewer
             rotations.TryGetValue(file, out from);
             int to = (from + 90) % 360;
             rotations[file] = to;
+            AfterPhotoRotated(file); // saved into the file a moment later (if that's on), even if you switch away first
             ResetZoom(s);
             RequestStripUpdate(); // its thumbnail turns too
 
@@ -634,7 +644,6 @@ namespace FastViewer
                 UpdateZoomUi();
                 UpdateScrim();
                 if (mini) FitMiniWindow(false);
-                AfterPhotoRotated();
             };
             s.Rotation.BeginAnimation(RotateTransform.AngleProperty, turn);
             UpdateZoomUi();

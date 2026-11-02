@@ -48,10 +48,11 @@ namespace FastViewer
         void StartupUpdateCheck()
         {
             // Left over from the last update (the old program can't delete itself while running).
+            string exe = Assembly.GetExecutingAssembly().Location;
             try
             {
-                string old = Assembly.GetExecutingAssembly().Location + ".old";
-                if (File.Exists(old)) File.Delete(old);
+                foreach (var old in Directory.GetFiles(Path.GetDirectoryName(exe), Path.GetFileName(exe) + ".old*"))
+                    try { File.Delete(old); } catch { } // still in use by an older window: next time
             }
             catch { }
             bool due = autoUpdate && (DateTime.Now - lastUpdateCheck).TotalHours >= 20;
@@ -163,7 +164,14 @@ namespace FastViewer
 
                     // Swap: a running program's file can be renamed, so move this one aside and put the new one in its place.
                     string old = exe + ".old";
-                    if (File.Exists(old)) File.Delete(old);
+                    if (File.Exists(old))
+                    {
+                        // Another FastViewer window (or the one waiting in the background) may still run from the last
+                        // update's old file: it can't be deleted then, but it can be moved out of the way.
+                        try { File.Delete(old); }
+                        catch (UnauthorizedAccessException) { File.Move(old, exe + ".old-" + Guid.NewGuid().ToString("N").Substring(0, 8)); }
+                        catch (IOException) { File.Move(old, exe + ".old-" + Guid.NewGuid().ToString("N").Substring(0, 8)); }
+                    }
                     File.Move(exe, old);
                     try { File.Copy(fresh, exe); }
                     catch
@@ -193,7 +201,12 @@ namespace FastViewer
                     SaveSettings();
                     PrepareRestart(); // the new version takes over receiving files
                     if (!updateTestAccept)
-                        Process.Start(exe, CurrentFile == null ? "" : "\"" + CurrentFile + "\"");
+                    {
+                        // A FastViewer waiting in the background still runs the old version: it quits, and the new one
+                        // opens in a window of its own (--updated: not handed to the old one on the way).
+                        SingleInstance.AskBackgroundToQuit();
+                        Process.Start(exe, (CurrentFile == null ? "" : "\"" + CurrentFile + "\" ") + "--updated");
+                    }
                     Close();
                 }));
             });

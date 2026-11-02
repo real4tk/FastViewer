@@ -95,15 +95,50 @@ namespace FastViewer
 
         // ---------------------------------------------------------------- animated GIFs
 
+        // Only the GIF on screen keeps its frames (all frames of a big GIF can take hundreds of MB, and the files
+        // around it are kept ready too). They're decoded in the background when it shows; it plays when they're there.
         void UpdateGif()
         {
             gifTimer.Stop();
             var s = shown;
-            if (s == null || s.Gif == null) return;
+            foreach (var other in slots)
+                if (other != s && other.Gif != null)
+                {
+                    other.Gif = null;
+                    if (other.GifState == 1) other.GifState = 0;
+                }
+            if (s == null || !s.Ready || s.Failed || !IsGifFile(s.File)) return;
+            if (s.Gif == null)
+            {
+                LoadGif(s);
+                return;
+            }
             s.GifFrame = 0;
             s.Picture.Source = s.Gif.Frames[0];
             gifTimer.Interval = TimeSpan.FromMilliseconds(s.Gif.DelaysMs[0]);
             gifTimer.Start();
+        }
+
+        void LoadGif(Slot s)
+        {
+            if (s.GifState != 0) return; // already loading, or a still GIF
+            s.GifState = 1;
+            int token = s.Token;
+            string file = s.File;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                GifAnimation gif = null;
+                try { gif = GifAnimation.Load(file); }
+                catch { }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (s.Token != token || s.GifState != 1) return; // reused for another file, or you moved on
+                    s.GifState = gif == null ? 2 : 0;
+                    if (gif == null || s != shown) return;
+                    s.Gif = gif;
+                    UpdateGif();
+                }));
+            });
         }
 
         void NextGifFrame()
@@ -122,9 +157,13 @@ namespace FastViewer
         // ---------------------------------------------------------------- save a photo's rotation
 
         // After rotating a photo: saves it into the file a moment later, if that's switched on in Settings.
-        void AfterPhotoRotated()
+        // Photos turned but not saved yet. Remembered by file, so switching to the next photo right away still saves it.
+        readonly System.Collections.Generic.HashSet<string> rotationsToSave = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AfterPhotoRotated(string file)
         {
-            if (!saveRotation || shown == null || shown.IsVideo) return;
+            if (!saveRotation || file == null || IsVideoFile(file)) return;
+            rotationsToSave.Add(file);
             rotationSaveTimer.Stop();
             rotationSaveTimer.Tick -= OnRotationSaveTimer;
             rotationSaveTimer.Tick += OnRotationSaveTimer;
@@ -134,7 +173,16 @@ namespace FastViewer
         void OnRotationSaveTimer(object sender, EventArgs e)
         {
             rotationSaveTimer.Stop();
-            SaveRotationToFile();
+            SaveWaitingRotations();
+        }
+
+        // Also when the window closes or goes to the background, so a turn made just before isn't lost.
+        void SaveWaitingRotations()
+        {
+            rotationSaveTimer.Stop();
+            var waiting = new System.Collections.Generic.List<string>(rotationsToSave);
+            rotationsToSave.Clear();
+            foreach (var file in waiting) SaveRotationToFile(file);
         }
 
         // Writes the rotation into the photo. JPEGs: only the "orientation" tag changes, so there's no
@@ -142,10 +190,16 @@ namespace FastViewer
         // keeps its place in the folder.
         void SaveRotationToFile()
         {
-            var s = shown;
+            if (shown != null && !shown.IsVideo && !shown.Failed) SaveRotationToFile(shown.File);
+        }
+
+        void SaveRotationToFile(string file)
+        {
             int turn;
-            if (s == null || s.IsVideo || s.Failed || !rotations.TryGetValue(s.File, out turn) || turn == 0) return;
-            string file = s.File, ext = Path.GetExtension(file).ToLowerInvariant();
+            if (file == null || IsVideoFile(file) || !rotations.TryGetValue(file, out turn) || turn == 0) return;
+            rotationsToSave.Remove(file);
+            string ext = Path.GetExtension(file).ToLowerInvariant(), name = Path.GetFileName(file);
+            bool onScreen = shown != null && string.Equals(shown.File, file, StringComparison.OrdinalIgnoreCase);
             try
             {
                 var modified = File.GetLastWriteTime(file);
@@ -154,22 +208,27 @@ namespace FastViewer
                 File.SetLastWriteTime(file, modified);
 
                 rotations.Remove(file);
-                s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
-                s.Rotation.Angle = 0;
-                int fullWidth, fullHeight;
-                var picture = DecodeImage(file, Math.Min(ScreenSide, MaxDecodeSide), out fullWidth, out fullHeight);
-                s.Picture.Source = picture;
-                s.FullWidth = fullWidth;
-                s.FullHeight = fullHeight;
-                s.Reduced = Math.Max(picture.PixelWidth, picture.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
+                // The player holding it (on screen, or ready next to it) shows the saved file, upright.
+                foreach (var s in slots)
+                {
+                    if (!string.Equals(s.File, file, StringComparison.OrdinalIgnoreCase) || s.Failed || !s.Ready) continue;
+                    s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
+                    s.Rotation.Angle = 0;
+                    int fullWidth, fullHeight;
+                    var picture = DecodeImage(file, Math.Min(ScreenSide, MaxDecodeSide), out fullWidth, out fullHeight);
+                    s.Picture.Source = picture;
+                    s.FullWidth = fullWidth;
+                    s.FullHeight = fullHeight;
+                    s.Reduced = Math.Max(picture.PixelWidth, picture.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
+                }
                 RefreshThumbnail(file);
                 UpdateZoomUi();
                 UpdateFacts();
-                ShowToast("Rotation saved to the file" + (done ? " (no quality lost)." : "."), null, null, 3, null);
+                ShowToast((onScreen ? "Rotation saved to the file" : "Rotation of " + name + " saved to the file") + (done ? " (no quality lost)." : "."), null, null, 3, null);
             }
             catch (Exception ex)
             {
-                ShowToast("Couldn't save the rotation: " + ex.Message, null, null, 6, null);
+                ShowToast("Couldn't save the rotation of " + name + ": " + ex.Message, null, null, 6, null);
             }
         }
 

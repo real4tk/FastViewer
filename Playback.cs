@@ -19,7 +19,7 @@ namespace FastViewer
         bool resumeVideos = true;  // continue long videos where you stopped (Settings)
         const double ResumeMinSeconds = 60;
 
-        static readonly string PositionsFile = Path.Combine(
+        static string PositionsFile = Path.Combine( // --positions <file>: tests use a scratch file
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FastViewer", "positions.txt");
         readonly Dictionary<string, double> positions = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         bool positionsLoaded;
@@ -60,7 +60,7 @@ namespace FastViewer
                 ShowToast("Continuing where you left off (" + Fmt(TimeSpan.FromSeconds(saved)) + ")", "Start over", delegate
                 {
                     if (shown != null && shown.File == file) shown.Video.Position = TimeSpan.Zero;
-                    positions.Remove(file);
+                    ForgetPosition(file);
                     HideToast(null);
                 }, 4, "resume");
             }
@@ -69,33 +69,76 @@ namespace FastViewer
 
         // ---------------------------------------------------------------- resume
 
+        // Changes this window made since it last saved, oldest first (NaN = forgotten). Saving merges them into
+        // what's in the file now, so several FastViewer windows don't wipe out each other's places.
+        readonly List<KeyValuePair<string, double>> positionChanges = new List<KeyValuePair<string, double>>();
+        DateTime positionsReadAt;
+        bool positionsOverride;
+
+        // positions.txt, oldest first.
+        static List<KeyValuePair<string, double>> ReadPositionsFile()
+        {
+            var list = new List<KeyValuePair<string, double>>();
+            if (!File.Exists(PositionsFile)) return list;
+            foreach (var line in File.ReadAllLines(PositionsFile))
+            {
+                int bar = line.IndexOf('|');
+                double sec;
+                if (bar > 0 && double.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out sec))
+                    list.Add(new KeyValuePair<string, double>(line.Substring(bar + 1), sec));
+            }
+            return list;
+        }
+
         void LoadPositions()
         {
             if (positionsLoaded) return;
             positionsLoaded = true;
+            ReloadPositions();
+        }
+
+        // Also when the window comes to the front: another window may have saved places meanwhile.
+        void ReloadPositions()
+        {
             try
             {
-                if (!File.Exists(PositionsFile)) return;
-                foreach (var line in File.ReadAllLines(PositionsFile))
+                if (!File.Exists(PositionsFile) || File.GetLastWriteTimeUtc(PositionsFile) == positionsReadAt) return;
+                positionsReadAt = File.GetLastWriteTimeUtc(PositionsFile);
+                positions.Clear();
+                foreach (var p in ReadPositionsFile()) positions[p.Key] = p.Value;
+                foreach (var c in positionChanges) // this window's own changes win
                 {
-                    int bar = line.IndexOf('|');
-                    double sec;
-                    if (bar > 0 && double.TryParse(line.Substring(0, bar), System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out sec))
-                        positions[line.Substring(bar + 1)] = sec;
+                    if (double.IsNaN(c.Value)) positions.Remove(c.Key);
+                    else positions[c.Key] = c.Value;
                 }
             }
             catch { }
         }
 
+        void ForgetPosition(string file)
+        {
+            positions.Remove(file);
+            positionChanges.Add(new KeyValuePair<string, double>(file, double.NaN));
+        }
+
         void SavePositions()
         {
-            if (!positionsLoaded || snapDir != null || selfTestInterval > 0 || fadeTestLog != null) return;
+            if (!positionsLoaded || positionChanges.Count == 0 || ((snapDir != null || selfTestInterval > 0 || fadeTestLog != null) && !positionsOverride)) return;
             try
             {
+                var list = ReadPositionsFile();
+                foreach (var c in positionChanges)
+                {
+                    list.RemoveAll(p => string.Equals(p.Key, c.Key, StringComparison.OrdinalIgnoreCase));
+                    if (!double.IsNaN(c.Value)) list.Add(c); // at the end = most recent
+                }
+                positionChanges.Clear();
                 // Keep the 300 most recent.
-                File.WriteAllLines(PositionsFile, positions.Skip(Math.Max(0, positions.Count - 300))
+                File.WriteAllLines(PositionsFile, list.Skip(Math.Max(0, list.Count - 300))
                     .Select(p => p.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "|" + p.Key));
+                positionsReadAt = DateTime.MinValue;
+                ReloadPositions();
             }
             catch { }
         }
@@ -108,10 +151,13 @@ namespace FastViewer
             if (!d.HasTimeSpan) return;
             LoadPositions();
             double length = d.TimeSpan.TotalSeconds, at = s.Video.Position.TotalSeconds;
-            positions.Remove(s.File); // re-added at the end = most recent
-            if (resumeVideos && length >= ResumeMinSeconds && at >= 5 && at <= length - 5) positions[s.File] = at;
+            if (resumeVideos && length >= ResumeMinSeconds && at >= 5 && at <= length - 5)
+            {
+                positions[s.File] = at;
+                positionChanges.Add(new KeyValuePair<string, double>(s.File, at));
+            }
+            else if (positions.ContainsKey(s.File)) ForgetPosition(s.File); // watched to the end, or started over
         }
-
         // Puts a hidden video at its first frame, or where you left off. A freshly opened video is
         // already at its first frame (onlyIfResuming): seeking there anyway would slow switching down.
         void GoToResumePoint(Slot s, bool onlyIfResuming = false)
@@ -281,6 +327,19 @@ namespace FastViewer
             return dlg.FileName;
         }
 
+        bool closeWhenSaved;
+
+        // Closing while a clip or compatible copy is being saved would cut the file off half-way: the window
+        // disappears, the saving finishes, then FastViewer closes.
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            base.OnClosing(e); // saves settings; may go to the background instead (saving goes on there)
+            if (e.Cancel || !converting) return;
+            e.Cancel = true;
+            closeWhenSaved = true;
+            Hide();
+        }
+
         // Converts in the background with Windows' own video tools; progress shows in the pop-up.
         void RunConversion(string source, string target, TimeSpan? from, TimeSpan? to, string what)
         {
@@ -315,6 +374,7 @@ namespace FastViewer
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     converting = false;
+                    if (closeWhenSaved) Dispatcher.BeginInvoke(new Action(Close)); // the window was closed while saving
                     if (cancel.Cancelled || error != null)
                     {
                         try { if (File.Exists(target)) File.Delete(target); } catch { }

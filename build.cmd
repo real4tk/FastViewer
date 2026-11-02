@@ -18,4 +18,4 @@ set FW=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319
   /resource:Looks.Midnight.xaml,FastViewer.Looks.Midnight.xaml ^
   /resource:fonts\Inter-Regular.ttf,FastViewer.fonts.Inter-Regular.ttf ^
   /resource:fonts\Inter-SemiBold.ttf,FastViewer.fonts.Inter-SemiBold.ttf ^
-  FastViewer.cs Settings.cs Mini.cs VideoInfo.cs AssemblyInfo.cs Playback.cs Convert.cs Extras.cs FeatureTest.cs Updates.cs Shortcuts.cs FolderWatch.cs Background.cs Thumbs.cs Gallery.cs Looks.cs Appearance.cs
+  FastViewer.cs Settings.cs Mini.cs VideoInfo.cs AssemblyInfo.cs Playback.cs Convert.cs Extras.cs FeatureTest.cs Updates.cs Shortcuts.cs FolderWatch.cs Background.cs Thumbs.cs Gallery.cs Looks.cs Appearance.cs BugHunt.cs

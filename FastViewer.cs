@@ -280,7 +280,8 @@ namespace FastViewer
         public readonly Grid Rotor = new Grid();
         public readonly RotateTransform Rotation = new RotateTransform(0);
         public double FrameSeconds = 1 / 30.0;   // length of one video frame (for frame-by-frame)
-        public GifAnimation Gif;                  // frames of an animated GIF, or null
+        public GifAnimation Gif;                  // frames of an animated GIF, or null (only while it's on screen)
+        public int GifState;                      // 0 not looked at yet, 1 loading the frames, 2 a still GIF
         public int GifFrame;
         public int FullWidth, FullHeight;         // photo size in the file (the picture in memory may be smaller)
         public bool Reduced;                      // the picture in memory is screen-sized; zooming in loads the full one
@@ -391,6 +392,8 @@ namespace FastViewer
                 else if (args[i] == "--front") testInFront = true;
                 else if (args[i] == "--update-feed" && i + 1 < args.Length) updateFeed = args[++i];
                 else if (args[i] == "--update-test") updateTestAccept = true;
+                else if (args[i] == "--updated") { } // restarted by the updater (see InstallUpdate)
+                else if (args[i] == "--positions" && i + 1 < args.Length) { PositionsFile = args[++i]; positionsOverride = true; }
                 else if (args[i] == "--preload" && i + 1 < args.Length) preloadOverride = int.Parse(args[++i]);
                 else if (args[i] == "--features" && i + 1 < args.Length) { snapDir = args[++i]; featureTest = true; }
                 else if (args[i] == "--ui" && i + 1 < args.Length) { snapDir = args[++i]; uiTest = true; }
@@ -407,6 +410,11 @@ namespace FastViewer
                 else if (args[i] == "--dim" && i + 1 < args.Length) { snapDir = args[++i]; dimTest = true; }
                 else if (args[i] == "--sync" && i + 1 < args.Length) { snapDir = args[++i]; syncTest = true; }
                 else if (args[i] == "--toast" && i + 1 < args.Length) { snapDir = args[++i]; toastTest = true; }
+                else if (args[i] == "--hunt" && i + 1 < args.Length) { snapDir = args[++i]; huntTest = true; }
+                else if (args[i] == "--case" && i + 1 < args.Length) huntCase = args[++i];
+                else if (args[i] == "--pattern" && i + 1 < args.Length) huntPattern = args[++i];
+                else if (args[i] == "--count" && i + 1 < args.Length) huntCount = int.Parse(args[++i]);
+                else if (args[i] == "--every" && i + 1 < args.Length) huntEvery = int.Parse(args[++i]);
                 else if (args[i] == "--settings" && i + 1 < args.Length) { SettingsFile = args[++i]; settingsOverride = true; }
                 else if (args[i] == "--fadetest" && i + 1 < args.Length)
                 {
@@ -587,6 +595,7 @@ namespace FastViewer
                 string button = e.ChangedButton == MouseButton.XButton1 ? "back" : e.ChangedButton == MouseButton.XButton2 ? "forward"
                               : e.ChangedButton == MouseButton.Middle ? "middle" : null;
                 if (button == null) return;
+                if (DialogOpen) { e.Handled = true; return; }
                 if (gridOpen || settingsOpen) // the back button leaves the grid or Settings, like a browser
                 {
                     if (button == "back") { if (gridOpen) CloseGrid(); else CloseSettings(); e.Handled = true; }
@@ -623,7 +632,12 @@ namespace FastViewer
             idleTimer.Interval = TimeSpan.FromSeconds(hideDelay > 0 ? hideDelay : 2.5);
             idleTimer.Tick += delegate { HideOverlay(); };
             slideTimer.Interval = TimeSpan.FromSeconds(slideSeconds);
-            slideTimer.Tick += delegate { slideTimer.Stop(); Go(1); };
+            slideTimer.Tick += delegate
+            {
+                if (DialogOpen) return; // waits while "Delete this file?" is open
+                slideTimer.Stop();
+                Go(1);
+            };
 
             SourceInitialized += delegate
             {
@@ -631,8 +645,12 @@ namespace FastViewer
                 HwndSource.FromHwnd(new WindowInteropHelper(this).Handle).AddHook(WndProc);
                 if (testMode) SendToBack();
             };
-            Closing += delegate { RememberPosition(shown); SavePositions(); SaveSettings(true); };
-            Activated += delegate { SyncSettings(); }; // another window may have changed a setting
+            Closing += delegate { SaveWaitingRotations(); RememberPosition(shown); SavePositions(); SaveSettings(true); };
+            Activated += delegate // another window may have changed a setting, or saved where you were in a video
+            {
+                SyncSettings();
+                if (positionsLoaded) ReloadPositions();
+            };
 
             Loaded += delegate
             {
@@ -652,7 +670,7 @@ namespace FastViewer
                 if (path != null) OpenPath(path);
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
-                if (snapDir != null) { if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else if (dimTest) RunDimTest(); else if (syncTest) RunSyncTest(); else if (toastTest) RunToastTest(); else RunSnapshots(); }
+                if (snapDir != null) { if (huntTest) RunHunt(); else if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else if (dimTest) RunDimTest(); else if (syncTest) RunSyncTest(); else if (toastTest) RunToastTest(); else RunSnapshots(); }
                 idleTimer.Start();
             };
         }
@@ -691,6 +709,7 @@ namespace FastViewer
         // ---------------------------------------------------------------- opening files
 
         static bool IsVideoFile(string f) { return VideoExts.Contains(Path.GetExtension(f)); }
+        static bool IsGifFile(string f) { return f != null && Path.GetExtension(f).Equals(".gif", StringComparison.OrdinalIgnoreCase); }
         static bool IsMedia(string f)
         {
             string ext = Path.GetExtension(f);
@@ -798,7 +817,7 @@ namespace FastViewer
 
         void Go(int dir)
         {
-            if (files.Count == 0) return;
+            if (files.Count == 0 || DialogOpen) return; // "Delete this file?" stays about the file it names
             if (!wrapAround && (index + dir < 0 || index + dir >= files.Count)) return;
             ShowIndex(index + dir, dir);
         }
@@ -873,6 +892,7 @@ namespace FastViewer
             s.Poster.Source = null;
             s.Poster.Visibility = Visibility.Collapsed;
             s.Gif = null;
+            s.GifState = 0;
             if (s.IsVideo)
             {
                 s.Picture.Source = null;
@@ -894,12 +914,10 @@ namespace FastViewer
                 {
                     BitmapSource bmp = null;
                     string error = null;
-                    GifAnimation gif = null;
                     int fullWidth = 0, fullHeight = 0;
                     try
                     {
                         bmp = DecodeImage(file, Math.Min(ScreenSide, MaxDecodeSide), out fullWidth, out fullHeight);
-                        if (Path.GetExtension(file).Equals(".gif", StringComparison.OrdinalIgnoreCase)) gif = GifAnimation.Load(file);
                     }
                     catch (Exception ex) { error = ex.Message; }
                     Dispatcher.BeginInvoke(new Action(delegate
@@ -908,8 +926,7 @@ namespace FastViewer
                         s.Picture.Source = bmp;
                         s.FullWidth = fullWidth;
                         s.FullHeight = fullHeight;
-                        s.Reduced = bmp != null && gif == null && Math.Max(bmp.PixelWidth, bmp.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
-                        s.Gif = gif;
+                        s.Reduced = bmp != null && !IsGifFile(file) && Math.Max(bmp.PixelWidth, bmp.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
                         s.Ready = true;
                         s.Failed = bmp == null;
                         s.Error = error;
@@ -1100,17 +1117,12 @@ namespace FastViewer
             if (c == null || !c.Ready) return;
             if (c == shown)
             {
+                if (revealing != null && revealing != c) AbandonReveal(); // back to the picture on screen before the next video showed
                 RefreshForShown();
                 return;
             }
 
-            // A video we started for an earlier press but never got to show: stop it.
-            if (revealing != null && revealing != c)
-            {
-                if (revealing == shown) revealing.Video.Pause(); // still on screen: just freeze it
-                else StopHidden(revealing);
-            }
-            StopRevealWatch();
+            AbandonReveal(); // a video we started for an earlier press but never got to show: stop it
             // Freeze the old video on its current frame; it stays on screen until the new one draws.
             if (shown != null && shown.IsVideo)
             {
@@ -1175,6 +1187,16 @@ namespace FastViewer
                     playing, shown == null ? "-" : Path.GetFileName(shown.File)));
         }
 
+        // Stops watching a video that was starting up. If you've moved on from it, it's stopped too:
+        // otherwise it would keep playing out of sight, with its sound.
+        void AbandonReveal()
+        {
+            var r = revealing;
+            StopRevealWatch();
+            if (r == null || r == wanted || r == shown) return; // on screen: it's frozen once the next file is ready
+            StopHidden(r);
+        }
+
         void StopRevealWatch()
         {
             if (renderHooked) CompositionTarget.Rendering -= OnRendering;
@@ -1193,8 +1215,12 @@ namespace FastViewer
                                          : played >= TimeSpan.FromMilliseconds(50) && HasPicture(c.Video);
                 if (!drawing && played < TimeSpan.FromMilliseconds(400) && revealWatch.ElapsedMilliseconds < 1500) return;
             }
+            if (c == null || c != wanted)
+            {
+                AbandonReveal(); // you moved on before it showed
+                return;
+            }
             StopRevealWatch();
-            if (c == null || c != wanted) return;
             Log("live " + Path.GetFileName(c.File));
             if (c != shown) Reveal(c);
             c.Poster.Visibility = Visibility.Collapsed;
@@ -1631,9 +1657,14 @@ namespace FastViewer
 
         // ---------------------------------------------------------------- file actions
 
+        string deleting; // the file the delete dialog names: that one is deleted, whatever is on screen by then
+
+        bool DialogOpen { get { return dialog.Visibility == Visibility.Visible; } }
+
         void AskDelete()
         {
             if (CurrentFile == null) return;
+            deleting = CurrentFile;
             if (!confirmDelete)
             {
                 ConfirmDelete();
@@ -1646,8 +1677,9 @@ namespace FastViewer
         void ConfirmDelete()
         {
             dialog.Visibility = Visibility.Collapsed;
-            string f = CurrentFile;
-            if (f == null) return;
+            string f = deleting;
+            deleting = null;
+            if (f == null || !files.Contains(f, StringComparer.OrdinalIgnoreCase)) return;
             // Close the file in any player first, otherwise Windows won't let us delete it.
             foreach (var s in slots)
             {
@@ -1694,6 +1726,7 @@ namespace FastViewer
                 return;
             }
 
+            string current = CurrentFile;
             int i = files.FindIndex(x => string.Equals(x, f, StringComparison.OrdinalIgnoreCase));
             if (i >= 0) files.RemoveAt(i);
             if (files.Count == 0)
@@ -1704,7 +1737,9 @@ namespace FastViewer
                 UpdateFacts();
                 return;
             }
-            ShowIndex(Math.Min(i < 0 ? index : i, files.Count - 1), lastDir);
+            int still = string.Equals(current, f, StringComparison.OrdinalIgnoreCase) ? -1
+                : files.FindIndex(x => string.Equals(x, current, StringComparison.OrdinalIgnoreCase));
+            ShowIndex(still >= 0 ? still : Math.Min(i < 0 ? index : i, files.Count - 1), lastDir);
         }
 
         void CopyFile()
@@ -1861,7 +1896,7 @@ namespace FastViewer
         // and swap it in (same shape, so nothing moves). Once per file per slot.
         void LoadFullPictureIfNeeded(Slot s)
         {
-            if (!s.Reduced || s.IsVideo || s.Gif != null) return;
+            if (!s.Reduced || s.IsVideo || IsGifFile(s.File)) return;
             var b = s.Picture.Source as BitmapSource;
             int full = Math.Max(s.FullWidth, s.FullHeight);
             if (b == null || full <= 0) return;
@@ -1878,7 +1913,7 @@ namespace FastViewer
                 catch { }
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    if (s.Token == token && whole != null && s.Gif == null) s.Picture.Source = whole;
+                    if (s.Token == token && whole != null && !IsGifFile(s.File)) s.Picture.Source = whole;
                 }));
             });
         }
@@ -2213,33 +2248,49 @@ namespace FastViewer
                     hiddenButtons.Clear();
                     ResetMouseActions();
                 }
+                var bad = new List<string>();
                 foreach (var line in File.ReadAllLines(SettingsFile))
                 {
                     var kv = line.Split(new[] { '=' }, 2);
                     if (kv.Length != 2) continue;
-                    var v = kv[1].Trim();
-                    switch (kv[0].Trim())
-                    {
-                        case "volume": if (!sync) volume = double.Parse(v, CultureInfo.InvariantCulture); break;
-                        case "muted": if (!sync) muted = v == "1"; break;
-                        case "loop": loop = v == "1"; break;
-                        default: LoadOption(kv[0].Trim(), v); break;
-                        case "maximized": if (applyWindow && v == "1") WindowState = WindowState.Maximized; break;
-                        case "bounds":
-                            if (!applyWindow) break;
-                            var r = Rect.Parse(v);
-                            var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
-                                                  SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-                            if (r.Width >= MinWidth && r.Height >= MinHeight && screen.IntersectsWith(r))
-                            {
-                                WindowStartupLocation = WindowStartupLocation.Manual;
-                                Left = r.Left; Top = r.Top; Width = r.Width; Height = r.Height;
-                            }
-                            break;
-                    }
+                    string key = kv[0].Trim(), v = kv[1].Trim();
+                    try { LoadLine(key, v, applyWindow, sync); }
+                    catch { bad.Add(line); } // one unreadable line (edited by hand, damaged file) mustn't lose the settings after it
                 }
+                if (bad.Count > 0 && !sync)
+                    Program.WriteCrash(new Exception("Skipped unreadable lines in " + SettingsFile + ": " + string.Join(" | ", bad)));
             }
             catch { }
+        }
+
+        void LoadLine(string key, string v, bool applyWindow, bool sync)
+        {
+            switch (key)
+            {
+                case "volume": if (!sync) volume = Clamp(double.Parse(v, NumberStyles.Float, CultureInfo.InvariantCulture), 0, 1, 0.8); break;
+                case "muted": if (!sync) muted = v == "1"; break;
+                case "loop": loop = v == "1"; break;
+                default: LoadOption(key, v); break;
+                case "maximized": if (applyWindow && v == "1") WindowState = WindowState.Maximized; break;
+                case "bounds":
+                    if (!applyWindow) break;
+                    var r = Rect.Parse(v);
+                    var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                          SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+                    if (r.Width >= MinWidth && r.Height >= MinHeight && screen.IntersectsWith(r))
+                    {
+                        WindowStartupLocation = WindowStartupLocation.Manual;
+                        Left = r.Left; Top = r.Top; Width = r.Width; Height = r.Height;
+                    }
+                    break;
+            }
+        }
+
+        // A number from settings.ini within its range (NaN, infinity: the default).
+        static double Clamp(double value, double min, double max, double fallback)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return fallback;
+            return Math.Max(min, Math.Min(max, value));
         }
 
         bool settingsOverride;

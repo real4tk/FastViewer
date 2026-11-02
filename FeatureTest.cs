@@ -462,12 +462,14 @@ namespace FastViewer
             at(2300, () =>
             {
                 log("actions: " + shortcuts.Count + ", new ones without a key: " + string.Join(", ", shortcuts.Where(s => s.Keys.Count == 0).Select(s => s.Id)));
+                OpenSettings(); // key boxes take keys only while Settings shows them
                 assign("strip", 0, Key.P); log("strip after P in box 1: " + keys("strip"));
                 assign("next", 1, Key.N); log("next after N in box 2: " + keys("next") + " (expected Right, N)");
                 assign("next", 0, Key.N); log("next after N in box 1 too: " + keys("next") + " (expected N once)");
                 RemoveKey(sc("next"), 0); log("next after right-click box 1: " + keys("next") + " (expected none)");
                 assign("next", 0, Key.Right); assign("next", 1, Key.PageDown); log("next restored: " + keys("next"));
                 assign("strip", 1, Key.G); log("strip took G: strip " + keys("strip") + ", grid " + keys("grid") + " (expected grid without G)");
+                CloseSettings();
                 bool before = showStrip; HandleShortcut(key(Key.P)); log("P toggles the strip: " + (showStrip != before));
                 HandleShortcut(key(Key.G)); log("G now toggles the strip, grid open: " + gridOpen + " (expected False)");
                 log("saved key lines: " + string.Join("; ", ShortcutLines()));

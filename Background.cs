@@ -52,6 +52,27 @@ namespace FastViewer
             }
             catch { return false; }
         }
+
+        public const string QuitMessage = "\0quit"; // not a file name: the FastViewer waiting in the background quits
+
+        // After an update: the background FastViewer (old version) quits, so the new version receives files from now on.
+        public static void AskBackgroundToQuit()
+        {
+            Mutex running;
+            if (!Mutex.TryOpenExisting(MutexName, out running)) return;
+            running.Dispose();
+            try
+            {
+                using (var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out))
+                {
+                    pipe.Connect(500);
+                    var data = Encoding.UTF8.GetBytes(QuitMessage);
+                    pipe.Write(data, 0, data.Length);
+                    pipe.Flush();
+                }
+            }
+            catch { }
+        }
     }
 
     partial class ViewerWindow
@@ -111,6 +132,13 @@ namespace FastViewer
                             var buffer = new MemoryStream();
                             server.CopyTo(buffer);
                             string path = Encoding.UTF8.GetString(buffer.ToArray());
+                            if (path == SingleInstance.QuitMessage)
+                            {
+                                pipeGeneration++;
+                                pipeListening = false;
+                                Dispatcher.BeginInvoke(new Action(delegate { if (!IsVisible) Quit(); else StopSingleInstance(); }));
+                                return;
+                            }
                             if (generation != pipeGeneration)
                             {
                                 // Handed over just as this window took a file itself: give it a window of its own.
@@ -175,6 +203,7 @@ namespace FastViewer
         // Hide, let go of every file (so they can be moved or deleted), free memory, and wait.
         void GoToBackground()
         {
+            SaveWaitingRotations();
             RememberPosition(shown);
             SavePositions();
             if (trimming) EndTrim();
