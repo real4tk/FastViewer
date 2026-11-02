@@ -13,6 +13,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -27,7 +28,9 @@ namespace FastViewer
         static readonly string[] GridSizeNames = { "Small", "Medium", "Large" };
         const double StripTile = 54;   // tile with its ring: a 48 px picture
 
-        Canvas strip;
+        Canvas strip, stripRow;
+        List<string> stripFiles;
+        int stripIndex = -1;
         readonly List<Tile> stripTiles = new List<Tile>();
         double stripWidth;
         bool stripQueued;
@@ -113,6 +116,7 @@ namespace FastViewer
                 if (t.File != file) return;
                 t.Job = null;
                 t.SetPicture(b, video);
+                t.FadeInPicture();
             });
         }
 
@@ -120,7 +124,9 @@ namespace FastViewer
 
         void ApplyStrip()
         {
+            bool appearing = showStrip && strip.Visibility != Visibility.Visible;
             strip.Visibility = showStrip ? Visibility.Visible : Visibility.Collapsed;
+            if (appearing && Motion.Animates && IsLoaded) { Motion.FromTo(strip, OpacityProperty, 0, 1, Motion.Ms(Motion.Normal, false), Motion.Smooth); Glide(strip, 0, 12); } // rises in under the picture
             if (!showStrip)
             {
                 foreach (var t in stripTiles) t.Clear();
@@ -156,6 +162,15 @@ namespace FastViewer
                 hi = lo + count - 1;
             }
             int px = ThumbPx(StripTile - 6);
+            // Moved on by a few files: the row glides over to the new current file (after it's already shown).
+            int moved = stripFiles == files && stripIndex >= 0 ? index - stripIndex : 0;
+            stripFiles = files;
+            stripIndex = index;
+            if (moved != 0 && Math.Abs(moved) <= 3 && Motion.Moves && stripRow != null)
+            {
+                var mv = Motion.PartsOf(stripRow).Move;
+                Motion.FromTo(mv, TranslateTransform.XProperty, mv.X + moved * StripTile, 0, Motion.Ms(180), Motion.In);
+            }
             // Current file first, then outwards, so the nearest thumbnails come first.
             for (int step = 0; step < n; step++)
             {
@@ -179,6 +194,8 @@ namespace FastViewer
             strip.Children.Clear();
             stripTiles.Clear();
             stripWidth = w;
+            stripRow = new Canvas();
+            strip.Children.Add(stripRow);
             int n = Math.Max(1, (int)((w - 16) / StripTile));
             if (n % 2 == 0) n--; // odd, so the current file is exactly in the middle
             double left = Math.Round((w - n * StripTile) / 2), top = Math.Round((strip.Height - StripTile) / 2);
@@ -193,7 +210,7 @@ namespace FastViewer
                     if (((Tile)o).File != null && d != 0 && !DialogOpen) ShowIndex(index + d, Math.Sign(d));
                     e.Handled = true;
                 };
-                strip.Children.Add(t);
+                stripRow.Children.Add(t);
                 stripTiles.Add(t);
             }
         }
@@ -229,21 +246,80 @@ namespace FastViewer
             gridOpen = true;
             gridPage.Visibility = Visibility.Visible;
             PlaceBars(); // looks with floating bars dock them while the grid is open
+            Motion.Show(gridPage, 0, 0, 1, Motion.Normal);
             gridPage.UpdateLayout(); // so the grid knows its width
             FillGrid(true);
             UpdateControls();
+            if (Motion.Moves) { gridScroll.UpdateLayout(); ShrinkIntoTile(); }
         }
+
+        // Where the picture sits at "fit" (zoom 1), in the stage's coordinates.
+        Rect FitRect(Slot s)
+        {
+            int w, h;
+            DisplaySize(s, out w, out h);
+            double fit = FitScale(s) / Dpi();
+            if (w <= 0 || fit <= 0) return Rect.Empty;
+            return new Rect((stage.ActualWidth - w * fit) / 2, (stage.ActualHeight - h * fit) / 2, w * fit, h * fit);
+        }
+
+        // The tile's picture, in the stage's coordinates.
+        Rect TileRect(Tile t)
+        {
+            var p = t.TranslatePoint(new Point(3, 3), stage);
+            return new Rect(p, new Size(Math.Max(1, t.Width - 6), Math.Max(1, t.Width - 6)));
+        }
+
+        // Moves the picture (zoom and position) so its fit rectangle lands on `to`, or from `to` back to fit.
+        void FlyPicture(Slot s, Rect to, bool intoTile)
+        {
+            var r = FitRect(s);
+            if (s == null || r.IsEmpty || to.IsEmpty) return;
+            double z = Math.Min(to.Width / r.Width, to.Height / r.Height);
+            double px = to.X + to.Width / 2 - z * (r.X + r.Width / 2), py = to.Y + to.Height / 2 - z * (r.Y + r.Height / 2);
+            double ms = Motion.Ms(Motion.Slow);
+            Motion.Stop("zoom");
+            Motion.Stop("pan");
+            if (intoTile)
+            {
+                Motion.To(s.Zoom, ScaleTransform.ScaleXProperty, z, ms, Motion.In);
+                Motion.To(s.Zoom, ScaleTransform.ScaleYProperty, z, ms, Motion.In);
+                Motion.To(s.Pan, TranslateTransform.XProperty, px, ms, Motion.In);
+                Motion.To(s.Pan, TranslateTransform.YProperty, py, ms, Motion.In, delegate { if (gridOpen) ResetZoom(s); });
+            }
+            else
+            {
+                Motion.FromTo(s.Zoom, ScaleTransform.ScaleXProperty, z, 1, ms, Motion.In);
+                Motion.FromTo(s.Zoom, ScaleTransform.ScaleYProperty, z, 1, ms, Motion.In);
+                Motion.FromTo(s.Pan, TranslateTransform.XProperty, px, 0, ms, Motion.In);
+                Motion.FromTo(s.Pan, TranslateTransform.YProperty, py, 0, ms, Motion.In, delegate { UpdateZoomUi(); });
+            }
+        }
+
+        void ShrinkIntoTile()
+        {
+            Tile t;
+            if (shown != null && gridShown.TryGetValue(gridSelected, out t)) FlyPicture(shown, TileRect(t), true);
+        }
+
+        string growFile;  // picked in the grid: grows out of its tile when it appears
+        Rect growFrom;
 
         void CloseGrid()
         {
             if (!gridOpen) return;
             gridOpen = false;
-            gridPage.Visibility = Visibility.Collapsed;
             PlaceBars();
-            foreach (var t in gridShown.Values) t.Clear();
-            gridShown.Clear();
-            gridSpare.Clear();
-            gridCanvas.Children.Clear(); // lets go of the thumbnails (they stay in the memory cache)
+            if (shown != null) ResetZoom(shown); // (it may have shrunk into its tile)
+            // Fades away; then lets go of the thumbnails (they stay in the memory cache).
+            Motion.Hide(gridPage, 0, 0, 1, Motion.Fast, delegate
+            {
+                if (gridOpen) return;
+                foreach (var t in gridShown.Values) t.Clear();
+                gridShown.Clear();
+                gridSpare.Clear();
+                gridCanvas.Children.Clear();
+            });
             UpdateControls();
         }
 
@@ -336,8 +412,30 @@ namespace FastViewer
                     Canvas.SetTop(t, (i / gridCols) * GridRow);
                     gridShown[i] = t;
                 }
-                BindTile(t, i, gridFiles[i], px, i == gridSelected);
+                BindTile(t, i, gridFiles[i], px, false); // the selection is the gliding ring
             }
+            PlaceGridRing(false);
+        }
+
+        // ---- the selection ring: one ring that glides from tile to tile
+
+        Border gridRing;
+
+        void PlaceGridRing(bool glide)
+        {
+            if (gridRing == null)
+            {
+                gridRing = new Border { BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(7), IsHitTestVisible = false };
+                gridRing.SetResourceReference(Border.BorderBrushProperty, "Accent");
+                Panel.SetZIndex(gridRing, 1);
+            }
+            if (!gridCanvas.Children.Contains(gridRing)) gridCanvas.Children.Add(gridRing);
+            gridRing.Width = gridTile;
+            gridRing.Height = GridRow;
+            var move = Motion.PartsOf(gridRing).Move;
+            double x = (gridSelected % Math.Max(1, gridCols)) * gridTile, y = (gridSelected / Math.Max(1, gridCols)) * GridRow;
+            Motion.To(move, TranslateTransform.XProperty, x, glide ? Motion.Ms(Motion.Fast) : 0, Motion.In);
+            Motion.To(move, TranslateTransform.YProperty, y, glide ? Motion.Ms(Motion.Fast) : 0, Motion.In);
         }
 
         Tile NewGridTile()
@@ -358,8 +456,20 @@ namespace FastViewer
             if (gi < 0 || gi >= gridFiles.Count) return;
             string f = gridFiles[gi];
             int i = files.FindIndex(x => string.Equals(x, f, StringComparison.OrdinalIgnoreCase));
+            Tile tile;
+            growFile = null;
+            if (Motion.Moves && gridShown.TryGetValue(gi, out tile)) { growFile = f; growFrom = TileRect(tile); }
             CloseGrid();
-            if (i >= 0 && i != index) ShowIndex(i, shuffled || i > index ? 1 : -1);
+            if (i >= 0 && i != index) ShowIndex(i, shuffled || i > index ? 1 : -1); // grows out of its tile once it's on screen (Reveal)
+            else GrowPicked(shown);
+        }
+
+        // A file picked in the grid has appeared: it grows from its tile to its place.
+        void GrowPicked(Slot s)
+        {
+            if (growFile == null || s == null || !string.Equals(s.File, growFile, StringComparison.OrdinalIgnoreCase)) return;
+            growFile = null;
+            FlyPicture(s, growFrom, false);
         }
 
         void ScrollGridTo(int i, bool center)
@@ -379,10 +489,8 @@ namespace FastViewer
 
         void SelectGridTile(int i)
         {
-            Tile t;
-            if (gridShown.TryGetValue(gridSelected, out t)) t.Selected = false;
             gridSelected = i;
-            if (gridShown.TryGetValue(i, out t)) t.Selected = true;
+            PlaceGridRing(true);
             ScrollGridTo(i, false);
         }
 
@@ -437,7 +545,25 @@ namespace FastViewer
             gridSize = size;
             F<TextBlock>("GridSizeText").Text = GridSizeNames[gridSize];
             SaveSettings();
-            if (gridOpen) LayoutGrid(true);
+            if (!gridOpen) return;
+            var before = new Dictionary<string, Rect>(StringComparer.OrdinalIgnoreCase);
+            if (Motion.Moves) foreach (var t in gridShown.Values) if (t.File != null) before[t.File] = new Rect(t.TranslatePoint(new Point(0, 0), gridScroll), new Size(t.Width, t.Height));
+            LayoutGrid(true);
+            if (before.Count == 0) return;
+            gridScroll.UpdateLayout();
+            foreach (var t in gridShown.Values)
+            {
+                Rect was;
+                if (t.File == null || !before.TryGetValue(t.File, out was)) continue;
+                var now = t.TranslatePoint(new Point(0, 0), gridScroll);
+                var p = Motion.PartsOf(t);
+                t.RenderTransformOrigin = new Point(0, 0);
+                double k = was.Width / Math.Max(1, t.Width), ms = Motion.Ms(Motion.Normal);
+                Motion.FromTo(p.Scale, ScaleTransform.ScaleXProperty, k, 1, ms, Motion.In);
+                Motion.FromTo(p.Scale, ScaleTransform.ScaleYProperty, k, 1, ms, Motion.In);
+                Motion.FromTo(p.Move, TranslateTransform.XProperty, was.X - now.X, 0, ms, Motion.In);
+                Motion.FromTo(p.Move, TranslateTransform.YProperty, was.Y - now.Y, 0, ms, Motion.In);
+            }
         }
     }
 }

@@ -16,6 +16,13 @@
   <sys:Boolean x:Key="Look.Spring">True</sys:Boolean>
   <sys:Double x:Key="Motion.FadeIn">180</sys:Double>
   <sys:Double x:Key="Motion.FadeOut">380</sys:Double>
+  <!-- Motion (Motion.cs): springy: a little overshoot that settles, buttons press in -->
+  <sys:Double x:Key="Motion.Fast">180</sys:Double>
+  <sys:Double x:Key="Motion.Normal">280</sys:Double>
+  <sys:Double x:Key="Motion.Slow">380</sys:Double>
+  <sys:String x:Key="Motion.Ease">spring</sys:String>
+  <sys:Double x:Key="Motion.Distance">1.2</sys:Double>
+  <sys:Double x:Key="Motion.Press">0.95</sys:Double>
   <sys:String x:Key="Font.Ui">@Inter</sys:String>
   <sys:String x:Key="Font.Title">@Inter Display</sys:String>
   <FontWeight x:Key="Weight.Title">SemiBold</FontWeight>
@@ -110,7 +117,7 @@
   <SolidColorBrush x:Key="Dark.ScrollThumb" Color="#59FFFFFF"/>
   <SolidColorBrush x:Key="Dark.CaptionHover" Color="#17FFFFFF"/>
   <SolidColorBrush x:Key="Dark.CloseHover" Color="#FF453A"/>
-  <SolidColorBrush x:Key="Dark.Accent" Color="#0A84FF"/>
+  <SolidColorBrush x:Key="Dark.Accent" Color="#0071E3"/>
   <SolidColorBrush x:Key="Dark.AccentText" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="Dark.ScrimFill" Color="#40000000"/>
   <SolidColorBrush x:Key="Dark.DialogShade" Color="#66000000"/>
@@ -212,7 +219,7 @@
   <SolidColorBrush x:Key="Light.ScrollThumb" Color="#593C3C43"/>
   <SolidColorBrush x:Key="Light.CaptionHover" Color="#14000000"/>
   <SolidColorBrush x:Key="Light.CloseHover" Color="#FF3B30"/>
-  <SolidColorBrush x:Key="Light.Accent" Color="#007AFF"/>
+  <SolidColorBrush x:Key="Light.Accent" Color="#0071E3"/>
   <SolidColorBrush x:Key="Light.AccentText" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="Light.ScrimFill" Color="#33000000"/>
   <SolidColorBrush x:Key="Light.DialogShade" Color="#40000000"/>

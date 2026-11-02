@@ -1,4 +1,4 @@
-FastViewer 1.15.3 - a fast photo and video viewer for Windows 10 and 11
+FastViewer 1.16.0 - a fast photo and video viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -22,6 +22,13 @@ Mini player
   window that stays on top of everything. It takes the shape of the video.
   Drag the video to move it, drag the edges to resize, double-click or Esc to go back.
 
+Trimming a video
+  Ctrl + T (or video "..." -> Trim) shows the video as a filmstrip with a handle at each end.
+  Drag the handles to the part you want to keep: the video shows the frame under the handle.
+  "Play selection" plays just that part; "Save clip" saves it as a new video.
+  Keys: Left / Right move a handle one frame (Shift: one second), Tab picks the other handle,
+  Space plays, Enter saves, Esc cancels.
+
 All files in the folder
   G (or the grid button in the bottom bar) shows every photo and video in the folder as
   thumbnails, in File Explorer's order. Click one to open it; arrows + Enter work too. Names shows file names.
@@ -44,7 +51,7 @@ Handy keys
   Ctrl + mouse wheel   zoom
 
 Settings are in the "..." menu at the top. Appearance picks a look (Photos, Clean, Liquid Glass,
-Midnight; dark or light); Buttons picks which buttons you see. Every option has a short explanation;
+Midnight; dark or light) and how much moves (Animations); Buttons picks which buttons you see. Every option has a short explanation;
 every action's keys can be changed in Settings > Keyboard (two keys each), and the mouse
 buttons in Settings > Mouse. Esc always goes back. X shuffles the folder.
 Closing FastViewer keeps it ready in the background (icon by the clock) so files open instantly.

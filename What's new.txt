@@ -5,6 +5,37 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.16.0  (2 Nov 2026)
+  New
+  - Smooth animations everywhere: buttons, switches, menus, Settings, messages, the Delete dialog, the
+    controls fading in, play/pause, the volume slider, zooming (wheel steps glide into each other),
+    panning (with momentum), rotating, the grid (the photo shrinks into its tile and grows back out),
+    thumbnails, the strip, the Info pane, full screen, the mini player and changing looks. They run at your
+    screen's refresh rate, also 144, 240 or 500 Hz (with several screens: the fastest), take just as long at
+    any rate, and stop completely when nothing moves. Settings > About > Screen shows your refresh rate and how
+    many frames a second the animations really got.
+  - Each look moves in its own way: Photos like Windows 11, Clean subtle, Liquid Glass springy (buttons
+    press in), Midnight calm.
+  - Settings > Appearance > Animations: Like Windows (follows Windows' "Show animations"), Full, Reduced
+    (short fades only) or Off.
+  - Switching between files is still instant. If you like, Settings > Appearance > "Transition between
+    files" > Crossfade softly fades the old file out (off by default).
+  - Trim is new: a filmstrip of the video with a handle at each end. Drag a handle and the video shows
+    that exact frame; the times sit under the handles and the clip length at the top. "Play selection"
+    plays just that part, then Save clip. Keys: left/right move a handle by one frame (Shift: a second),
+    Tab picks the other handle, [ and ] put a handle where the video is, Space plays, Enter saves, Esc
+    leaves.
+  - Mini player: an optional volume button (Settings > Appearance, off by default). Click to mute, scroll
+    to change the volume, point at it for the slider.
+  Improved
+  - Liquid Glass: the blue of buttons and highlights is a little darker, so white text on it is easier to
+    read.
+  - "Keep on top" says whether it's on or off.
+  Fixed
+  - Photos look (1.15.6): its name was missing in Settings and Light mode showed dark colours.
+  - File Explorer could show a FastViewer badge on every photo and video thumbnail after FastViewer was
+    added to "Open with" by an older version. FastViewer now removes it by itself (Windows may keep old
+    thumbnails until it remakes them: Disk Cleanup > Thumbnails clears them at once).
 1.15.6  (2 Nov 2026)
   Improved (a look at every screen, look and window size)
   - Keyboard and screen readers: Settings can now be used with the keyboard alone (Tab, Space or Enter,

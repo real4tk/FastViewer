@@ -11,6 +11,7 @@ namespace FastViewer
     {
         const double NormalMinWidth = 380, NormalMinHeight = 260;
         bool mini, pinned, fittingMini;
+        bool miniVolume;     // Settings > Buttons: a volume button in the mini player (off by default)
         double miniLong = 480;                                // longest side of the mini player
         double miniLeft = double.NaN, miniTop = double.NaN;   // where you last left it
         double miniAspect;
@@ -25,6 +26,7 @@ namespace FastViewer
             pinned = !pinned;
             Topmost = pinned || mini;
             SaveSettings();
+            ShowToast(pinned ? "Keep on top: on" : "Keep on top: off", null, null, 1.5, "pin");
         }
 
         // Mini player: no bars, always on top, window shaped like the video. Controls appear on hover;

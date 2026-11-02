@@ -299,7 +299,8 @@ namespace FastViewer
                     SavePositions();
                     SaveSettings();
                     PrepareRestart(); // the new version takes over receiving files
-                    if (!updateTestAccept)
+                    if (testRun) Log("restart skipped (test run: no new window, the background copy is left alone)");
+                    else if (!updateTestAccept)
                     {
                         // A FastViewer waiting in the background still runs the old version: it quits, and the new one
                         // opens in a window of its own (--updated: not handed to the old one on the way).

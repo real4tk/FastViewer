@@ -73,8 +73,8 @@ namespace FastViewer
                 S("zoomOut", "Zoom out", delegate { ZoomBy(0.8, StageCenter()); }, "OemMinus", "Subtract"),
                 S("fit", "Fit to window", delegate { SetZoom(1, StageCenter()); }, "D0", "NumPad0"),
                 S("actualSize", "Actual size (100%)", delegate { ZoomToPercent(100); }),
-                S("fullscreen", "Full screen", ToggleFullscreen, "F", "F11"),
-                S("mini", "Mini player", ToggleMini, "Ctrl+M"),
+                S("fullscreen", "Full screen", ToggleFullscreenSmoothly, "F", "F11"),
+                S("mini", "Mini player", ToggleMiniSmoothly, "Ctrl+M"),
                 S("pin", "Keep on top on/off", TogglePin),
                 S("slideshow", "Slideshow", ToggleSlideshow, "F5"),
                 S("info", "File info", ToggleInfo, "I"),
@@ -128,9 +128,9 @@ namespace FastViewer
             { "VideoMoreBtn", "More video options", "" }, { "GridBtn", "All files in this folder", "grid" },
             { "InfoBtn", "File info", "info" }, { "FitBtn", "Fit to window", "fit" }, { "ZoomBtn", "Zoom", "" },
             { "ZoomOutBtn", "Zoom out", "zoomOut" }, { "ZoomInBtn", "Zoom in", "zoomIn" }, { "FullBtn", "Full screen", "fullscreen" },
-            { "InfoCloseBtn", "Close file info", "info" }, { "MiniExitBtn", "Back to the full window", "mini" }, { "MiniCloseBtn", "Close", "close" },
+            { "InfoCloseBtn", "Close file info", "info" }, { "MiniExitBtn", "Back to the full window", "mini" }, { "MiniVolBtn", "Mute (scroll for volume)", "mute" }, { "MiniCloseBtn", "Close", "close" },
             { "SettingsBackBtn", "Back (Esc)", "" }, { "GridBackBtn", "Back (Esc)", "" }, { "ToastClose", "Close message", "" },
-            { "TrimStartBtn", "Start the clip at the current moment", "loopA" }, { "TrimEndBtn", "End the clip at the current moment", "loopB" },
+            { "TrimPlayBtn", "Play the part between the handles", "play" }, { "TrimSaveBtn", "Save the part between the handles as a new video (Enter)", "" }, { "TrimCancelBtn", "Leave without saving (Esc)", "" },
             { "GridSizeBtn", "Thumbnail size (Ctrl + mouse wheel)", "" }
         };
 

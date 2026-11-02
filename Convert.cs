@@ -307,6 +307,109 @@ namespace FastViewer
             return result;
         }
 
+        // Small pictures from across a video, for the trim bar's filmstrip (in the background). For picture i of
+        // `count`, it decodes the frame at the middle of that stretch of the video, shrinks it to `height` pixels
+        // high, turns it like the viewer shows it (rotation, clockwise), and hands it over: frame(i, w, h, pixels).
+        public static void Filmstrip(string source, int count, int height, int rotation, Action<int, int, int, int[]> frame, CancelFlag cancel)
+        {
+            Check(MFStartup(0x00020070, 0), "starting Windows' video tools");
+            IMFSourceReader reader = null;
+            try
+            {
+                IMFAttributes ra;
+                Check(MFCreateAttributes(out ra, 1), "setting up");
+                ra.SetUINT32(ref G.MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1);
+                Check(MFCreateSourceReaderFromURL(source, ra, out reader), "opening the video");
+                reader.SetStreamSelection(ALL_STREAMS, false);
+                Check(reader.SetStreamSelection(FIRST_VIDEO, true), "finding the picture in the video");
+                IMFMediaType want;
+                MFCreateMediaType(out want);
+                want.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Video);
+                want.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFVideoFormat_RGB32);
+                Check(reader.SetCurrentMediaType(FIRST_VIDEO, IntPtr.Zero, want), "decoding the video");
+                IMFMediaType vin;
+                Check(reader.GetCurrentMediaType(FIRST_VIDEO, out vin), "reading the video format");
+                long packed;
+                Check(vin.GetUINT64(ref G.MF_MT_FRAME_SIZE, out packed), "reading the video size");
+                int w = (int)(packed >> 32), h = (int)(packed & 0xFFFFFFFF), stride;
+                if (vin.GetUINT32(ref G.MF_MT_DEFAULT_STRIDE, out stride) < 0) stride = w * 4;
+                bool bottomUp = stride < 0;
+                // As when saving: Windows' decoder may already have turned the picture by the file's own tag.
+                IMFMediaType native;
+                int nativeTurn = 0, outTurn = 0;
+                if (reader.GetNativeMediaType(FIRST_VIDEO, 0, out native) >= 0)
+                {
+                    native.GetUINT32(ref G.MF_MT_VIDEO_ROTATION, out nativeTurn);
+                    Marshal.ReleaseComObject(native);
+                }
+                vin.GetUINT32(ref G.MF_MT_VIDEO_ROTATION, out outTurn);
+                if (nativeTurn != 0 && outTurn == 0) rotation = ((rotation - nativeTurn) % 360 + 360) % 360;
+                bool sideways = rotation == 90 || rotation == 270;
+                int th = Math.Max(8, height), tw = Math.Max(8, (int)Math.Round((double)th * (sideways ? h : w) / (sideways ? w : h)));
+                int sw = sideways ? th : tw, sh = sideways ? tw : th; // the small picture before turning
+                long duration = Duration(reader);
+                int pitch = Math.Max(w, Math.Abs(stride) / 4); // pixels per stored row (rows may be padded)
+                var px = new int[pitch * h];
+                for (int i = 0; i < count; i++)
+                {
+                    if (cancel.Cancelled) return;
+                    long at = (long)(duration * (i + 0.5) / count);
+                    try { Seek(reader, at); } catch { }
+                    IMFSample sample = null;
+                    long time = 0;
+                    // The reader starts at the keyframe before `at`: decode on (at most ~a second) toward it.
+                    for (int k = 0; k < 40; k++)
+                    {
+                        int index, flags;
+                        if (sample != null) Marshal.ReleaseComObject(sample);
+                        sample = null;
+                        if (reader.ReadSample(FIRST_VIDEO, 0, out index, out flags, out time, out sample) < 0 || (flags & 3) != 0) break;
+                        if (sample != null && time >= at - 20000000 / 30) break;
+                    }
+                    if (sample == null) continue;
+                    IMFMediaBuffer buffer;
+                    if (sample.ConvertToContiguousBuffer(out buffer) >= 0)
+                    {
+                        IntPtr data;
+                        int max, length;
+                        buffer.Lock(out data, out max, out length);
+                        Marshal.Copy(data, px, 0, Math.Min(px.Length, length / 4));
+                        buffer.Unlock();
+                        Marshal.ReleaseComObject(buffer);
+                        // shrink (pick the nearest pixel; plenty for a 40-pixel picture), then turn
+                        var small = new int[sw * sh];
+                        for (int y = 0; y < sh; y++)
+                        {
+                            int sy = Math.Min(h - 1, (int)((y + 0.5) * h / sh));
+                            if (bottomUp) sy = h - 1 - sy;
+                            for (int x = 0; x < sw; x++) small[y * sw + x] = px[sy * pitch + Math.Min(w - 1, (int)((x + 0.5) * w / sw))] | unchecked((int)0xFF000000);
+                        }
+                        var turned = new int[tw * th];
+                        for (int y = 0; y < sh; y++)
+                            for (int x = 0; x < sw; x++)
+                            {
+                                int nx, ny;
+                                switch (rotation)
+                                {
+                                    case 90: nx = sh - 1 - y; ny = x; break;
+                                    case 180: nx = sw - 1 - x; ny = sh - 1 - y; break;
+                                    case 270: nx = y; ny = sw - 1 - x; break;
+                                    default: nx = x; ny = y; break;
+                                }
+                                turned[ny * tw + nx] = small[y * sw + x];
+                            }
+                        frame(i, tw, th, turned);
+                    }
+                    Marshal.ReleaseComObject(sample);
+                }
+            }
+            finally
+            {
+                if (reader != null) Marshal.ReleaseComObject(reader);
+                MFShutdown();
+            }
+        }
+
         static long Duration(IMFSourceReader reader)
         {
             IntPtr pv = Marshal.AllocHGlobal(32);

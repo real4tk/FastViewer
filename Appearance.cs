@@ -40,6 +40,13 @@ namespace FastViewer
             springMotion = look.Flag("Look.Spring");
             fadeInMs = Number(look, "Motion.FadeIn", 120);
             fadeOutMs = Number(look, "Motion.FadeOut", 300);
+            Motion.Fast = Number(look, "Motion.Fast", 167);
+            Motion.Normal = Number(look, "Motion.Normal", 250);
+            Motion.Slow = Number(look, "Motion.Slow", 333);
+            Motion.Distance = Number(look, "Motion.Distance", 1);
+            Motion.Press = Number(look, "Motion.Press", 1);
+            Motion.Style = look.Get("Motion.Ease") as string ?? "decelerate";
+            ApplyMotionLevel();
             if (root == null) return; // starting up: the window does the rest once it exists
             ApplyWindowLook();
             PlaceBars();
@@ -246,11 +253,24 @@ namespace FastViewer
                 "\"Like Windows\" follows Windows' own setting (Personalization > Colors).",
                 Dropdown(new[] { "Like Windows", "Dark", "Light" },
                     () => lookMode == "Dark" ? 1 : lookMode == "Light" ? 2 : 0,
-                    i => { lookMode = new[] { "Auto", "Dark", "Light" }[i]; ApplyLook(); }));
+                    i => { CrossfadeWindow(250); lookMode = new[] { "Auto", "Dark", "Light" }[i]; ApplyLook(); }));
+            AddCard("\uE916", "Animations",
+                "Full: menus, Settings, messages, zoom and the rest move smoothly, in the look's own style. " +
+                "Reduced: only short fades, nothing slides, scales or bounces. Off: everything changes at once. " +
+                "\"Like Windows\" is Full, or Reduced when \"Show animations in Windows\" is off (Windows Settings > " +
+                "Accessibility > Visual effects). Switching between files is always instant.",
+                Dropdown(new[] { "Like Windows", "Full", "Reduced", "Off" },
+                    () => Array.IndexOf(AnimationChoices, animations),
+                    i => { animations = AnimationChoices[i]; ApplyMotionLevel(); }));
+            AddCard("\uE8AB", "Transition between files",
+                "\"Crossfade\" fades the last file out over the next one (120 ms). The next file still shows right away, " +
+                "also when you click through quickly.",
+                Dropdown(new[] { "None (instant)", "Crossfade" }, () => crossfadeFiles ? 1 : 0, i => crossfadeFiles = i == 1));
             var reset = new Button { Content = "Reset", MinWidth = 120, Height = 32 };
             reset.SetResourceReference(StyleProperty, "Filled");
             reset.Click += delegate
             {
+                CrossfadeWindow(250); // the whole window fades from the old look to the new one
                 lookId = Looks.DefaultId;
                 lookMode = "Auto";
                 ApplyLook();
@@ -294,6 +314,10 @@ namespace FastViewer
                         "Clicking the video pauses and plays either way.",
                         Dropdown(new[] { "Show", "Only when paused", "Hide" }, () => centerButton, i => { centerButton = i; UpdateControls(); }));
             }
+            AddSubheading("Mini player");
+            AddCard("\uE995", "Volume button in the mini player",
+                "Shows a speaker next to the mini player's buttons: click to mute, scroll on it to change the volume, " +
+                "point at it for the volume slider.", Toggle(() => miniVolume, v => { miniVolume = v; UpdateControls(); }));
             var resetButtons = new Button { Content = "Reset", MinWidth = 120, Height = 32 };
             resetButtons.SetResourceReference(StyleProperty, "Filled");
             resetButtons.Click += delegate { ApplyPreset(0); };
@@ -330,10 +354,14 @@ namespace FastViewer
                 System.Windows.Automation.AutomationProperties.SetName(card, look.Name + " look");
                 card.Click += delegate
                 {
+                    CrossfadeWindow(250); // the whole window fades from the old look to the new one
                     lookId = l.Id;
                     ApplyLook();
                     SaveSettings();
                 };
+                // The preview lifts a little under the pointer.
+                card.MouseEnter += delegate { if (Motion.Moves) { card.RenderTransformOrigin = new Point(0.5, 0.5); var p = Motion.PartsOf(card); Motion.To(p.Scale, ScaleTransform.ScaleXProperty, 1.02, Motion.Ms(Motion.Fast), Motion.Smooth); Motion.To(p.Scale, ScaleTransform.ScaleYProperty, 1.02, Motion.Ms(Motion.Fast), Motion.Smooth); } };
+                card.MouseLeave += delegate { var p = Motion.PartsOf(card); Motion.To(p.Scale, ScaleTransform.ScaleXProperty, 1, Motion.Ms(Motion.Fast), Motion.Smooth); Motion.To(p.Scale, ScaleTransform.ScaleYProperty, 1, Motion.Ms(Motion.Fast), Motion.Smooth); };
                 lookCards.Children.Add(card);
             }
             RefreshLookCards();
@@ -456,13 +484,12 @@ namespace FastViewer
             var move = lens.RenderTransform as TranslateTransform;
             if (move == null) lens.RenderTransform = move = new TranslateTransform();
             lens.Opacity = 1;
-            if (!animate)
+            if (!animate || !Motion.Moves)
             {
-                move.BeginAnimation(TranslateTransform.YProperty, null);
-                move.Y = p0.Y;
+                Motion.Set(move, TranslateTransform.YProperty, p0.Y);
                 return;
             }
-            move.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(p0.Y, TimeSpan.FromSeconds(0.55)) { EasingFunction = new SpringEase() });
+            Motion.To(move, TranslateTransform.YProperty, p0.Y, Motion.Ms(Motion.Normal), Motion.In);
         }
     }
 }

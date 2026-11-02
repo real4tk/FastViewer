@@ -62,6 +62,9 @@ namespace FastViewer
                 case "playNext": playNextAtEnd = v == "1"; break;
                 case "keepReady": keepReady = v == "1"; break;
                 case "backgroundTold": toldAboutBackground = v == "1"; break;
+                case "miniVolume": miniVolume = v == "1"; break;
+                case "animations": animations = AnimationChoices.Contains(v) ? v : "Auto"; break;
+                case "fileTransition": crossfadeFiles = v == "Crossfade"; break;
                 case "strip": showStrip = v == "1"; break;
                 case "centerPlay": centerButton = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "fadePaused": fadePaused = v == "1"; break;
@@ -111,6 +114,9 @@ namespace FastViewer
                 "playNext=" + (playNextAtEnd ? "1" : "0"),
                 "keepReady=" + (keepReady ? "1" : "0"),
                 "backgroundTold=" + (toldAboutBackground ? "1" : "0"),
+                "miniVolume=" + (miniVolume ? "1" : "0"),
+                "animations=" + animations,
+                "fileTransition=" + (crossfadeFiles ? "Crossfade" : "None"),
                 "strip=" + (showStrip ? "1" : "0"),
                 "centerPlay=" + centerButton.ToString(CultureInfo.InvariantCulture),
                 "fadePaused=" + (fadePaused ? "1" : "0"),
@@ -263,9 +269,8 @@ namespace FastViewer
             foreach (var refresh in settingsRefresh) refresh(); // things changed by a key or menu since last time (Keep on top...)
             if (settingsList.Children.Count == 0 && settingsPages.Count > 0) ShowSettingsPage(settingsPages[0].Value);
             var page = F<FrameworkElement>("SettingsPage");
-            page.Visibility = Visibility.Visible;
+            Motion.Show(page, 0, 24); // rises into place (Liquid Glass with a spring)
             PlaceBars(); // looks with floating bars dock them while Settings is open
-            if (springMotion) Rise(page, 18);
             UpdateControls(); // the file buttons are off while Settings is open
             Dispatcher.BeginInvoke(new Action(delegate
             {
@@ -301,7 +306,7 @@ namespace FastViewer
                 capturing = null;
                 RefreshShortcutEditors();
             }
-            F<FrameworkElement>("SettingsPage").Visibility = Visibility.Collapsed;
+            Motion.Hide(F<FrameworkElement>("SettingsPage"), 0, 8, 1, 120); // fades away, sinking a little
             PlaceBars();
         }
 
@@ -450,6 +455,14 @@ namespace FastViewer
             AddCard("\uE946", "FastViewer " + version.ToString(3),
                 "A fast photo and video viewer. See \"What's new.txt\" for what changed in each version. " +
                 "Settings are saved in " + SettingsFile, null);
+            var screen = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+            screen.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            AddCard("\uE7F4", "Screen", "Animations follow your screen's refresh rate (with several screens, the fastest one). " +
+                "After something has moved, this shows how many frames a second it really got.", screen);
+            settingsRefresh.Add(delegate
+            {
+                screen.Text = Motion.ScreenRate + " Hz" + (Motion.LastFps > 0 ? ", animations at " + Math.Round(Motion.LastFps) + " fps" : "");
+            });
         }
 
         // Settings categories: one page per category, picked from the side menu.
@@ -508,6 +521,7 @@ namespace FastViewer
         void ShowSettingsPage(StackPanel page)
         {
             if (page == appearancePage) BuildLookPreviews(); // drawn the first time they're needed, not at start-up
+            var before = settingsPages.FirstOrDefault(p => settingsList.Children.Contains(p.Value)).Key;
             settingsList.Children.Clear();
             settingsList.Children.Add(page);
             MakeKeyboardReachable(page);
@@ -520,8 +534,14 @@ namespace FastViewer
                 else p.Key.Background = Brushes.Transparent;
                 ((FrameworkElement)((StackPanel)p.Key.Content).Children[0]).Visibility = on && !springMotion ? Visibility.Visible : Visibility.Hidden;
             }
+            var after = settingsPages.FirstOrDefault(p => p.Value == page).Key;
+            if (before != null && after != null && before != after && !springMotion && before.IsVisible)
+            {
+                var marker = (FrameworkElement)((StackPanel)after.Content).Children[0];
+                Glide(marker, 0, before.TranslatePoint(new Point(0, 0), after).Y / Math.Max(0.01, Motion.Distance)); // slides from the old item
+            }
             F<System.Windows.Controls.ScrollViewer>("SettingsScroll").ScrollToTop();
-            if (springMotion) Rise(page, 14);
+            Motion.Enter(page, 16); // the new page rises into place
             UpdateSettingsLens(true);
         }
 
@@ -666,26 +686,39 @@ namespace FastViewer
             int from;
             rotations.TryGetValue(file, out from);
             int to = (from + 90) % 360;
+            Motion.Stop("zoom");
+            ResetZoom(s);
+            double before = FitScale(s);       // screen pixels per picture pixel, before turning
             rotations[file] = to;
             AfterPhotoRotated(file); // saved into the file a moment later (if that's on), even if you switch away first
-            ResetZoom(s);
             RequestStripUpdate(); // its thumbnail turns too
 
-            var turn = new DoubleAnimation(from, from + 90, TimeSpan.FromMilliseconds(220))
+            // The layout takes the new orientation at once (one re-fit, not one per frame); a counter-turn on top
+            // makes it look as if it turns and re-sizes from where it was, settling in the look's own way.
+            s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
+            s.Rotation.Angle = to;
+            s.Rotor.UpdateLayout();
+            double after = FitScale(s);
+            if (Motion.Moves && before > 0 && after > 0)
             {
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-            turn.Completed += delegate
-            {
-                int now;
-                if (s.File != file || !rotations.TryGetValue(file, out now) || now != to) return; // turned again meanwhile
-                s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
-                s.Rotation.Angle = to;
-                UpdateZoomUi();
-                UpdateScrim();
-                if (mini) FitMiniWindow(false);
-            };
-            s.Rotation.BeginAnimation(RotateTransform.AngleProperty, turn);
+                s.Rotor.RenderTransformOrigin = new Point(0.5, 0.5);
+                var spin = s.Rotor.RenderTransform as TransformGroup;
+                if (spin == null || spin.Children.Count != 2)
+                {
+                    spin = new TransformGroup();
+                    spin.Children.Add(new ScaleTransform(1, 1));
+                    spin.Children.Add(new RotateTransform(0));
+                    s.Rotor.RenderTransform = spin;
+                }
+                var size = (ScaleTransform)spin.Children[0];
+                var angle = (RotateTransform)spin.Children[1];
+                double k = before / after;
+                double turnMs = Motion.Ms(Motion.Normal);
+                Motion.FromTo(angle, RotateTransform.AngleProperty, angle.Angle - 90, 0, turnMs, Motion.In);
+                Motion.FromTo(size, ScaleTransform.ScaleXProperty, size.ScaleX * k, 1, turnMs, Motion.In);
+                Motion.FromTo(size, ScaleTransform.ScaleYProperty, size.ScaleY * k, 1, turnMs, Motion.In);
+            }
+            if (mini) FitMiniWindow(false);
             UpdateZoomUi();
             UpdateScrim();
             ShowOverlay();
@@ -753,6 +786,22 @@ namespace FastViewer
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "Couldn't save", MessageBoxButton.OK); }
         }
 
+        // Windows draws the default app's icon as a small badge on every thumbnail in File Explorer unless the app's
+        // entry says not to (TypeOverlay). Making FastViewer the default through "Open with > Always" creates that
+        // entry without it, so FastViewer adds it to its own entry when it starts (once; nothing else is touched).
+        static void HideThumbnailBadge()
+        {
+            try
+            {
+                using (var app = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\Applications\FastViewer.exe", true))
+                {
+                    if (app == null || app.GetValue("TypeOverlay") != null) return;
+                    app.SetValue("TypeOverlay", "");
+                }
+                SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); // SHCNE_ASSOCCHANGED: Explorer re-reads it
+            }
+            catch { }
+        }
         // Registers FastViewer for its file types (current user only), so it appears in "Open with"
         // and in Windows' Default apps list. Only runs when you press the button in Settings.
         bool RegisterOpenWith()

@@ -69,7 +69,7 @@
 
     <Grid x:Name="Stage" Background="{DynamicResource StageBg}" ClipToBounds="True"/>
 
-    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
+    <StackPanel x:Name="MessagePanel" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
       <TextBlock x:Name="Message" Foreground="{DynamicResource TextSecondary}" FontSize="16" TextAlignment="Center"
                  TextWrapping="Wrap" IsHitTestVisible="False"/>
       <!-- A file FastViewer can't open: offer another app -->
@@ -99,6 +99,10 @@
       </Button>
 
       <StackPanel x:Name="MiniBar" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Visibility="Collapsed">
+        <!-- Settings > Buttons > Volume button in the mini player (off unless switched on) -->
+        <Button x:Name="MiniVolBtn" Style="{StaticResource NavArrow}" Width="32" Height="32" Margin="0,0,4,0" Visibility="Collapsed">
+          <fv:Glyph x:Name="MiniVolIcon" Code="&#xE995;" Size="13"/>
+        </Button>
         <Button x:Name="MiniExitBtn" Style="{StaticResource NavArrow}" Width="32" Height="32" Margin="0,0,4,0" ToolTip="Back to full window (Ctrl+M or double-click)">
           <fv:Glyph Code="&#xE8A7;" Size="13"/>
         </Button>
@@ -164,7 +168,7 @@
 
       <!-- Opens on hover and closes itself (FastViewer.cs, InitVolumeHover), so it doesn't grab the mouse -->
       <Popup x:Name="VolPopup" PlacementTarget="{Binding ElementName=VolBtn}" Placement="Top" VerticalOffset="-8"
-             StaysOpen="True" AllowsTransparency="True" PopupAnimation="Fade">
+             StaysOpen="True" AllowsTransparency="True" PopupAnimation="None">
         <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
                 CornerRadius="{DynamicResource Radius.Float}" Padding="6,4">
           <StackPanel Orientation="Horizontal">
@@ -183,6 +187,11 @@
     <Border x:Name="Toast" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0" Visibility="Collapsed"
             Background="{DynamicResource FloatBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
             CornerRadius="{DynamicResource Radius.Float}" Padding="14,6,6,6">
+      <Grid>
+      <!-- Saving a video: a thin line along the bottom fills as it goes -->
+      <Rectangle x:Name="ToastProgress" Height="2" VerticalAlignment="Bottom" Margin="-12,0,-4,-5" Fill="{DynamicResource Accent}" Visibility="Collapsed" RadiusX="1" RadiusY="1">
+        <Rectangle.RenderTransform><ScaleTransform ScaleX="0"/></Rectangle.RenderTransform>
+      </Rectangle>
       <StackPanel Orientation="Horizontal">
         <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="13"/>
         <Button x:Name="ToastBtn" Style="{StaticResource Filled}" Height="28" Margin="12,0,0,0" Visibility="Collapsed"/>
@@ -190,20 +199,66 @@
           <fv:Glyph Code="&#xE711;" Size="10"/>
         </Button>
       </StackPanel>
+      </Grid>
     </Border>
 
-    <!-- Trim: pick a start and end, then save that part as a new video -->
-    <Border x:Name="TrimBar" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0" Visibility="Collapsed"
+    <!-- Trim: a filmstrip of the video with two handles; the part between them is kept (Playback.cs, Trim.cs) -->
+    <Border x:Name="TrimBar" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,16" Width="640" Visibility="Collapsed"
             Background="{DynamicResource FloatBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
-            CornerRadius="{DynamicResource Radius.Float}" Padding="14,6,6,6">
-      <StackPanel Orientation="Horizontal">
-        <fv:Glyph Code="&#xE7A8;" Size="14" Margin="0,0,10,0"/>
-        <TextBlock x:Name="TrimText" VerticalAlignment="Center" FontSize="13" MinWidth="150"/>
-        <Button x:Name="TrimStartBtn" Style="{StaticResource Filled}" Height="28" Margin="12,0,0,0" Content="Start here" ToolTip="Start the clip at the current moment ( [ )"/>
-        <Button x:Name="TrimEndBtn" Style="{StaticResource Filled}" Height="28" Margin="6,0,0,0" Content="End here" ToolTip="End the clip at the current moment ( ] )"/>
-        <Button x:Name="TrimSaveBtn" Style="{StaticResource AccentButton}" Height="28" Margin="6,0,0,0" Content="Save clip"/>
-        <Button x:Name="TrimCancelBtn" Style="{StaticResource Subtle}" Height="28" Margin="4,0,0,0" Content="Cancel"/>
-      </StackPanel>
+            CornerRadius="{DynamicResource Radius.Float}" Padding="14,10,14,8" AutomationProperties.Name="Trim">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button x:Name="TrimPlayBtn" Style="{StaticResource Filled}" Height="30">
+              <StackPanel Orientation="Horizontal">
+                <fv:Glyph x:Name="TrimPlayIcon" Code="&#xE768;" Size="12" Margin="0,0,8,0"/>
+                <TextBlock x:Name="TrimPlayText" Text="Play selection" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button x:Name="TrimCancelBtn" Style="{StaticResource Subtle}" Height="30" Margin="6,0,0,0" Content="Cancel"/>
+            <Button x:Name="TrimSaveBtn" Style="{StaticResource AccentButton}" Height="30" Margin="6,0,0,0" Content="Save clip"/>
+          </StackPanel>
+          <fv:Glyph Code="&#xE7A8;" Size="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+          <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+            <TextBlock x:Name="TrimText" FontSize="14" FontWeight="SemiBold" Text="Trim" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="TrimHint" FontSize="12" Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"
+                       Text="Drag the handles to choose the part to keep"/>
+          </StackPanel>
+        </DockPanel>
+        <!-- The filmstrip: the handles sit just outside the part they mark, the dimmed parts are cut off -->
+        <Grid x:Name="TrimTrack" Grid.Row="1" Height="56" Margin="0,12,0,0" Background="Transparent">
+          <Border x:Name="TrimFramesBox" Margin="14,4" CornerRadius="4" ClipToBounds="True" Background="{DynamicResource ThumbPlaceholder}">
+            <UniformGrid x:Name="TrimFrames" Rows="1"/>
+          </Border>
+          <Canvas x:Name="TrimCanvas">
+            <Rectangle x:Name="TrimDimLeft" Canvas.Top="4" Height="48" Fill="#A6000000"/>
+            <Rectangle x:Name="TrimDimRight" Canvas.Top="4" Height="48" Fill="#A6000000"/>
+            <Border x:Name="TrimSel" Height="56" BorderBrush="{DynamicResource Accent}" BorderThickness="0,3,0,3" IsHitTestVisible="False"/>
+            <Border x:Name="TrimHead" Width="4" Height="64" Canvas.Top="-4" CornerRadius="2" Background="White" BorderBrush="#80000000" BorderThickness="1"
+                    IsHitTestVisible="False"/>
+            <Border x:Name="TrimHandleA" Width="14" Height="56" CornerRadius="6,0,0,6" Background="{DynamicResource Accent}" Cursor="SizeWE"
+                    Focusable="True" FocusVisualStyle="{StaticResource FocusRing}" AutomationProperties.Name="Start of the clip"
+                    AutomationProperties.HelpText="Drag, or use the left and right arrow keys (Shift: a second at a time)">
+              <Rectangle Width="2" Height="18" RadiusX="1" RadiusY="1" Fill="{DynamicResource AccentText}" Opacity="0.85"/>
+            </Border>
+            <Border x:Name="TrimHandleB" Width="14" Height="56" CornerRadius="0,6,6,0" Background="{DynamicResource Accent}" Cursor="SizeWE"
+                    Focusable="True" FocusVisualStyle="{StaticResource FocusRing}" AutomationProperties.Name="End of the clip"
+                    AutomationProperties.HelpText="Drag, or use the left and right arrow keys (Shift: a second at a time)">
+              <Rectangle Width="2" Height="18" RadiusX="1" RadiusY="1" Fill="{DynamicResource AccentText}" Opacity="0.85"/>
+            </Border>
+          </Canvas>
+        </Grid>
+        <!-- Start and end times under the handles -->
+        <Canvas x:Name="TrimLabels" Grid.Row="2" Height="20" Margin="0,4,0,0" ClipToBounds="False">
+          <TextBlock x:Name="TrimFromText" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
+          <TextBlock x:Name="TrimToText" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
+        </Canvas>
+      </Grid>
     </Border>
 
     <!-- File info pane -->
@@ -342,6 +397,9 @@
       <StackPanel x:Name="SettingsList" MaxWidth="900" Margin="20,18,36,40"/>
     </ScrollViewer>
   </Grid>
+  <!-- Dragging a file over the window -->
+  <Border x:Name="DropOutline" Grid.RowSpan="3" Margin="8" BorderThickness="2" BorderBrush="{DynamicResource Accent}" CornerRadius="10"
+          IsHitTestVisible="False" Visibility="Collapsed" Panel.ZIndex="1500" RenderTransformOrigin="0.5,0.5"/>
   <!-- Delete confirmation, styled like a Windows content dialog -->
   <Grid x:Name="Dialog" Grid.RowSpan="3" Background="{DynamicResource DialogShade}" Visibility="Collapsed">
     <!-- 440 wide, narrower in a small window (the text wraps) -->

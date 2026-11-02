@@ -2,7 +2,8 @@
      that the chosen look (Looks.<Id>.xaml, applied by Looks.cs) fills in, so switching looks is instant. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework">
+                    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+                    xmlns:fv="clr-namespace:FastViewer;assembly=FastViewer">
 
   <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
 
@@ -19,7 +20,7 @@
     <Setter Property="Control.Template">
       <Setter.Value>
         <ControlTemplate>
-          <Border Margin="-3" BorderThickness="2" BorderBrush="{DynamicResource TextMain}" CornerRadius="7" SnapsToDevicePixels="True"/>
+          <Border Margin="-3" BorderThickness="2" BorderBrush="{DynamicResource TextMain}" CornerRadius="7" SnapsToDevicePixels="True" fv:Anim.Appear="True"/>
         </ControlTemplate>
       </Setter.Value>
     </Setter>
@@ -47,9 +48,37 @@
     </ControlTemplate.Triggers>
   </ControlTemplate>
 
+  <!-- The same, with the hover layer fading in (83 ms) and out (150 ms) like Windows 11. Used unless
+       Settings > Appearance > Animations is Off (Motion.cs picks the template as "Tpl.Button"). -->
+  <ControlTemplate x:Key="ButtonTemplateAnimated" TargetType="Button">
+    <Grid>
+      <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource Radius.Control}"/>
+      <Border x:Name="Hover" Background="{DynamicResource HoverFill}" CornerRadius="{DynamicResource Radius.Control}" Opacity="0"/>
+      <ContentPresenter x:Name="Cp" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
+                        HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+    </Grid>
+    <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Trigger.EnterActions>
+          <BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="Hover" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.083"/></Storyboard></BeginStoryboard>
+        </Trigger.EnterActions>
+        <Trigger.ExitActions>
+          <BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="Hover" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/></Storyboard></BeginStoryboard>
+        </Trigger.ExitActions>
+      </Trigger>
+      <Trigger Property="IsPressed" Value="True">
+        <Setter TargetName="Cp" Property="Opacity" Value="0.75"/>
+      </Trigger>
+      <Trigger Property="IsEnabled" Value="False">
+        <Setter Property="Opacity" Value="0.35"/>
+      </Trigger>
+    </ControlTemplate.Triggers>
+  </ControlTemplate>
+
   <Style x:Key="Subtle" TargetType="Button">
     <Setter Property="OverridesDefaultStyle" Value="True"/>
-    <Setter Property="Template" Value="{StaticResource ButtonTemplate}"/>
+    <Setter Property="Template" Value="{DynamicResource Tpl.Button}"/>
     <Setter Property="Foreground" Value="{DynamicResource ControlText}"/>
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="BorderBrush" Value="Transparent"/>
@@ -158,7 +187,9 @@
             <TextBlock x:Name="Label" Text="Off" Width="32" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,12,0"/>
             <Grid Width="40" Height="20">
               <Border x:Name="Track" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource SwitchEdge}" Background="{DynamicResource SwitchTrack}"/>
-              <Ellipse x:Name="Knob" Width="12" Height="12" Fill="{DynamicResource SwitchKnob}" HorizontalAlignment="Left" Margin="4,0,0,0"/>
+              <Ellipse x:Name="Knob" Width="12" Height="12" Fill="{DynamicResource SwitchKnob}" HorizontalAlignment="Left" Margin="4,0,0,0">
+                <Ellipse.RenderTransform><TranslateTransform x:Name="KnobMove"/></Ellipse.RenderTransform>
+              </Ellipse>
             </Grid>
           </StackPanel>
           <ControlTemplate.Triggers>
@@ -226,9 +257,29 @@
     </ControlTemplate.Triggers>
   </ControlTemplate>
 
+  <ControlTemplate x:Key="CaptionTemplateAnimated" TargetType="Button">
+    <Grid Background="{TemplateBinding Background}">
+      <Border x:Name="Hover" Background="{TemplateBinding Tag}" Opacity="0"/>
+      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Grid>
+    <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Trigger.EnterActions>
+          <BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="Hover" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.083"/></Storyboard></BeginStoryboard>
+        </Trigger.EnterActions>
+        <Trigger.ExitActions>
+          <BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="Hover" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/></Storyboard></BeginStoryboard>
+        </Trigger.ExitActions>
+      </Trigger>
+      <Trigger Property="IsPressed" Value="True">
+        <Setter TargetName="Hover" Property="Opacity" Value="0.7"/>
+      </Trigger>
+    </ControlTemplate.Triggers>
+  </ControlTemplate>
+
   <Style x:Key="Caption" TargetType="Button">
     <Setter Property="OverridesDefaultStyle" Value="True"/>
-    <Setter Property="Template" Value="{StaticResource CaptionTemplate}"/>
+    <Setter Property="Template" Value="{DynamicResource Tpl.Caption}"/>
     <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="Width" Value="46"/>
@@ -278,12 +329,24 @@
         <ControlTemplate TargetType="Thumb">
           <Grid Width="20" Height="20" Background="Transparent">
             <Ellipse Fill="{DynamicResource SliderThumbBg}" Stroke="{DynamicResource SliderThumbEdge}" StrokeThickness="1"/>
-            <Ellipse x:Name="Dot" Width="12" Height="12" Fill="{DynamicResource Accent}"/>
+            <Ellipse x:Name="Dot" Width="12" Height="12" Fill="{DynamicResource Accent}" RenderTransformOrigin="0.5,0.5">
+              <Ellipse.RenderTransform><ScaleTransform x:Name="DotScale"/></Ellipse.RenderTransform>
+            </Ellipse>
           </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Dot" Property="Width" Value="14"/>
-              <Setter TargetName="Dot" Property="Height" Value="14"/>
+              <Trigger.EnterActions>
+                <BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="DotScale" Storyboard.TargetProperty="ScaleX" To="1.17" Duration="0:0:0.1"/>
+                  <DoubleAnimation Storyboard.TargetName="DotScale" Storyboard.TargetProperty="ScaleY" To="1.17" Duration="0:0:0.1"/>
+                </Storyboard></BeginStoryboard>
+              </Trigger.EnterActions>
+              <Trigger.ExitActions>
+                <BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="DotScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.15"/>
+                  <DoubleAnimation Storyboard.TargetName="DotScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.15"/>
+                </Storyboard></BeginStoryboard>
+              </Trigger.ExitActions>
             </Trigger>
             <Trigger Property="IsDragging" Value="True">
               <Setter TargetName="Dot" Property="Width" Value="10"/>
@@ -330,7 +393,7 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ContextMenu">
-          <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
+          <Border x:Name="MenuRoot" Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
                   CornerRadius="{DynamicResource Radius.Float}" Padding="4" MinWidth="220">
             <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
           </Border>

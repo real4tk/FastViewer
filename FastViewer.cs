@@ -65,6 +65,7 @@ namespace FastViewer
                 catch (Exception ex) { File.WriteAllText(log, "ERROR " + ex.Message); }
                 return;
             }
+            Motion.UseScreenRate(); // animations as smooth as the screen (120/144 Hz too)
             var app = new Application();
             app.ShutdownMode = ShutdownMode.OnMainWindowClose;
             // If FastViewer ever crashes, the reason is kept in %TEMP%\FastViewer\crash.txt.
@@ -370,6 +371,8 @@ namespace FastViewer
         readonly DispatcherTimer idleTimer = new DispatcherTimer();
         readonly DispatcherTimer slideTimer = new DispatcherTimer();
         bool settingSlider, overlayVisible = true, fullscreen, panning, infoOpen;
+        Vector panVelocity;
+        readonly Stopwatch panClock = new Stopwatch();
         Rect boundsBeforeFullscreen;
         WindowState stateBeforeFullscreen;
         Point lastMouse, panStart;
@@ -399,6 +402,7 @@ namespace FastViewer
                 else if (args[i] == "--update-test") updateTestAccept = true;
                 else if (args[i] == "--update-page" && i + 1 < args.Length) updatePage = args[++i];
                 else if (args[i] == "--updated") { } // restarted by the updater (see InstallUpdate)
+                else if (args[i] == "--motion" && i + 1 < args.Length) { var m = args[++i].ToLowerInvariant(); motionOverride = m == "full" ? "Full" : m == "reduced" ? "Reduced" : "Off"; }
                 else if (args[i] == "--positions" && i + 1 < args.Length) { PositionsFile = args[++i]; positionsOverride = true; }
                 else if (args[i] == "--preload" && i + 1 < args.Length) preloadOverride = int.Parse(args[++i]);
                 else if (args[i] == "--features" && i + 1 < args.Length) { snapDir = args[++i]; featureTest = true; }
@@ -460,7 +464,8 @@ namespace FastViewer
             if (testMode) testLog.Add("look " + lookId + " applied in " + lookWatch.ElapsedMilliseconds + " ms");
             if (testMode)
             {
-                // Kept behind all other windows (see SendToBack) so tests don't get in the way.
+                // Kept out of sight so tests don't get in the way: cloaked (see KeepTestOutOfSight), never on top,
+                // and behind other windows.
                 WindowStartupLocation = WindowStartupLocation.Manual;
                 Left = 40;
                 Top = 40;
@@ -469,6 +474,7 @@ namespace FastViewer
                 ShowActivated = false;
                 ShowInTaskbar = false;
                 muted = true;
+                KeepTestOutOfSight();
             }
 
             root = Ui.Load<Grid>("FastViewer.Window.xaml");
@@ -521,8 +527,8 @@ namespace FastViewer
             OnClick("DeleteBtn", AskDelete);
             OnClick("CopyBtn", CopyFile);
             OnClick("RotateBtn", Rotate);
-            OnClick("MiniBtn", ToggleMini);
-            OnClick("MiniExitBtn", ToggleMini);
+            OnClick("MiniBtn", ToggleMiniSmoothly);
+            OnClick("MiniExitBtn", ToggleMiniSmoothly);
             OnClick("MiniCloseBtn", Close);
             OnClick("MoreBtn", ShowMoreMenu);
             OnClick("OpenWithBtn", OpenWith);
@@ -544,9 +550,9 @@ namespace FastViewer
             OnClick("ZoomBtn", ShowZoomMenu);
             OnClick("ZoomOutBtn", delegate { ZoomBy(0.8, StageCenter()); });
             OnClick("ZoomInBtn", delegate { ZoomBy(1.25, StageCenter()); });
-            OnClick("FullBtn", ToggleFullscreen);
+            OnClick("FullBtn", ToggleFullscreenSmoothly);
             OnClick("DialogOk", ConfirmDelete);
-            OnClick("DialogCancel", delegate { dialog.Visibility = Visibility.Collapsed; });
+            OnClick("DialogCancel", HideDeleteDialog);
             OnClick("MessageBtn", OpenWith);
             // The file name sits in the title bar: it moves the window (and double-click maximizes) like the rest of it.
             titleText.MouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e)
@@ -559,9 +565,10 @@ namespace FastViewer
             F<Button>("PrevBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(-1); e.Handled = true; };
             F<Button>("NextBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(1); e.Handled = true; };
 
+            seek.PreviewMouseLeftButtonDown += delegate { seek.BeginAnimation(RangeBase.ValueProperty, null); }; // your click or drag wins over the glide
             seek.ValueChanged += delegate
             {
-                if (settingSlider || shown == null || !shown.IsVideo) return;
+                if (settingSlider || shown == null || !shown.IsVideo || seek.HasAnimatedProperties) return; // (the thumb gliding on its own)
                 shown.Video.Position = TimeSpan.FromSeconds(seek.Value);
                 UpdateTime();
             };
@@ -575,6 +582,7 @@ namespace FastViewer
             stage.SizeChanged += delegate
             {
                 transport.Width = Math.Max(240, Math.Min(720, stage.ActualWidth - 96));
+                if (trimming) SizeTrimBar();
                 UpdateControls(); // which control-bar buttons fit
                 if (shown != null) ClampPan(shown);
                 UpdateZoomUi();
@@ -603,10 +611,18 @@ namespace FastViewer
             stage.MouseMove += OnStageMove;
             stage.MouseLeftButtonUp += OnStageUp;
             Drop += OnDrop;
+            // Dragging a file over the window: an outline shows it will open here.
+            DragEnter += delegate(object o, DragEventArgs e) { if (e.Data.GetDataPresent(DataFormats.FileDrop)) Motion.Show(F<FrameworkElement>("DropOutline"), 0, 0, 0.98, Motion.Fast); };
+            DragLeave += delegate(object o, DragEventArgs e)
+            {
+                var p = e.GetPosition(this);
+                if (p.X <= 1 || p.Y <= 1 || p.X >= ActualWidth - 1 || p.Y >= ActualHeight - 1) Motion.Hide(F<FrameworkElement>("DropOutline"), 0, 0, 1, Motion.Fast);
+            };
             StateChanged += delegate { UpdateWindowFrame(); RoundCorners(); };
             SizeChanged += delegate { RoundCorners(); };
             Microsoft.Win32.SystemEvents.UserPreferenceChanged += (o, e) => // Windows switched dark/light: follow it ("Auto")
             {
+                Dispatcher.BeginInvoke(new Action(ApplyMotionLevel)); // Windows' "Show animations" may have changed
                 if (e.Category == Microsoft.Win32.UserPreferenceCategory.General && lookMode == "Auto")
                     Dispatcher.BeginInvoke(new Action(ApplyLook));
             };
@@ -656,8 +672,10 @@ namespace FastViewer
                 BuildSettingsPage();
                 InitExtras();
                 InitGallery();
+                foreach (var name in new[] { "GridScroll", "SettingsScroll", "SettingsNavScroll" }) SmoothWheel(F<ScrollViewer>(name));
                 ApplyButtons();
                 if (!testMode) StartSingleInstance();
+                if (!testRun) Dispatcher.BeginInvoke(new Action(HideThumbnailBadge), DispatcherPriority.ApplicationIdle); // after the first picture
                 StartupUpdateCheck();
                 ApplyStretch();
                 UpdateSkipButtons();
@@ -863,6 +881,7 @@ namespace FastViewer
         void Go(int dir)
         {
             if (files.Count == 0 || DialogOpen) return; // "Delete this file?" stays about the file it names
+            growFile = null;
             if (!wrapAround && (index + dir < 0 || index + dir >= files.Count)) return;
             ShowIndex(index + dir, dir);
         }
@@ -909,6 +928,7 @@ namespace FastViewer
             var victim = slots.Where(s => !keep.Contains(s) && s != shown)
                               .OrderBy(s => s.File == null ? -1 : s.LastUsed)
                               .First();
+            if (victim == fading) FinishCrossfade(); // needed for the next file: its fade ends now
             Load(victim, file);
             victim.LastUsed = ++useCounter;
             keep.Add(victim);
@@ -933,6 +953,8 @@ namespace FastViewer
             int angle;
             s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
             s.Rotation.Angle = rotations.TryGetValue(file, out angle) ? angle : 0;
+            var spin = s.Rotor.RenderTransform as TransformGroup; // a turn still settling from the slot's last file
+            if (spin != null) foreach (var part in spin.Children) { if (part is RotateTransform) Motion.Set(part, RotateTransform.AngleProperty, 0); else { Motion.Set(part, ScaleTransform.ScaleXProperty, 1); Motion.Set(part, ScaleTransform.ScaleYProperty, 1); } }
 
             Dropped(s.Picture.Source as BitmapSource);
             Dropped(s.Poster.Source as BitmapSource);
@@ -1338,22 +1360,37 @@ namespace FastViewer
             });
         }
 
+        Slot fading; // Settings > Appearance > Transition between files: the last file, fading out over this one
+
         void Reveal(Slot c)
         {
+            FinishCrossfade(); // a fade from the last switch ends now (clicking quickly never waits for it)
             if (shown != null && shown != c)
             {
+                bool fade = crossfadeFiles && Motion.Animates && !gridOpen && ((snapDir == null && selfTestInterval == 0) || motionOverride != null); // (tests only with --motion)
                 // Rewind while hidden (or go to where you left off), so it's ready if you come back.
                 if (shown.IsVideo)
                 {
                     RememberPosition(shown);
-                    StopHidden(shown);
+                    if (fade) { shown.Video.Pause(); shown.Video.IsMuted = true; } // rewound once it has faded
+                    else StopHidden(shown);
                 }
-                ResetZoom(shown);
-                Panel.SetZIndex(shown.Host, 0);
-                if (glassSlots) shown.Host.Opacity = HiddenSlotOpacity;
+                if (fade)
+                {
+                    // The new file is shown at once underneath; the old one fades away on top of it (120 ms).
+                    fading = shown;
+                    Panel.SetZIndex(shown.Host, 3);
+                    Motion.To(shown.Host, OpacityProperty, 0, Motion.Ms(120, false), Motion.Smooth, FinishCrossfade);
+                }
+                else
+                {
+                    ResetZoom(shown);
+                    Panel.SetZIndex(shown.Host, 0);
+                    if (glassSlots) shown.Host.Opacity = HiddenSlotOpacity;
+                }
             }
             Panel.SetZIndex(c.Host, 2);
-            c.Host.Opacity = 1;
+            Motion.Set(c.Host, OpacityProperty, 1);
             var before = shown;
             shown = c;
             OnShownChanged(before);
@@ -1363,6 +1400,19 @@ namespace FastViewer
                 testLog.Add(string.Format("{0,-40} shown after {1,4} ms", Path.GetFileName(c.File), switchWatch.ElapsedMilliseconds));
             if (slideshow) ScheduleSlide();
             RefreshForShown();
+            GrowPicked(c); // picked in the grid: grows out of its tile
+        }
+
+        void FinishCrossfade()
+        {
+            var s = fading;
+            if (s == null) return;
+            fading = null;
+            Motion.Set(s.Host, OpacityProperty, glassSlots && s != shown ? HiddenSlotOpacity : 1);
+            if (s == shown) return;
+            Panel.SetZIndex(s.Host, 0);
+            ResetZoom(s);
+            if (s.IsVideo) StopHidden(s);
         }
 
         void StopHidden(Slot s)
@@ -1380,7 +1430,9 @@ namespace FastViewer
         {
             var c = shown;
             message.Text = c.Failed ? "Can't open " + Path.GetFileName(c.File) + "\n\n" + c.Error : "";
-            F<FrameworkElement>("MessageBtn").Visibility = c.Failed ? Visibility.Visible : Visibility.Collapsed;
+            var messageBtn = F<FrameworkElement>("MessageBtn");
+            if (c.Failed && messageBtn.Visibility != Visibility.Visible) Motion.Enter(F<FrameworkElement>("MessagePanel"), 8); // rises in with the file
+            messageBtn.Visibility = c.Failed ? Visibility.Visible : Visibility.Collapsed;
             UpdateControls();
             UpdateFacts();
             UpdateZoomUi();
@@ -1411,13 +1463,12 @@ namespace FastViewer
             UpdateControls();
             ShowOverlay();
 
-            // Little "pop" on the center button so the change feels immediate.
-            var pop = new DoubleAnimation(1.15, 1, TimeSpan.FromMilliseconds(220))
+            // The middle button dips and springs back, so the change feels immediate.
+            if (Motion.Moves)
             {
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-            centerScale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
-            centerScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
+                Motion.FromTo(centerScale, ScaleTransform.ScaleXProperty, 0.9, 1, Motion.Ms(Motion.Normal), Motion.In);
+                Motion.FromTo(centerScale, ScaleTransform.ScaleYProperty, 0.9, 1, Motion.Ms(Motion.Normal), Motion.In);
+            }
         }
 
         void SeekBy(double seconds)
@@ -1492,13 +1543,25 @@ namespace FastViewer
             volCloseTimer.Tick += delegate
             {
                 volCloseTimer.Stop();
-                if (!volBtn.IsMouseOver && !panel.IsMouseOver) SetVolumeSlider(false);
+                if (!volBtn.IsMouseOver && !panel.IsMouseOver && !F<FrameworkElement>("MiniVolBtn").IsMouseOver) SetVolumeSlider(false);
             };
             volBtn.MouseEnter += delegate
             {
                 volCloseTimer.Stop();
+                PlaceVolumeSlider(volBtn, PlacementMode.Top);
                 if (!VolumeSliderOpen) volOpenTimer.Start();
             };
+            // The mini player's own volume button: the same slider, opening below it; click mutes, the wheel changes the volume.
+            var miniVol = F<Button>("MiniVolBtn");
+            miniVol.Click += delegate { ToggleMute(); };
+            miniVol.MouseEnter += delegate
+            {
+                volCloseTimer.Stop();
+                PlaceVolumeSlider(miniVol, PlacementMode.Bottom);
+                if (!VolumeSliderOpen) volOpenTimer.Start();
+            };
+            miniVol.MouseLeave += delegate { LeaveVolume(); };
+            miniVol.PreviewMouseWheel += delegate(object o, MouseWheelEventArgs e) { SetVolume(volume + (e.Delta > 0 ? 0.05 : -0.05)); e.Handled = true; };
             volBtn.MouseLeave += delegate { LeaveVolume(); };
             panel.MouseEnter += delegate { volCloseTimer.Stop(); };
             panel.MouseLeave += delegate { LeaveVolume(); };
@@ -1511,6 +1574,15 @@ namespace FastViewer
             Deactivated += delegate { SetVolumeSlider(false); };
         }
 
+        void PlaceVolumeSlider(UIElement target, PlacementMode where)
+        {
+            if (volPopup.PlacementTarget == target) return;
+            if (volPopup.IsOpen) SetVolumeSlider(false);
+            volPopup.PlacementTarget = target;
+            volPopup.Placement = where;
+            volPopup.VerticalOffset = where == PlacementMode.Top ? -8 : 6;
+        }
+
         void LeaveVolume()
         {
             volOpenTimer.Stop();
@@ -1518,21 +1590,55 @@ namespace FastViewer
             volCloseTimer.Start();
         }
 
+        bool volWanted;
+
+        // The volume slider grows up out of the speaker (150 ms) and fades away when it closes.
         void SetVolumeSlider(bool open)
         {
             volOpenTimer.Stop();
-            if (snapDir != null) volumeTestOpen = open;
-            else volPopup.IsOpen = open;
+            if (snapDir != null) { volumeTestOpen = open; return; }
+            var box = (FrameworkElement)volPopup.Child;
+            if (open)
+            {
+                bool showing = volPopup.IsOpen && volWanted;
+                volWanted = true;
+                volPopup.IsOpen = true;
+                if (showing) { Motion.To(box, OpacityProperty, 1, Motion.Ms(Motion.Fast, false), Motion.Smooth); return; }
+                box.RenderTransformOrigin = new Point(0.5, volPopup.Placement == PlacementMode.Bottom ? 0 : 1); // grows out of its button
+                Motion.FromTo(box, OpacityProperty, 0, 1, Motion.Ms(150, false), Motion.Smooth);
+                if (!Motion.Moves) return;
+                var p = Motion.PartsOf(box);
+                Motion.FromTo(p.Scale, ScaleTransform.ScaleXProperty, 0.92, 1, Motion.Ms(Motion.Fast), Motion.In);
+                Motion.FromTo(p.Scale, ScaleTransform.ScaleYProperty, 0.85, 1, Motion.Ms(Motion.Fast), Motion.In);
+            }
+            else
+            {
+                volWanted = false;
+                if (!volPopup.IsOpen) return;
+                Motion.To(box, OpacityProperty, 0, Motion.Ms(100, false), Motion.Out, delegate
+                {
+                    if (volWanted) return; // opened again meanwhile
+                    volPopup.IsOpen = false;
+                    Motion.Set(box, OpacityProperty, 1);
+                });
+            }
         }
 
         void UpdateControls()
         {
             bool isVideo = shown != null && shown.IsVideo && !shown.Failed;
             // A small mini player has no room for the control bar; play/pause stays in the middle.
-            transport.Visibility = isVideo && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
+            transport.Visibility = isVideo && !trimming && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
             if (transport.Visibility != Visibility.Visible || settingsOpen || gridOpen) SetVolumeSlider(false); // nothing left to point at
             bool center = centerButton == 0 || (centerButton == 1 && !playing); // Settings > Videos
-            centerPlayBtn.Visibility = isVideo && center ? Visibility.Visible : Visibility.Collapsed;
+            var wantCenter = isVideo && center ? Visibility.Visible : Visibility.Collapsed;
+            if (wantCenter == Visibility.Visible && centerPlayBtn.Visibility != Visibility.Visible && Motion.Animates && overlayVisible && !Switching)
+            {
+                // ("Only when paused": it appears as you pause) fades in and grows into place
+                Motion.FromTo(centerPlayBtn, OpacityProperty, 0, 1, Motion.Ms(Motion.Fast, false), Motion.Smooth);
+                if (Motion.Moves) { Motion.FromTo(centerScale, ScaleTransform.ScaleXProperty, 0.85, 1, Motion.Ms(Motion.Normal), Motion.In); Motion.FromTo(centerScale, ScaleTransform.ScaleYProperty, 0.85, 1, Motion.Ms(Motion.Normal), Motion.In); }
+            }
+            centerPlayBtn.Visibility = wantCenter;
             F<FrameworkElement>("PrevBtn").Visibility = F<FrameworkElement>("NextBtn").Visibility =
                 Shown("Arrows") && files.Count > 1 ? Visibility.Visible : Visibility.Collapsed; // Settings > Buttons; nothing to go to: none
             // A narrow control bar keeps its time bar: the skip and repeat buttons go first (they're on keys and in "...").
@@ -1542,16 +1648,19 @@ namespace FastViewer
                 bool fits = id == "PlayBtn" || (id == "VolBtn" ? room >= 300 : room >= 440);
                 F<FrameworkElement>(id).Visibility = Shown(id) && fits ? Visibility.Visible : Visibility.Collapsed;
             }
-            playGlyph.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
-            pauseGlyph.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
+            SetPlayGlyphs(playing);
             UpdateScrim();
             centerPlayBtn.ToolTip = WithKey(playing ? "Pause" : "Play", KeyOf("play"));
-            playIcon.Code = playing ? "\uE769" : "\uE768";
+            string playCode = playing ? "\uE769" : "\uE768";
+            if (playIcon.Code != playCode) { playIcon.Code = playCode; if (!Switching) Motion.Pulse(playIcon); }
             if (loop) loopIcon.SetResourceReference(Glyph.ForegroundProperty, "Accent");
             else loopIcon.ClearValue(Glyph.ForegroundProperty);
             string level = muted || volume == 0 ? "\uE74F" : volume < 0.34 ? "\uE993" : volume < 0.67 ? "\uE994" : "\uE995";
+            if (volIcon.Code != level && volIcon.Code != null && !Switching) Motion.Pulse(volIcon, 0.85);
             volIcon.Code = level;
             muteIcon.Code = level;
+            F<Glyph>("MiniVolIcon").Code = level;
+            F<FrameworkElement>("MiniVolBtn").Visibility = mini && miniVolume && isVideo ? Visibility.Visible : Visibility.Collapsed;
             settingSlider = true;
             vol.Value = volume * 100;
             settingSlider = false;
@@ -1565,6 +1674,33 @@ namespace FastViewer
             UpdateTime();
         }
 
+        bool? glyphsPlaying;
+
+        // Within half a second of a switch: the small decorations a new file brings (icon morphs and bumps) are
+        // skipped, so nothing keeps the window redrawing while the next files get ready (switching stays instant).
+        bool Switching { get { return switchWatch.IsRunning && switchWatch.ElapsedMilliseconds < 500; } }
+
+        // Play and pause turn into each other: one shrinks and fades as the other grows in (180 ms).
+        void SetPlayGlyphs(bool isPlaying)
+        {
+            if (glyphsPlaying == isPlaying) return;
+            bool first = glyphsPlaying == null || Switching;
+            glyphsPlaying = isPlaying;
+            playGlyph.Visibility = pauseGlyph.Visibility = Visibility.Visible;
+            var show = isPlaying ? pauseGlyph : playGlyph;
+            var hide = isPlaying ? playGlyph : pauseGlyph;
+            show.RenderTransformOrigin = hide.RenderTransformOrigin = new Point(0.5, 0.5);
+            double ms = first ? 0 : Motion.Ms(180);
+            Motion.To(show, OpacityProperty, 1, first ? 0 : Motion.Ms(180, false), Motion.Smooth);
+            Motion.To(hide, OpacityProperty, 0, first ? 0 : Motion.Ms(120, false), Motion.Out);
+            if (!Motion.Moves || first) return;
+            var a = Motion.PartsOf(show); var b = Motion.PartsOf(hide);
+            Motion.FromTo(a.Scale, ScaleTransform.ScaleXProperty, 0.6, 1, ms, Motion.In);
+            Motion.FromTo(a.Scale, ScaleTransform.ScaleYProperty, 0.6, 1, ms, Motion.In);
+            Motion.FromTo(b.Scale, ScaleTransform.ScaleXProperty, 1, 0.6, Motion.Ms(120, false), Motion.Out);
+            Motion.FromTo(b.Scale, ScaleTransform.ScaleYProperty, 1, 0.6, Motion.Ms(120, false), Motion.Out);
+        }
+
         void UpdateTime()
         {
             var s = shown;
@@ -1576,7 +1712,14 @@ namespace FastViewer
             {
                 settingSlider = true;
                 seek.Maximum = Math.Max(0.01, dur.TotalSeconds);
-                seek.Value = Math.Min(pos.TotalSeconds, seek.Maximum);
+                double v = Math.Min(pos.TotalSeconds, seek.Maximum);
+                if (playing && Motion.Moves && v > seek.Value && v - seek.Value < 1)
+                    seek.BeginAnimation(RangeBase.ValueProperty, new DoubleAnimation(v, TimeSpan.FromMilliseconds(110))); // steady, like time itself
+                else
+                {
+                    seek.BeginAnimation(RangeBase.ValueProperty, null);
+                    seek.Value = v;
+                }
                 settingSlider = false;
             }
             posText.Text = Fmt(pos);
@@ -1725,6 +1868,7 @@ namespace FastViewer
             infoOpen = !infoOpen;
             infoCol.Width = new GridLength(infoOpen && !fullscreen ? 320 : 0);
             PlaceBars(); // floating bars (Clean) dock while the pane is open, so they don't cover it
+            if (infoOpen && !fullscreen) { var pane = F<FrameworkElement>("InfoPanel"); Motion.FromTo(pane, OpacityProperty, 0, 1, Motion.Ms(Motion.Normal, false), Motion.Smooth); Glide(pane, 24, 0); }
             if (infoOpen) FillInfo();
         }
 
@@ -1764,7 +1908,24 @@ namespace FastViewer
 
         string deleting; // the file the delete dialog names: that one is deleted, whatever is on screen by then
 
-        bool DialogOpen { get { return dialog.Visibility == Visibility.Visible; } }
+        bool DialogOpen { get { return Motion.IsShown(dialog); } }
+
+        // The shade fades in and the box settles from slightly bigger, like a Windows 11 dialog.
+        void ShowDeleteDialog()
+        {
+            Motion.Show(dialog, 0, 0, 1, Motion.Fast);
+            var box = (FrameworkElement)dialog.Children[0];
+            box.RenderTransformOrigin = new Point(0.5, 0.5);
+            if (!Motion.Moves) return;
+            var p = Motion.PartsOf(box);
+            Motion.FromTo(p.Scale, ScaleTransform.ScaleXProperty, 1.04, 1, Motion.Ms(Motion.Normal), Motion.In);
+            Motion.FromTo(p.Scale, ScaleTransform.ScaleYProperty, 1.04, 1, Motion.Ms(Motion.Normal), Motion.In);
+        }
+
+        void HideDeleteDialog()
+        {
+            Motion.Hide(dialog, 0, 0, 1, 83);
+        }
 
         void AskDelete()
         {
@@ -1776,15 +1937,26 @@ namespace FastViewer
                 return;
             }
             dialogText.Text = "\"" + Path.GetFileName(CurrentFile) + "\" will be moved to the Recycle Bin.";
-            dialog.Visibility = Visibility.Visible;
+            ShowDeleteDialog();
         }
 
         void ConfirmDelete()
         {
-            dialog.Visibility = Visibility.Collapsed;
+            HideDeleteDialog();
             string f = deleting;
             deleting = null;
             if (f == null || !files.Contains(f, StringComparer.OrdinalIgnoreCase)) return;
+            deleteShot = null;
+            if (Motion.Animates && shown != null && !shown.IsVideo && string.Equals(shown.File, f, StringComparison.OrdinalIgnoreCase) && stage.ActualWidth > 0)
+                try
+                {
+                    double k = Dpi();
+                    var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(stage.ActualWidth * k), (int)(stage.ActualHeight * k), 96 * k, 96 * k, PixelFormats.Pbgra32);
+                    rtb.Render(shown.Host); // a photo: nothing to wait for (videos are never drawn this way)
+                    rtb.Freeze();
+                    deleteShot = rtb;
+                }
+                catch { }
             // Close the file in any player first, otherwise Windows won't let us delete it.
             foreach (var s in slots)
             {
@@ -1804,6 +1976,31 @@ namespace FastViewer
             playing = false;
             StopRevealWatch();
             TryDelete(f, 0);
+            FadeAwayDeleted();
+        }
+
+        // The deleted photo fades and shrinks away over whatever comes next (photos only: a picture of the
+        // player, taken before it let go of the file).
+        Image deleteGhost;
+        System.Windows.Media.Imaging.BitmapSource deleteShot;
+
+        void FadeAwayDeleted()
+        {
+            var shot = deleteShot;
+            deleteShot = null;
+            if (shot == null || !Motion.Animates) return;
+            if (deleteGhost != null) stage.Children.Remove(deleteGhost);
+            var img = new Image { Source = shot, Stretch = Stretch.Fill, IsHitTestVisible = false, RenderTransformOrigin = new Point(0.5, 0.5) };
+            Panel.SetZIndex(img, 3);
+            stage.Children.Add(img);
+            deleteGhost = img;
+            if (Motion.Moves)
+            {
+                var p = Motion.PartsOf(img);
+                Motion.To(p.Scale, ScaleTransform.ScaleXProperty, 0.94, Motion.Ms(Motion.Normal, false), Motion.Out);
+                Motion.To(p.Scale, ScaleTransform.ScaleYProperty, 0.94, Motion.Ms(Motion.Normal, false), Motion.Out);
+            }
+            Motion.To(img, OpacityProperty, 0, Motion.Ms(Motion.Normal, false), Motion.Out, delegate { stage.Children.Remove(img); if (deleteGhost == img) deleteGhost = null; });
         }
 
         void TryDelete(string f, int attempt)
@@ -1979,16 +2176,41 @@ namespace FastViewer
 
         void ZoomBy(double factor, Point p)
         {
-            if (shown != null) SetZoom(shown.Zoom.ScaleX * factor, p);
+            // Several wheel notches in a row add up to one smooth zoom (from where it's heading, not where it is).
+            if (shown != null) SetZoom((zoomTarget > 0 && Motion.Running("zoom") ? zoomTarget : shown.Zoom.ScaleX) * factor, p);
         }
+
+        double zoomTarget;  // where an animated zoom is heading
 
         void SetZoom(double z, Point p)
         {
             var s = shown;
             if (s == null || !s.Ready || s.Failed) return;
             z = Math.Max(1, Math.Min(MaxZoom, z));
+            Motion.Stop("pan");
+            if (!Motion.Moves)
+            {
+                Motion.Stop("zoom");
+                ZoomStep(s, z, p);
+                return;
+            }
+            // Glides there in about 200 ms (no bounce), keeping the point under the pointer still.
+            zoomTarget = z;
+            Motion.Run("zoom", dt =>
+            {
+                if (s != shown) return false;
+                double now = s.Zoom.ScaleX;
+                double next = Math.Exp(Math.Log(now) + (Math.Log(zoomTarget) - Math.Log(now)) * Motion.Follow(dt, Motion.Ms(200)));
+                bool done = Math.Abs(next - zoomTarget) < 0.002 * zoomTarget;
+                ZoomStep(s, done ? zoomTarget : next, p);
+                return !done;
+            });
+        }
+
+        // One step of zooming: the point p (in the window) stays where it is.
+        void ZoomStep(Slot s, double z, Point p)
+        {
             double old = s.Zoom.ScaleX;
-            // Keep the point under the cursor fixed while zooming.
             double x = (p.X - s.Pan.X) / old, y = (p.Y - s.Pan.Y) / old;
             s.Zoom.ScaleX = s.Zoom.ScaleY = z;
             s.Pan.X = p.X - z * x;
@@ -2033,8 +2255,10 @@ namespace FastViewer
 
         static void ResetZoom(Slot s)
         {
-            s.Zoom.ScaleX = s.Zoom.ScaleY = 1;
-            s.Pan.X = s.Pan.Y = 0;
+            Motion.Set(s.Zoom, ScaleTransform.ScaleXProperty, 1); // (also stops a zoom or glide still running)
+            Motion.Set(s.Zoom, ScaleTransform.ScaleYProperty, 1);
+            Motion.Set(s.Pan, TranslateTransform.XProperty, 0);
+            Motion.Set(s.Pan, TranslateTransform.YProperty, 0);
         }
 
         void UpdateZoomUi()
@@ -2061,15 +2285,18 @@ namespace FastViewer
             {
                 if (video && clickToggled) TogglePlay(); // undo the first click's pause/play
                 clickToggled = false;
-                if (mini && mouseActions["double"] == "fullscreen") ToggleMini(); // from the mini player: back to the window
+                if (mini && mouseActions["double"] == "fullscreen") ToggleMiniSmoothly(); // from the mini player: back to the window
                 else RunMouseAction("double");
                 return;
             }
             clickToggled = false;
             if (shown != null && shown.Zoom.ScaleX > 1.001)
             {
+                Motion.Stop("pan"); // catching a picture that's still gliding
                 panning = true;
                 panStart = e.GetPosition(stage);
+                panVelocity = new Vector();
+                panClock.Restart();
                 stage.CaptureMouse();
                 Cursor = Cursors.SizeAll;
             }
@@ -2092,10 +2319,15 @@ namespace FastViewer
         {
             if (!panning || shown == null) return;
             var p = e.GetPosition(stage);
-            shown.Pan.X += p.X - panStart.X;
-            shown.Pan.Y += p.Y - panStart.Y;
+            var moved = p - panStart;
+            shown.Pan.X += moved.X;
+            shown.Pan.Y += moved.Y;
             ClampPan(shown);
             panStart = p;
+            // how fast it's being dragged (smoothed), for the glide after letting go
+            double dt = Math.Max(0.001, panClock.Elapsed.TotalSeconds);
+            panClock.Restart();
+            panVelocity = panVelocity * 0.6 + (moved / dt) * 0.4;
         }
 
         void OnStageUp(object sender, MouseButtonEventArgs e)
@@ -2104,6 +2336,24 @@ namespace FastViewer
             panning = false;
             stage.ReleaseMouseCapture();
             Cursor = null;
+            // Let go while moving: the picture keeps going and slows down (about half a second), like a phone.
+            var s = shown;
+            if (!Motion.Moves || s == null || panClock.ElapsedMilliseconds > 80 || panVelocity.Length < 150) return;
+            var v = panVelocity;
+            Motion.Run("pan", dt =>
+            {
+                if (s != shown || panning) return false;
+                // The exact distance for this frame of a glide slowing down evenly (time constant 0.16 s): it glides
+                // just as far on a 60 Hz screen as on a 500 Hz one.
+                double x = s.Pan.X, y = s.Pan.Y, slow = Math.Exp(-dt / 0.16), travel = 0.16 * (1 - slow);
+                s.Pan.X += v.X * travel;
+                s.Pan.Y += v.Y * travel;
+                ClampPan(s);
+                if (s.Pan.X == x) v.X = 0; // reached an edge: stop that way
+                if (s.Pan.Y == y) v.Y = 0;
+                v *= slow;
+                return v.Length > 20;
+            });
         }
 
         // ---------------------------------------------------------------- window, full screen
@@ -2144,15 +2394,25 @@ namespace FastViewer
             Panel.SetZIndex(bottom, floating ? 10 : 0);
             double under = (showStrip ? 64 : 0) + (BottomControlsShown() ? 32 : 0); // what the floating bottom bar covers
             transport.Margin = new Thickness(0, 0, 0, floating ? under + 16 : 16);
-            // Messages ("Update now", trim) go below a floating top bar, which would otherwise cover them and their buttons.
-            foreach (var name in new[] { "Toast", "TrimBar" })
-                F<FrameworkElement>(name).Margin = new Thickness(0, floating ? 48 + 14 : 14, 0, 0);
+            // Messages ("Update now") go below a floating top bar, which would otherwise cover them and their buttons;
+            // the trim bar takes the control bar's place.
+            F<FrameworkElement>("Toast").Margin = new Thickness(0, floating ? 48 + 14 : 14, 0, 0);
+            F<FrameworkElement>("TrimBar").Margin = transport.Margin;
             foreach (var bar in new[] { top, bottom })
             {
-                bar.BeginAnimation(OpacityProperty, null);
-                bar.Opacity = !floating || overlayVisible ? 1 : 0;
+                Motion.Set(bar, OpacityProperty, !floating || overlayVisible ? 1 : 0);
+                Motion.Set(Motion.PartsOf(bar).Move, TranslateTransform.YProperty, 0);
                 bar.IsHitTestVisible = !floating || overlayVisible;
             }
+        }
+
+        // Slides an element from (dx, dy) (times the look's distance) back to where it belongs.
+        static void Glide(FrameworkElement e, double dx, double dy)
+        {
+            if (!Motion.Moves || e == null) return;
+            var p = Motion.PartsOf(e);
+            if (dx != 0) Motion.FromTo(p.Move, TranslateTransform.XProperty, dx * Motion.Distance, 0, Motion.Ms(Motion.Normal), Motion.In);
+            if (dy != 0) Motion.FromTo(p.Move, TranslateTransform.YProperty, dy * Motion.Distance, 0, Motion.Ms(Motion.Normal), Motion.In);
         }
 
         void FadeBars(bool show)
@@ -2162,9 +2422,13 @@ namespace FastViewer
             {
                 var bar = F<FrameworkElement>(name);
                 bar.IsHitTestVisible = show; // hidden buttons mustn't be clickable
-                bar.BeginAnimation(OpacityProperty, new DoubleAnimation(show ? 1 : 0, TimeSpan.FromMilliseconds(show ? fadeInMs : fadeOutMs)));
+                Motion.To(bar, OpacityProperty, show ? 1 : 0, Motion.Ms(show ? fadeInMs : fadeOutMs, false), Motion.Smooth);
+                if (show) Glide(bar, 0, name == "TopBar" ? -6 : 6); // floating bars slide in from their edge
             }
         }
+
+        void ToggleFullscreenSmoothly() { FadeThrough(ToggleFullscreen); }
+        void ToggleMiniSmoothly() { FadeThrough(ToggleMini); }
 
         void ToggleFullscreen()
         {
@@ -2242,15 +2506,19 @@ namespace FastViewer
             if (dialog.Visibility == Visibility.Visible)
             {
                 if (e.Key == Key.Enter) ConfirmDelete();
-                else if (e.Key == Key.Escape) dialog.Visibility = Visibility.Collapsed;
+                else if (e.Key == Key.Escape) HideDeleteDialog();
+                e.Handled = true;
+                return;
+            }
+            if (trimming && HandleTrimKey(e)) // Trim.cs: arrows move a handle, Enter saves, Esc leaves trimming
+            {
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Escape) // always: leave mini player / slideshow / full screen
             {
-                if (mini) ToggleMini();
                 if (slideshow) StopSlideshow();
-                if (fullscreen) ToggleFullscreen();
+                if (mini || fullscreen) FadeThrough(delegate { if (mini) ToggleMini(); if (fullscreen) ToggleFullscreen(); });
                 e.Handled = true;
                 return;
             }
@@ -2268,6 +2536,7 @@ namespace FastViewer
                 return;
             }
             if (volPopup.IsOpen) return;
+            if (trimming && F<FrameworkElement>("TrimBar").IsMouseOver) { e.Handled = true; return; } // not another file
             if (transport.IsMouseOver && transport.Visibility == Visibility.Visible)
             {
                 // Over the control bar: jump on the time bar, nothing elsewhere.
@@ -2302,9 +2571,12 @@ namespace FastViewer
             if (!overlayVisible)
             {
                 overlayVisible = true;
-                overlay.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(fadeInMs)));
+                Motion.To(overlay, OpacityProperty, 1, Motion.Ms(fadeInMs, false), Motion.Smooth);
                 FadeBars(true);
-                if (springMotion) Rise(transport, 10); // Liquid Glass: the video controls spring up into place
+                // The video controls rise into place and the arrows come in from the window's edges.
+                Glide(transport, 0, 8);
+                Glide(F<FrameworkElement>("PrevBtn"), -6, 0);
+                Glide(F<FrameworkElement>("NextBtn"), 6, 0);
             }
             if (!panning) Cursor = null;
             idleTimer.Stop();
@@ -2337,7 +2609,7 @@ namespace FastViewer
             if (snapDir != null || volPopup.IsOpen || openMenus > 0 || files.Count == 0 || !overlayVisible || gridOpen) return;
             if (!leftWindow && ((pausedVideo && !fadePaused) || pointerOnControls)) return;
             overlayVisible = false;
-            overlay.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(fadeOutMs)));
+            Motion.To(overlay, OpacityProperty, 0, Motion.Ms(fadeOutMs, false), Motion.Smooth);
             FadeBars(false);
             // The pointer goes too: always in full screen, and over a video in the window.
             if (fullscreen || (stage.IsMouseOver && shown != null && shown.IsVideo)) Cursor = Cursors.None;
@@ -2552,6 +2824,21 @@ namespace FastViewer
         static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
         [DllImport("user32.dll")]
         static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+        // Test runs: the window is "cloaked" before it first shows, as Windows does with windows on another
+        // virtual desktop: it's still drawn (so pictures and pixel checks work) but never seen, also in full
+        // screen or as the mini player. And never on top: asking for that (mini player, Keep on top) only notes it.
+        void KeepTestOutOfSight()
+        {
+            if (testInFront) return;
+            SourceInitialized += delegate
+            {
+                int on = 1; // DWMWA_CLOAK
+                DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, 13, ref on, 4);
+            };
+            System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TopmostProperty, typeof(Window))
+                .AddValueChanged(this, delegate { if (Topmost) { testLog.Add("asked to stay on top (not in tests)"); Topmost = false; } });
+        }
 
         void SendToBack()
         {

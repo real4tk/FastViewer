@@ -214,7 +214,7 @@ namespace FastViewer
             CloseGrid();
             SetVolumeSlider(false);
             StopSlideshow();
-            dialog.Visibility = Visibility.Collapsed;
+            Motion.Hide(dialog);
             HideToast(null);
             ClearLoop();
             SaveSettings(true);

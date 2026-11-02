@@ -49,12 +49,15 @@ namespace FastViewer
                 case "overlap": HuntOverlap(); break;
                 case "audit": HuntAudit(); break;
                 case "ux": HuntUx(); break;
+                case "motion": huntMotion = true; HuntMotion(); break;
                 case "updatemsg":
                     After(1500, () => CheckForUpdates(true));
                     After(2500, () => HuntLog("message after checking: '" + F<TextBlock>("ToastText").Text + "' (shown " + (F<FrameworkElement>("Toast").Visibility == Visibility.Visible) + ")"));
                     After(7000, () => { HuntLog("message after the quiet retry: '" + F<TextBlock>("ToastText").Text + "'"); HuntDone(); });
                     break;
                 case "saveclose": HuntSaveClose(); break;
+                case "trim": HuntTrim(); break;
+                case "rates": HuntRates(); break;
                 default: HuntLog("unknown case " + huntCase); HuntDone(); break;
             }
         }
@@ -546,6 +549,176 @@ namespace FastViewer
                 ClearLoop();
             });
             After(t += 300, HuntDone);
+        }
+
+        // ---------------------------------------------------------------- refresh rates: the same animation at 60-500 Hz
+
+        // Plays each kind of animation with the frame timing of a 60, 144, 240 and 500 Hz screen (frames are
+        // simulated, so no such screen is needed) and compares: how long it takes, where it is at the same
+        // moments, the biggest single step, and where it ends.
+        void HuntRates()
+        {
+            After(1000, () =>
+            {
+                HuntLog("this screen: " + Motion.ScreenRate + " Hz; WPF animation clock limit " +
+                    System.Windows.Media.Animation.Timeline.GetDesiredFrameRate(new System.Windows.Media.Animation.DoubleAnimation()) + " fps");
+                var kinds = new[] { "decelerate 250 ms (Photos)", "spring 280 ms (Liquid Glass)", "calm 220 ms (Midnight)", "follow 200 ms (zoom, wheel)", "momentum (pan)" };
+                foreach (var kind in kinds)
+                {
+                    var lines = new List<string>();
+                    double[] reference = null;
+                    foreach (int hz in new[] { 60, 144, 240, 500 })
+                    {
+                        double dt = 1.0 / hz, t = 0, value = 0, biggest = 0;
+                        var at = new double[5]; // value at 50, 100, 150, 200, 250 ms
+                        var probe = new Border();
+                        Func<bool> busy;
+                        if (kind.StartsWith("follow"))
+                        {
+                            double x = 0;
+                            Motion.Run("rateTest", step => { x += (1 - x) * Motion.Follow(step, 200); value = x; return 1 - x > 0.001; });
+                            busy = () => Motion.Running("rateTest");
+                        }
+                        else if (kind.StartsWith("momentum"))
+                        {
+                            double x = 0, v = 1000;
+                            Motion.Run("rateTest", step => { double slow = Math.Exp(-step / 0.16); x += v * 0.16 * (1 - slow); v *= slow; value = x / 160; return v > 20; });
+                            busy = () => Motion.Running("rateTest");
+                        }
+                        else
+                        {
+                            System.Windows.Media.Animation.IEasingFunction ease = kind.StartsWith("spring") ? (System.Windows.Media.Animation.IEasingFunction)new SpringEase()
+                                : kind.StartsWith("calm") ? (System.Windows.Media.Animation.IEasingFunction)new System.Windows.Media.Animation.SineEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut }
+                                : new BezierEase(0, 0, 0, 1);
+                            double ms = kind.StartsWith("spring") ? 280 : kind.StartsWith("calm") ? 220 : 250;
+                            Motion.FromTo(probe, OpacityProperty, 0, 1, ms, ease);
+                            busy = () => Motion.Busy(probe);
+                        }
+                        int frames = 0;
+                        while (busy() && frames < 5000)
+                        {
+                            double before = kind.StartsWith("follow") || kind.StartsWith("momentum") ? value : probe.Opacity;
+                            Motion.SimulateFrame(dt);
+                            t += dt;
+                            frames++;
+                            double now = kind.StartsWith("follow") || kind.StartsWith("momentum") ? value : probe.Opacity;
+                            biggest = Math.Max(biggest, Math.Abs(now - before));
+                            for (int k = 0; k < 5; k++) if (Math.Abs(t - (k + 1) * 0.05) < dt / 2 + 1e-9) at[k] = now;
+                        }
+                        double end = kind.StartsWith("follow") || kind.StartsWith("momentum") ? value : probe.Opacity;
+                        for (int k = 0; k < 5; k++) if ((k + 1) * 0.05 > t + dt / 2) at[k] = end; // already finished by then
+                        double worst = 0;
+                        if (reference == null) reference = at;
+                        else for (int k = 0; k < 5; k++) worst = Math.Max(worst, Math.Abs(at[k] - reference[k]));
+                        lines.Add(string.Format("  {0,3} Hz: {1,4} frames, done after {2,4:0} ms, ends at {3:0.000}, biggest step {4:0.000}, at 50/100/150/200/250 ms: {5}{6}",
+                            hz, frames, t * 1000, end, biggest, string.Join(" ", at.Select(a => a.ToString("0.000"))),
+                            hz == 60 ? "" : string.Format("  (differs from 60 Hz by at most {0:0.000})", worst)));
+                    }
+                    HuntLog(kind);
+                    foreach (var l in lines) HuntLog(l);
+                }
+                After(300, HuntDone);
+            });
+        }
+
+        // ---------------------------------------------------------------- trim bar (Trim.cs)
+
+        void HuntTrim()
+        {
+            Func<string> state = () => string.Format("A {0:0.000}, B {1:0.000}, video at {2:0.000}, active {3}, playing {4}, text '{5}', hint '{6}'",
+                loopA.HasValue ? loopA.Value.TotalSeconds : -1, loopB.HasValue ? loopB.Value.TotalSeconds : -1,
+                shown.Video.Position.TotalSeconds, trimActive, playing, F<TextBlock>("TrimText").Text, F<TextBlock>("TrimHint").Text);
+            Action<char, double> drag = (which, seconds) =>
+            {
+                // as the mouse would: take hold, move there, let go
+                trimDrag = which;
+                trimGrab = 0;
+                TrimDragTo(TrimX(seconds));
+                trimDrag = '\0';
+                TrimSeek(trimHeadAt, true);
+                PlaceTrim();
+            };
+            int t = 1500;
+            After(t, () =>
+            {
+                if (playing) TogglePlay();
+                StartTrim();
+                HuntLog("trim open: " + state() + "; control bar visible " + transport.IsVisible + ", trim bar " + F<FrameworkElement>("TrimBar").ActualWidth.ToString("0") + " wide");
+            });
+            After(t += 3000, () =>
+            {
+                HuntLog("filmstrip: " + (filmFrames == null ? "none" : filmFrames.Count(f => f != null) + " of " + filmFrames.Length + " pictures, " +
+                    (filmFrames.FirstOrDefault(f => f != null) == null ? "" : filmFrames.First(f => f != null).PixelWidth + "x" + filmFrames.First(f => f != null).PixelHeight)));
+                Snap("trim_open");
+                drag('A', 3);
+                HuntLog("dragged start to 3 s: " + state());
+                drag('B', 6);
+                HuntLog("dragged end to 6 s: " + state());
+                drag('A', 9);
+                HuntLog("dragged start past the end (to 9 s): " + state());
+                drag('A', 2);
+                drag('P', 0.5);
+                HuntLog("clicked the strip before the start (0.5 s): " + state());
+            });
+            After(t += 700, () =>
+            {
+                Snap("trim_dragged");
+                PressKey(Key.Right); PressKey(Key.Right); PressKey(Key.Right);
+                HuntLog("right x3 (start, a frame is " + shown.FrameSeconds.ToString("0.0000") + " s): " + state());
+                PressKey(Key.Tab);
+                PressKey(Key.Left);
+                HuntLog("Tab, left: " + state());
+                NudgeTrim(1, true);
+                HuntLog("Shift+right: " + state());
+                shown.Video.Position = TimeSpan.FromSeconds(4);
+                PressKey(Key.OemOpenBrackets);
+                HuntLog("[ at 4 s: " + state());
+                PressKey(Key.OemCloseBrackets);
+                HuntLog("] at the same moment (can't make it shorter than " + TrimShortest + " s): " + state());
+                drag('B', 5.5);
+                PressKey(Key.PageDown);
+                HuntLog("PageDown (next file) while trimming: still trimming " + trimming + ", file " + Path.GetFileName(shown.File));
+                PressKey(Key.Space);
+                HuntLog("Space: " + state());
+            });
+            var seen = new List<string>();
+            for (int k = 0; k < 10; k++) After(t += 250, () => seen.Add(shown.Video.Position.TotalSeconds.ToString("0.00")));
+            After(t += 50, () =>
+            {
+                HuntLog("playing the part (" + loopA.Value.TotalSeconds.ToString("0.00") + "-" + loopB.Value.TotalSeconds.ToString("0.00") + "): " + string.Join(", ", seen));
+                Snap("trim_playing");
+                PressKey(Key.Space);
+                HuntLog("Space again: " + state());
+                Width = 470;
+            });
+            After(t += 700, () =>
+            {
+                HuntLog("narrow window: trim bar " + F<FrameworkElement>("TrimBar").ActualWidth.ToString("0") + " wide, hint shown " + F<FrameworkElement>("TrimHint").IsVisible +
+                    ", play words shown " + F<FrameworkElement>("TrimPlayText").IsVisible);
+                Snap("trim_narrow");
+                Width = 1100;
+            });
+            After(t += 700, () =>
+            {
+                double a = loopA.Value.TotalSeconds, b = loopB.Value.TotalSeconds;
+                string target = Path.Combine(snapDir, "clip.mp4");
+                HuntLog(string.Format("saving {0:0.000}-{1:0.000} ({2:0.000} s) to clip.mp4", a, b, b - a));
+                RunConversion(shown.File, target, loopA, loopB, "Saving clip");
+                EndTrim();
+                HuntLog("after leaving: trimming " + trimming + ", loop " + loopA.HasValue + ", control bar visible " + transport.IsVisible);
+            });
+            Action waitSaved = null;
+            waitSaved = () =>
+            {
+                if (converting) { After(300, waitSaved); return; }
+                HuntLog("saved: message '" + F<TextBlock>("ToastText").Text + "'");
+                StartTrim();
+                HuntLog("trim again (same video): filmstrip ready at once " + (filmFrames != null && filmFrames.All(f => f != null)) + "; " + state());
+                PressKey(Key.Escape);
+                HuntLog("Esc: trimming " + trimming + ", full screen " + fullscreen);
+                After(400, HuntDone);
+            };
+            After(t += 500, waitSaved);
         }
 
         // ---------------------------------------------------------------- ghost: a video skipped while it starts
@@ -1145,11 +1318,106 @@ namespace FastViewer
                 StopSlideshow();
                 if (fullscreen) ToggleFullscreen();
                 HuntLog("slideshow off: button '" + tip("SlideshowBtn") + "', min/max " + F<FrameworkElement>("MinBtn").Visibility + "/" + F<FrameworkElement>("MaxBtn").Visibility);
+                miniVolume = false; ToggleMini();
+                HuntLog("mini player, volume button off (default): " + F<FrameworkElement>("MiniVolBtn").Visibility);
+                miniVolume = true; UpdateControls();
+                double v0 = volume; F<Button>("MiniVolBtn").RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, 120) { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+                bool m0 = muted; F<Button>("MiniVolBtn").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                HuntLog("volume button on: " + F<FrameworkElement>("MiniVolBtn").Visibility + ", wheel up: volume " + v0.ToString("0.00") + " -> " + volume.ToString("0.00") + ", click: muted " + m0 + " -> " + muted + ", name '" + System.Windows.Automation.AutomationProperties.GetName(F<Button>("MiniVolBtn")) + "'");
+                ToggleMute(); ToggleMini(); miniVolume = false;
                 StartTrim();
                 HuntLog("trim: '" + F<TextBlock>("TrimText").Text + "'");
                 EndTrim();
             });
             After(t += 300, HuntDone);
+        }
+
+        // ---------------------------------------------------------------- motion: frame times of every animation, and idle CPU
+
+        bool huntMotion; // lets the window crossfade and fade-through run in this test (other tests skip them)
+
+        void HuntMotion()
+        {
+            var me = Process.GetCurrentProcess();
+            Func<double> cpu = () => { me.Refresh(); return me.TotalProcessorTime.TotalMilliseconds; };
+            var frames = new List<double>();
+            TimeSpan last = TimeSpan.Zero;
+            EventHandler onFrame = (o, e) =>
+            {
+                var now = ((RenderingEventArgs)e).RenderingTime;
+                if (!Motion.AnyRunning) { last = TimeSpan.Zero; return; } // only while something is moving
+                if (now == last) return;
+                if (last != TimeSpan.Zero) frames.Add((now - last).TotalMilliseconds);
+                last = now;
+            };
+            string segment = null;
+            Action<string> begin = name => { segment = name; frames.Clear(); last = TimeSpan.Zero; CompositionTarget.Rendering += onFrame; };
+            Action end = () =>
+            {
+                CompositionTarget.Rendering -= onFrame;
+                if (frames.Count < 3) { HuntLog(string.Format("{0,-34} (no frames)", segment)); return; }
+                var s = frames.OrderBy(x => x).ToList();
+                double med = s[s.Count / 2], p95 = s[(int)(s.Count * 0.95)], max = s[s.Count - 1];
+                int dropped = frames.Count(x => x > med * 1.7);
+                HuntLog(string.Format("{0,-34} {1,4} frames  median {2,5:0.0} ms  p95 {3,5:0.0}  max {4,6:0.0}  long frames {5}", segment, frames.Count, med, p95, max, dropped));
+            };
+            int video = files.FindIndex(IsVideoFile), photo = files.FindIndex(f => !IsVideoFile(f) && !f.EndsWith(".gif"));
+            var steps = new List<KeyValuePair<string, Action>>();
+            Action<string, Action> step = (n, a) => steps.Add(new KeyValuePair<string, Action>(n, a));
+            step("open Settings", () => OpenSettings());
+            step("switch Settings pages", () => { foreach (var p in settingsPages.Take(3)) p.Key.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); });
+            step("close Settings", () => CloseSettings());
+            step("message drops in", () => ShowToast("FastViewer 9.9.9 is available.", "Update now", delegate { }, 0, "update"));
+            step("message leaves", () => HideToast(null));
+            step("delete dialog opens", () => AskDelete());
+            step("delete dialog closes", () => HideDeleteDialog());
+            step("zoom in (3 wheel notches)", () => { ZoomBy(1.25, StageCenter()); ZoomBy(1.25, StageCenter()); ZoomBy(1.25, StageCenter()); });
+            step("pan glide after a drag", () =>
+            {
+                var s = shown;
+                var v = new Vector(900, 300);
+                Motion.Run("pan", dt => { double slow = Math.Exp(-dt / 0.16); s.Pan.X += v.X * 0.16 * (1 - slow); s.Pan.Y += v.Y * 0.16 * (1 - slow); ClampPan(s); v *= slow; return v.Length > 20; });
+            });
+            step("fit to window", () => SetZoom(1, StageCenter()));
+            step("rotate", () => Rotate());
+            step("rotate back (3 more)", () => { Rotate(); Rotate(); Rotate(); });
+            step("controls fade out", () => { idleTimer.Stop(); HideOverlay(); });
+            step("controls fade in", () => ShowOverlay());
+            step("grid opens (photo into its tile)", () => OpenGrid());
+            step("grid size change", () => SetGridSize(gridSize == 1 ? 2 : 1));
+            step("grid selection glides", () => { SelectGridTile(Math.Min(gridFiles.Count - 1, gridSelected + 1)); });
+            step("pick from grid (grows from tile)", () => PickFromGrid(gridSelected));
+            step("strip appears", () => { showStrip = true; ApplyStrip(); });
+            step("strip glides with 5 switches", () => { for (int k = 0; k < 5; k++) Go(1); });
+            step("info pane slides in", () => { if (!infoOpen) ToggleInfo(); });
+            step("info pane closes", () => { if (infoOpen) ToggleInfo(); });
+            step("look change (window crossfade)", () => { CrossfadeWindow(250); lookId = lookId == "Photos" ? "Clean" : "Photos"; ApplyLook(); });
+            step("full screen (fade through)", () => ToggleFullscreenSmoothly());
+            step("leave full screen", () => ToggleFullscreenSmoothly());
+            step("video: play/pause morph", () => { ShowIndex(Math.Max(0, video), 1); });
+            step("pause (button dips, icon morphs)", () => { if (!playing) TogglePlay(); TogglePlay(); });
+            step("volume slider opens", () => { volumeTestOpen = false; var keep = snapDir; SetVolumeSlider(true); });
+
+            int t = 2000;
+            double idleBefore = 0, idleAfter = 0, c0 = 0;
+            After(t, () => { if (photo >= 0) ShowIndex(photo, 1); });
+            After(t += 1500, () => { c0 = cpu(); });
+            After(t += 5000, () => { idleBefore = (cpu() - c0) / 5.0; HuntLog(string.Format("screen {4} Hz, animations at {5} fps; motion level {0}, look {1}; idle before: {2:0.0} ms CPU per second, movers running {3}", Motion.Level, lookId, idleBefore, Motion.AnyRunning, Motion.ScreenRate, System.Windows.Media.Animation.Timeline.GetDesiredFrameRate(new System.Windows.Media.Animation.DoubleAnimation()))); });
+            foreach (var s in steps)
+            {
+                var st = s;
+                After(t += 100, () => { begin(st.Key); try { st.Value(); } catch (Exception ex) { HuntLog("  FAILED " + st.Key + ": " + ex.Message); } });
+                After(t += 700, end);
+            }
+            After(t += 300, () => { SetVolumeSlider(false); if (showStrip) { showStrip = false; ApplyStrip(); } if (playing) TogglePlay(); if (photo >= 0) ShowIndex(photo, 1); });
+            After(t += 1500, () => { HideOverlay(true); c0 = cpu(); });
+            After(t += 5000, () =>
+            {
+                idleAfter = (cpu() - c0) / 5.0;
+                HuntLog(string.Format("idle after: {0:0.0} ms CPU per second (before {1:0.0}), movers still running {2}, frame hook attached {3}",
+                    idleAfter, idleBefore, Motion.AnyRunning, Motion.AnyRunning));
+                HuntDone();
+            });
         }
 
         // ---------------------------------------------------------------- odd window sizes

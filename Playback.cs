@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
@@ -36,10 +37,7 @@ namespace FastViewer
         {
             OnClick("ToastBtn", delegate { if (toastAction != null) toastAction(); });
             OnClick("ToastClose", delegate { HideToast(null); });
-            OnClick("TrimStartBtn", SetLoopStart);
-            OnClick("TrimEndBtn", SetLoopEnd);
-            OnClick("TrimSaveBtn", SaveTrim);
-            OnClick("TrimCancelBtn", EndTrim);
+            InitTrim();
             toastTimer.Tick += delegate { HideToast(null); };
             loopTimer.Tick += delegate { KeepInLoop(); };
             transport.SizeChanged += delegate { UpdateLoopUi(); };
@@ -220,7 +218,13 @@ namespace FastViewer
         {
             if (loopB.HasValue) loopTimer.Start();
             UpdateLoopUi();
-            if (trimming) UpdateTrimUi();
+            var band = F<FrameworkElement>("LoopRange"); // the looped part grows from A to B
+            if (loopB.HasValue && Motion.Moves && band.Visibility == Visibility.Visible && band.Width > 14)
+            {
+                band.RenderTransformOrigin = new Point(0, 0.5);
+                Motion.FromTo(Motion.PartsOf(band).Scale, ScaleTransform.ScaleXProperty, 14 / band.Width, 1, Motion.Ms(200), Motion.In);
+            }
+            if (trimming) PlaceTrim();
             else ShowToast(message, null, null, 3, "loop");
             ShowOverlay();
         }
@@ -229,6 +233,7 @@ namespace FastViewer
         {
             var s = shown;
             if (s == null || !s.IsVideo || !loopB.HasValue) return;
+            if (trimming) PlaceTrimHead();
             var at = s.Video.Position;
             if (at >= loopB.Value || (loopA.HasValue && at < loopA.Value - TimeSpan.FromMilliseconds(500)))
                 s.Video.Position = loopA ?? TimeSpan.Zero;
@@ -254,37 +259,6 @@ namespace FastViewer
         }
 
         // ---------------------------------------------------------------- trim
-
-        void StartTrim()
-        {
-            var s = shown;
-            if (s == null || !s.IsVideo || s.Failed || !s.Video.NaturalDuration.HasTimeSpan) return;
-            if (mini) ToggleMini();
-            trimming = true;
-            HideToast(null);
-            loopA = TimeSpan.Zero;
-            loopB = s.Video.NaturalDuration.TimeSpan;
-            loopTimer.Start();
-            F<FrameworkElement>("TrimBar").Visibility = Visibility.Visible;
-            UpdateLoopUi();
-            UpdateTrimUi();
-            ShowOverlay();
-        }
-
-        void UpdateTrimUi()
-        {
-            if (!loopA.HasValue || !loopB.HasValue) return;
-            var length = loopB.Value - loopA.Value;
-            F<TextBlock>("TrimText").Text = "Clip: " + Fmt(loopA.Value) + " - " + Fmt(loopB.Value) +
-                "  (" + (length.TotalSeconds < 60 ? Math.Round(length.TotalSeconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s" : Fmt(length) + " long") + ")";
-        }
-
-        void EndTrim()
-        {
-            trimming = false;
-            F<FrameworkElement>("TrimBar").Visibility = Visibility.Collapsed;
-            ClearLoop();
-        }
 
         void SaveTrim()
         {
@@ -353,6 +327,8 @@ namespace FastViewer
             rotations.TryGetValue(source, out turn); // save it the way it's shown
             var cancel = new CancelFlag();
             ShowToast(what + "... 0%", "Cancel", delegate { cancel.Cancelled = true; }, 0, "convert");
+            Motion.Set((ScaleTransform)F<FrameworkElement>("ToastProgress").RenderTransform, ScaleTransform.ScaleXProperty, 0);
+            F<FrameworkElement>("ToastProgress").Visibility = Visibility.Visible;
             int lastPercent = 0;
             var thread = new Thread(delegate()
             {
@@ -366,7 +342,12 @@ namespace FastViewer
                         lastPercent = percent;
                         Dispatcher.BeginInvoke(new Action(delegate
                         {
-                            if (toastKind == "convert") F<TextBlock>("ToastText").Text = what + "... " + percent + "%";
+                            if (toastKind != "convert") return;
+                            F<TextBlock>("ToastText").Text = what + "... " + percent + "%";
+                            var bar = F<FrameworkElement>("ToastProgress"); // a thin line that fills smoothly
+                            bar.Visibility = Visibility.Visible;
+                            var fill = (ScaleTransform)bar.RenderTransform;
+                            Motion.To(fill, ScaleTransform.ScaleXProperty, percent / 100.0, Motion.Ms(200, false), Motion.Smooth);
                         }));
                     }, cancel);
                 }
@@ -404,12 +385,9 @@ namespace FastViewer
             b.Visibility = button == null ? Visibility.Collapsed : Visibility.Visible;
             toastAction = action;
             toastKind = kind;
-            var toast = F<FrameworkElement>("Toast");
-            if (toast.Visibility != Visibility.Visible)
-            {
-                toast.Visibility = Visibility.Visible;
-                toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)));
-            }
+            // Drops in from just above (a message that's already showing only changes its text).
+            Motion.Show(F<FrameworkElement>("Toast"), 0, -8);
+            if (kind != "convert") F<FrameworkElement>("ToastProgress").Visibility = Visibility.Collapsed;
             toastTimer.Stop();
             if (seconds > 0)
             {
@@ -431,7 +409,7 @@ namespace FastViewer
         {
             if (kind != null && kind != toastKind) return; // (closing the save progress just hides it; saving goes on)
             toastTimer.Stop();
-            F<FrameworkElement>("Toast").Visibility = Visibility.Collapsed;
+            Motion.Hide(F<FrameworkElement>("Toast"), 0, -6, 1, 150); // fades out, rising a little
             toastKind = null;
         }
     }

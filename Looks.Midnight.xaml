@@ -14,6 +14,13 @@
   <sys:Boolean x:Key="Look.Spring">False</sys:Boolean>
   <sys:Double x:Key="Motion.FadeIn">90</sys:Double>
   <sys:Double x:Key="Motion.FadeOut">200</sys:Double>
+  <!-- Motion (Motion.cs): calm and minimal: mostly fades, barely any movement -->
+  <sys:Double x:Key="Motion.Fast">150</sys:Double>
+  <sys:Double x:Key="Motion.Normal">220</sys:Double>
+  <sys:Double x:Key="Motion.Slow">300</sys:Double>
+  <sys:String x:Key="Motion.Ease">calm</sys:String>
+  <sys:Double x:Key="Motion.Distance">0.4</sys:Double>
+  <sys:Double x:Key="Motion.Press">1</sys:Double>
   <sys:String x:Key="Font.Ui">@Inter</sys:String>
   <FontFamily x:Key="Font.Title">Segoe UI Light</FontFamily>
   <FontWeight x:Key="Weight.Title">Light</FontWeight>

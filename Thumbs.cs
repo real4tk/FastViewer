@@ -330,6 +330,12 @@ namespace FastViewer
             Visibility = Visibility.Visible;
         }
 
+        // A thumbnail that arrived after the tile was shown fades in (150 ms).
+        public void FadeInPicture()
+        {
+            if (Motion.Animates) Motion.FromTo(picture, OpacityProperty, 0, 1, Motion.Ms(150, false), Motion.Smooth);
+        }
+
         public void SetName(string text)
         {
             name.Text = text;
