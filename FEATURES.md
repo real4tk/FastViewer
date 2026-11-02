@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.17.1)
+# FastViewer: complete feature list (version 1.17.2)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -33,8 +33,9 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   also when clicking 10+ times a second.
 - Videos: a first-frame snapshot ("poster") is prepared for each preloaded video so it appears instantly;
   playback starts behind it and takes over once frames are drawn. Resuming a paused video shows no black flash.
-- Slow-PC protection: if grabbing a video frame ever takes over 120 ms, frame grabbing is switched off for
-  the session so the window never freezes.
+- Slow-PC protection: if grabbing a video frame takes over 400 ms, or three grabs take over 150 ms within
+  30 s, frame grabbing is switched off for the session so the window never freezes (a single hiccup of a busy
+  PC doesn't count). The time bar's dot doesn't redraw the window while you click through files.
 - Photos are decoded at screen size (a 12 MP photo takes about 10 MB); zooming in past that loads the
   full photo by itself. Unused pictures are handed back to Windows once you pause.
 - A skipped video that was starting never keeps playing out of sight; failed players stop and are retried
@@ -73,7 +74,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - File: Save as, Copy, Copy file path, Show in folder, Delete.
 - View: Rotate, Save rotation to file, Mini player, Keep on top, Slideshow, Shuffle, All files in folder,
   File info; "Hidden buttons" section for buttons switched off in Settings > Buttons; Settings.
-- Every item shows its current keyboard shortcut. Clicking a menu's button again closes the menu (all menus,
+- Every item shows its current keyboard shortcut (punctuation keys as the character on your keyboard layout,
+  e.g. ` instead of Oem3). Clicking a menu's button again (or anywhere else) closes the menu at once (all menus,
   also the zoom %, grid size and Settings drop-downs).
 
 ## Photos
@@ -156,7 +158,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   the video (reshapes on the next file or rotation); drag to move, drag edges to resize (shape kept),
   remembers size and place; double-click or Esc to go back. Optional volume button in its top bar
   (Settings > Appearance > "Volume button in the mini player", off by default): click mutes, the wheel
-  changes the volume, pointing at it shows the slider.
+  changes the volume, and the level shows as a number next to it (no slider or message over the small
+  window). The wheel over the mini player's buttons never changes the file.
 - Slideshow (F5): full screen, photos every 2/4/8 s, videos play to the end; the button turns into
   "Stop slideshow"; a short message says how to stop it.
 - Keep on top (pin) for the normal window.
@@ -256,7 +259,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
-  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look),
+  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).

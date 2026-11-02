@@ -86,14 +86,14 @@ namespace FastViewer
                 }
                 Motion.FromTo(rootBorder, UIElement.OpacityProperty, 0, 1, Motion.Ms(Motion.Fast, false), Motion.Smooth);
             }
-            // A picture of the menu for its closing fade (a menu disappears the moment it closes).
-            menu.Dispatcher.BeginInvoke(new Action(delegate { menuGhost = Capture(rootBorder, out menuGhostAt); }), System.Windows.Threading.DispatcherPriority.Loaded);
+            menuGhost = null; // closing by clicking elsewhere (or the menu's own button) is instant, like Windows' menus
         }
 
         static BitmapSource menuGhost;
         static Point menuGhostAt;
 
-        // Clicking an item: take the picture now, with that item highlighted.
+        // Clicking an item: a picture of the menu, with that item highlighted, fades out as it closes (a menu
+        // disappears the moment it closes).
         static void OnMenuClick(object sender, MouseButtonEventArgs e)
         {
             var menu = (ContextMenu)sender;

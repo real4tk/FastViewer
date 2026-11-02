@@ -153,6 +153,18 @@ namespace FastViewer
         // True while Motion is moving any value of this object.
         public static bool Busy(DependencyObject d) { return tweens.ContainsKey(d); }
 
+        // Tests: what is moving right now (movers by key, tweens by element and property).
+        public static IEnumerable<string> Active()
+        {
+            foreach (var m in movers.Keys) if (m != tweenKey) yield return "mover " + m;
+            foreach (var t in tweens)
+                foreach (var p in t.Value.Keys)
+                {
+                    var fe = t.Key as FrameworkElement;
+                    yield return "tween " + (fe != null && fe.Name.Length > 0 ? fe.Name : t.Key.GetType().Name) + "." + p.Name;
+                }
+        }
+
         // Moves one property to a value. Starts from where it is now (also mid-movement), so nothing ever jumps;
         // a newer move of the same value takes over (and the older one's `done` never runs). When it arrives the
         // value is just a plain value, and nothing keeps running.

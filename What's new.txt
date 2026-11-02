@@ -5,6 +5,19 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.17.2  (2 Nov 2026)
+  Fixed
+  - Scrolling very fast through videos could lag a little. Two causes: the protection for slow PCs (which
+    stops taking video snapshots) switched on after a single short hiccup, for example while a game or a
+    call kept the PC busy, and then every video switch waited for the video to play. It now only switches
+    on when snapshots are really slow (one over 0.4 s, or three slow ones within 30 s). And the time bar's
+    dot no longer redraws the window while you click through files.
+  - Clicking a menu's button (or anywhere else) to close the menu flickered: the menu now closes at once,
+    like Windows' own menus. Choosing an item still fades it out.
+  - Keys like ` showed as "Oem3" in menus and Settings: they now show the character on your keyboard.
+  - Mini player: scrolling on the volume button could switch to another video, because the volume message
+    appeared under the mouse. The volume now shows as a number next to the speaker, and scrolling on the
+    mini player's buttons never changes the file.
 1.17.1  (2 Nov 2026)
   New
   - Make your own look: Settings > Custom look. Start from any look and change what you like, in plain groups:

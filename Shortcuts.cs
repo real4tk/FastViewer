@@ -224,6 +224,8 @@ namespace FastViewer
             int plus = text.LastIndexOf('+');
             string mods = plus > 0 && plus < text.Length - 1 ? text.Substring(0, plus + 1) : "";
             string key = text.Substring(mods.Length);
+            string typed = KeyChar(key);
+            if (typed != null) return mods + typed; // punctuation keys: the character this keyboard layout puts there
             switch (key)
             {
                 case "OemComma": key = ","; break;
@@ -244,6 +246,24 @@ namespace FastViewer
                     break;
             }
             return mods + key;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern uint MapVirtualKey(uint code, uint mapType);
+
+        // "Oem3", "OemComma"...: the character on that key with the keyboard layout in use (` on a US keyboard,
+        // @ on a Dutch one), or null for other keys.
+        static string KeyChar(string key)
+        {
+            Key k;
+            if (!key.StartsWith("Oem") || key == "OemPlus" || !Enum.TryParse(key, out k)) return null; // (OemPlus: "+", the zoom key, though it types "=")
+            try
+            {
+                uint c = MapVirtualKey((uint)KeyInterop.VirtualKeyFromKey(k), 2) & 0xFFFF; // MAPVK_VK_TO_CHAR (dead keys too)
+                if (c < 32) return null;
+                return ((char)c).ToString().ToUpperInvariant();
+            }
+            catch { return null; }
         }
 
         // The first key of an action, for showing in menus ("" if none).

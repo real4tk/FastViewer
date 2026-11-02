@@ -62,6 +62,12 @@ namespace FastViewer
                 case "scrub": HuntScrub(); break;
                 case "custom": HuntCustom(); break;
                 case "showcase": HuntShowcase(); break;
+                case "wheel": HuntWheel(); break;
+                case "minivol":
+                    After(1500, () => { if (playing) TogglePlay(); miniVolume = true; ToggleMini(); });
+                    After(2500, () => { ShowOverlay(); SetVolume(0.45); });
+                    After(2900, () => { Snap("mini_volume_level"); HuntLog("mini player " + mini + ", " + ActualWidth.ToString("0") + "x" + ActualHeight.ToString("0") + ", level '" + F<TextBlock>("MiniVolText").Text + "', top message " + (toastKind ?? "none")); HuntDone(); });
+                    break;
                 default: HuntLog("unknown case " + huntCase); HuntDone(); break;
             }
         }
@@ -710,6 +716,61 @@ namespace FastViewer
                 lookId = "Photos"; ApplyLook();
                 HuntLog("Photos again: accent " + res("Accent") + ", corners " + res("Radius.Float") + ", font " + res("Font.Ui") + ", bars float " + barsFloat);
                 HuntDone();
+            });
+        }
+
+        // Scrolling through videos as fast as a mouse wheel can (--count n --every ms): the controls show (the mouse
+        // is moving), videos play. Measures how long each press takes to show its file and how smooth the window
+        // stays (time between drawn frames).
+        void HuntWheel()
+        {
+            int count = huntCount > 0 ? huntCount : 200, every = huntEvery > 0 ? huntEvery : 35;
+            var activeSeen = new Dictionary<string, int>();
+            grabTimes = new List<long>();
+            var waits = new List<double>();
+            var frames = new List<double>();
+            var press = new Stopwatch();
+            Slot pressedFor = null;
+            TimeSpan last = TimeSpan.Zero;
+            EventHandler onFrame = (o, e) =>
+            {
+                var now = ((RenderingEventArgs)e).RenderingTime;
+                if (last != TimeSpan.Zero && now != last) frames.Add((now - last).TotalMilliseconds);
+                if (now != last) last = now;
+                if (pressedFor != null && shown == pressedFor) { waits.Add(press.Elapsed.TotalMilliseconds); pressedFor = null; }
+            };
+            int n = 0;
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(every) };
+            timer.Tick += delegate
+            {
+                ShowOverlay(); // as if the mouse moved
+                foreach (var a in Motion.Active()) { int c; activeSeen.TryGetValue(a, out c); activeSeen[a] = c + 1; }
+                if (pressedFor != null) { waits.Add(press.Elapsed.TotalMilliseconds); } // still not shown: counts as waiting until the next press
+                Go(1);
+                pressedFor = wanted;
+                press.Restart();
+                if (++n < count) return;
+                timer.Stop();
+                After(800, () =>
+                {
+                    CompositionTarget.Rendering -= onFrame;
+                    waits.Sort(); frames.Sort();
+                    Func<List<double>, double, double> q = (l, f) => l.Count == 0 ? 0 : l[Math.Min(l.Count - 1, (int)(l.Count * f))];
+                    HuntLog(string.Format("wheel: {0} presses every {1} ms, motion {2}, controls showing, frame grabbing stopped (slow PC protection): {3}", count, every, Motion.Level, slowGrabs));
+                    HuntLog(string.Format("  press to file on screen: median {0:0} ms, p90 {1:0} ms, worst {2:0} ms", q(waits, 0.5), q(waits, 0.9), q(waits, 1)));
+                    var g = grabTimes.OrderBy(x => x).ToList();
+                    HuntLog(string.Format("  frame grabs: {0}, median {1} ms, p90 {2} ms, over 120 ms: {3} ({4})", g.Count, g.Count > 0 ? g[g.Count / 2] : 0, g.Count > 0 ? g[g.Count * 9 / 10] : 0,
+                        g.Count(x => x > 120), string.Join(", ", grabTimes.Where(x => x > 120))));
+                    HuntLog("  moving at press time (times seen): " + (activeSeen.Count == 0 ? "nothing" : string.Join(", ", activeSeen.OrderByDescending(a => a.Value).Select(a => a.Key + " " + a.Value))));
+                    HuntLog(string.Format("  window frames: {0}, median {1:0.0} ms, p95 {2:0.0} ms, over 50 ms: {3}, worst {4:0} ms", frames.Count, q(frames, 0.5), q(frames, 0.95), frames.Count(f => f > 50), q(frames, 1)));
+                    HuntDone();
+                });
+            };
+            After(2500, () =>
+            {
+                if (!playing) TogglePlay();
+                CompositionTarget.Rendering += onFrame;
+                timer.Start();
             });
         }
 
@@ -1683,6 +1744,8 @@ namespace FastViewer
                 double v0 = volume; F<Button>("MiniVolBtn").RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, 120) { RoutedEvent = UIElement.PreviewMouseWheelEvent });
                 bool m0 = muted; F<Button>("MiniVolBtn").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 HuntLog("volume button on: " + F<FrameworkElement>("MiniVolBtn").Visibility + ", wheel up: volume " + v0.ToString("0.00") + " -> " + volume.ToString("0.00") + ", click: muted " + m0 + " -> " + muted + ", name '" + System.Windows.Automation.AutomationProperties.GetName(F<Button>("MiniVolBtn")) + "'");
+                HuntLog("after scrolling on it: level next to the speaker " + F<FrameworkElement>("MiniVolLevel").Visibility + " showing '" + F<TextBlock>("MiniVolText").Text + "', top message shown " + (F<FrameworkElement>("Toast").Visibility == Visibility.Visible && toastKind == "feedback") + ", volume slider would open " + VolumeSliderOpen);
+
                 ToggleMute(); ToggleMini(); miniVolume = false;
                 StartTrim();
                 HuntLog("trim: '" + F<TextBlock>("TrimText").Text + "'");

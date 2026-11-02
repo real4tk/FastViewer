@@ -99,7 +99,12 @@
       </Button>
 
       <StackPanel x:Name="MiniBar" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Visibility="Collapsed">
-        <!-- Settings > Buttons > Volume button in the mini player (off unless switched on) -->
+        <!-- Settings > Buttons > Volume button in the mini player (off unless switched on); the level shows next to it
+             while you scroll on it or point at it (no slider or message that could get under the mouse) -->
+        <Border x:Name="MiniVolLevel" Height="32" MinWidth="54" Padding="10,0" Margin="0,0,4,0" Visibility="Collapsed"
+                CornerRadius="{DynamicResource Radius.Control}" Background="{DynamicResource ArrowBg}" BorderBrush="{DynamicResource ArrowEdge}" BorderThickness="1">
+          <TextBlock x:Name="MiniVolText" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="13" Foreground="{DynamicResource TextMain}"/>
+        </Border>
         <Button x:Name="MiniVolBtn" Style="{StaticResource NavArrow}" Width="32" Height="32" Margin="0,0,4,0" Visibility="Collapsed">
           <fv:Glyph x:Name="MiniVolIcon" Code="&#xE995;" Size="13"/>
         </Button>

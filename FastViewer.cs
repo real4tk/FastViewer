@@ -1310,14 +1310,31 @@ namespace FastViewer
             return b;
         }
 
-        // Set once a frame grab was slow. Grabbing has to wait until Windows has the video's current frame
+        // Set once frame grabs get slow. Grabbing has to wait until Windows has the video's current frame
         // ready, on the window's own thread. On a PC that struggles to decode a heavy video that wait took
         // up to 9 s (the window froze and Windows greyed it out). From then on FastViewer doesn't grab
         // frames any more this session: switching waits until the video plays (the old picture stays up),
         // and resuming may show Windows' short black flash instead of a freeze.
+        // "Slow" is one grab over 400 ms, or three over 150 ms within 30 s. A single hiccup of a busy PC
+        // (other apps, a call) doesn't count: before 1.17.2 one grab over 120 ms switched grabbing off,
+        // which made fast switching through videos noticeably slower for the rest of the session.
         static volatile bool slowGrabs;
         static bool grabAlways; // --grab-always: tests without this protection, to compare
-        const int SlowGrabMs = 120;
+        const int SlowGrabMs = 400, SlowishGrabMs = 150;
+        static readonly Queue<long> slowishGrabsAt = new Queue<long>();
+        static readonly Stopwatch grabClock = Stopwatch.StartNew();
+
+        static void NoteGrab(long ms)
+        {
+            if (grabAlways) return;
+            if (ms > SlowGrabMs) { slowGrabs = true; return; }
+            if (ms <= SlowishGrabMs) return;
+            long now = grabClock.ElapsedMilliseconds;
+            slowishGrabsAt.Enqueue(now);
+            while (slowishGrabsAt.Count > 0 && now - slowishGrabsAt.Peek() > 30000) slowishGrabsAt.Dequeue();
+            if (slowishGrabsAt.Count >= 3) slowGrabs = true;
+        }
+        static List<long> grabTimes; // tests: how long each grab took
 
         // Renders the video's current picture at the given size (works while it's hidden, too).
         static RenderTargetBitmap Grab(MediaElement v, int w, int h)
@@ -1328,7 +1345,8 @@ namespace FastViewer
                 dc.DrawRectangle(new VisualBrush(v) { Stretch = Stretch.Fill }, null, new Rect(0, 0, w, h));
             var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(dv);
-            if (watch.ElapsedMilliseconds > SlowGrabMs && !grabAlways) slowGrabs = true;
+            if (grabTimes != null && grabTimes.Count < 5000) grabTimes.Add(watch.ElapsedMilliseconds);
+            NoteGrab(watch.ElapsedMilliseconds);
             return rtb;
         }
 
@@ -1509,7 +1527,28 @@ namespace FastViewer
         // The control bar only shows a speaker icon, so a key or the wheel shows the level (not while the slider is open).
         void ShowVolumeFeedback()
         {
+            if (mini && F<FrameworkElement>("MiniVolBtn").IsVisible) { ShowMiniVolume(); return; } // next to the speaker, not over the buttons
             if (!volPopup.IsOpen) ShowFeedback(muted || volume == 0 ? "Muted" : "Volume " + Math.Round(volume * 100) + "%");
+        }
+
+        // Mini player: the volume as a number next to its speaker, for a moment (longer while the mouse is on it).
+        readonly DispatcherTimer miniVolTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+
+        void ShowMiniVolume()
+        {
+            F<TextBlock>("MiniVolText").Text = muted || volume == 0 ? "Muted" : Math.Round(volume * 100) + "%";
+            var level = F<FrameworkElement>("MiniVolLevel");
+            if (!Motion.IsShown(level) || level.Visibility != Visibility.Visible) Motion.Show(level, 6, 0);
+            miniVolTimer.Stop();
+            miniVolTimer.Start();
+        }
+
+        void HideMiniVolume()
+        {
+            miniVolTimer.Stop();
+            var b = F<FrameworkElement>("MiniVolBtn");
+            if (b.IsMouseOver || F<FrameworkElement>("MiniVolLevel").IsMouseOver) { miniVolTimer.Start(); return; } // still pointing at it
+            Motion.Hide(F<FrameworkElement>("MiniVolLevel"), 6, 0, 1, 150);
         }
 
         void ApplyAudio()
@@ -1557,17 +1596,14 @@ namespace FastViewer
                 PlaceVolumeSlider(volBtn, PlacementMode.Top);
                 if (!VolumeSliderOpen) volOpenTimer.Start();
             };
-            // The mini player's own volume button: the same slider, opening below it; click mutes, the wheel changes the volume.
+            // The mini player's own volume button: click mutes, the wheel changes the volume, and the level shows as a
+            // number next to it (a slider or message would cover the small window's buttons and catch the wheel).
             var miniVol = F<Button>("MiniVolBtn");
             miniVol.Click += delegate { ToggleMute(); };
-            miniVol.MouseEnter += delegate
-            {
-                volCloseTimer.Stop();
-                PlaceVolumeSlider(miniVol, PlacementMode.Bottom);
-                if (!VolumeSliderOpen) volOpenTimer.Start();
-            };
-            miniVol.MouseLeave += delegate { LeaveVolume(); };
+            miniVol.MouseEnter += delegate { ShowMiniVolume(); };
+            miniVolTimer.Tick += delegate { HideMiniVolume(); };
             miniVol.PreviewMouseWheel += delegate(object o, MouseWheelEventArgs e) { SetVolume(volume + (e.Delta > 0 ? 0.05 : -0.05)); e.Handled = true; };
+            F<FrameworkElement>("MiniVolLevel").PreviewMouseWheel += delegate(object o, MouseWheelEventArgs e) { SetVolume(volume + (e.Delta > 0 ? 0.05 : -0.05)); e.Handled = true; };
             volBtn.MouseLeave += delegate { LeaveVolume(); };
             panel.MouseEnter += delegate { volCloseTimer.Stop(); };
             panel.MouseLeave += delegate { LeaveVolume(); };
@@ -1667,6 +1703,7 @@ namespace FastViewer
             muteIcon.Code = level;
             F<Glyph>("MiniVolIcon").Code = level;
             F<FrameworkElement>("MiniVolBtn").Visibility = mini && miniVolume && isVideo ? Visibility.Visible : Visibility.Collapsed;
+            if (!(mini && miniVolume && isVideo)) { miniVolTimer.Stop(); Motion.Set(F<FrameworkElement>("MiniVolLevel"), OpacityProperty, 1); F<FrameworkElement>("MiniVolLevel").Visibility = Visibility.Collapsed; }
             settingSlider = true;
             vol.Value = volume * 100;
             settingSlider = false;
@@ -1738,6 +1775,12 @@ namespace FastViewer
         readonly Stopwatch glideClock = new Stopwatch();   // ...this long ago
         void GlideSeek(double real)
         {
+            if (Switching) // clicking through files: nothing redraws the window on its own, so the next file shows sooner
+            {
+                Motion.Stop("seekGlide");
+                seek.Value = real;
+                return;
+            }
             if (Motion.Running("seekGlide"))
             {
                 double predicted = glideAt + glideClock.Elapsed.TotalSeconds * speed;
@@ -1752,7 +1795,7 @@ namespace FastViewer
             Motion.Run("seekGlide", delegate
             {
                 var s = shown;
-                if (s == null || !s.IsVideo || !playing || !overlayVisible || scrubbing || seek.IsMouseCaptureWithin || !transport.IsVisible) return false;
+                if (s == null || !s.IsVideo || !playing || !overlayVisible || scrubbing || seek.IsMouseCaptureWithin || !transport.IsVisible || Switching) return false;
                 settingSlider = true;
                 seek.Value = Math.Min(seek.Maximum, glideAt + glideClock.Elapsed.TotalSeconds * speed);
                 settingSlider = false;
@@ -2651,6 +2694,7 @@ namespace FastViewer
         void OnWheel(object sender, MouseWheelEventArgs e)
         {
             if (gridOpen) return;
+            if (mini && F<FrameworkElement>("MiniBar").IsMouseOver) { e.Handled = true; return; } // the mini player's buttons: never another file
             // Over the speaker: volume. Checked first, because pointing at the speaker opens the volume slider
             // (which handles the wheel over itself) and the speaker must keep working too.
             if (transport.Visibility == Visibility.Visible && Within(e.OriginalSource as DependencyObject, volBtn))
