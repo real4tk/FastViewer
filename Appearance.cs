@@ -40,6 +40,7 @@ namespace FastViewer
             var look = Looks.Find(lookId);
             Looks.Apply(look, lookMode);
             barsFloat = look.Flag("Look.BarsFloat");
+            RefreshAudioCards();
             seeThrough = look.Flag("Look.SeeThrough");
             springMotion = look.Flag("Look.Spring");
             fadeInMs = Number(look, "Motion.FadeIn", 120);

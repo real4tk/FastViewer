@@ -1,4 +1,4 @@
-FastViewer 1.18.0 - a fast photo and video viewer for Windows 10 and 11
+FastViewer 1.20.0 - a fast photo, video and music viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -43,6 +43,7 @@ Handy keys
   , / .                one frame back / forward
   [  ]  \              A-B loop: set start, set end, stop
   Ctrl + T             trim: save part of a video as a new file
+  Ctrl + Shift + C     copy the video frame on screen (paste it in Discord, Paint...)
   Up / Down            volume
   Ctrl + R             rotate 90 degrees (also the rotate button at the top)
   Ctrl + M             mini player
@@ -58,5 +59,9 @@ every action's keys can be changed in Settings > Keyboard (two keys each), and t
 buttons in Settings > Mouse. Esc always goes back. X shuffles the folder.
 Closing FastViewer keeps it ready in the background (icon by the clock) so files open instantly.
 Each file you open from File Explorer while FastViewer is open gets a window of its own.
+Music (.mp3 .m4a .wav .flac ...) plays too, with its album cover, title and artist.
+Point at FastViewer's taskbar icon for Previous / Play-Pause / Next buttons.
+Right-click an MP3's music view to change its cover. Settings > Viewing > Show picks photos, videos and/or music.
+Playback speed (0.25x to 5x): video "..." menu; pick which speeds it lists in Settings > Videos.
 Videos that don't play or get no thumbnail elsewhere: video "..." -> "Make compatible copy".
 iPhone videos (HEVC) need "HEVC Video Extensions" from the Microsoft Store, same as the Photos app.

@@ -205,7 +205,13 @@ namespace FastViewer
                 var modified = File.GetLastWriteTime(file);
                 bool done = (ext == ".jpg" || ext == ".jpeg" || ext == ".jfif" || ext == ".jpe") && TryTurnJpegTag(file, turn);
                 if (!done) TurnPixels(file, ext, turn);
-                File.SetLastWriteTime(file, modified);
+                // Nearly the same date, so it keeps its place in the folder. Not exactly the same: Windows keeps
+                // thumbnails by file and date, and with the old date File Explorer (and the strip and grid here)
+                // kept showing the old, unturned thumbnail for good.
+                File.SetLastWriteTime(file, modified.AddMilliseconds(10));
+                // That alone isn't enough on every PC: also have Windows draw its cached thumbnails again from the
+                // file, then refresh the strip here and tell File Explorer.
+                Thumbs.RebuildCachedThumbnails(file, delegate { Dispatcher.BeginInvoke(new Action(delegate { RefreshThumbnail(file); })); });
 
                 rotations.Remove(file);
                 // The player holding it (on screen, or ready next to it) shows the saved file, upright.
@@ -221,7 +227,6 @@ namespace FastViewer
                     s.FullHeight = fullHeight;
                     s.Reduced = Math.Max(picture.PixelWidth, picture.PixelHeight) < Math.Min(MaxDecodeSide, Math.Max(fullWidth, fullHeight));
                 }
-                RefreshThumbnail(file);
                 UpdateZoomUi();
                 UpdateFacts();
                 ShowToast((onScreen ? "Rotation saved to the file" : "Rotation of " + name + " saved to the file") + (done ? " (no quality lost)." : "."), null, null, 3, null);

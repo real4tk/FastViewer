@@ -66,6 +66,7 @@ namespace FastViewer
                 S("speedNormal", "Normal speed", delegate { StepSpeed(0); }),
                 S("trim", "Trim", StartTrim, "Ctrl+T"),
                 S("saveFrame", "Save a frame", SaveFrame),
+                S("copyFrame", "Copy frame", CopyFrame, "Ctrl+Shift+C"),
                 S("compatible", "Make compatible copy", MakeCompatibleCopy),
                 S("rotate", "Rotate", Rotate, "Ctrl+R"),
                 S("saveRotation", "Save rotation to file", SaveRotationToFile),
@@ -178,7 +179,7 @@ namespace FastViewer
             { "zoomIn", "" }, { "zoomOut", "" }, { "fit", "" }, { "actualSize", "" }, { "fullscreen", "" },
             { "mini", "" }, { "pin", "" }, { "slideshow", "" }, { "info", "" }, { "open", "" },
             { "saveAs", "" }, { "copy", "" }, { "copyPath", "" }, { "showInFolder", "" }, { "openWith", "" },
-            { "delete", "" }, { "settings", "" }, { "close", "" }
+            { "copyFrame", "\uE8C8" }, { "delete", "" }, { "settings", "" }, { "close", "" }
         };
 
         IEnumerable<string> ShortcutLines()
@@ -419,17 +420,38 @@ namespace FastViewer
             ShowToast(showStrip ? "Thumbnail strip on." : "Thumbnail strip off.", null, null, 2, "strip");
         }
 
-        static readonly double[] Speeds = { 0.5, 1, 1.5, 2 };
+        // Every speed FastViewer offers; Settings > Videos > "Speeds in the menu" picks which ones are shown (1x always is).
+        static readonly double[] AllSpeeds = { 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5 };
+        static readonly double[] DefaultSpeeds = { 0.5, 1, 1.5, 2 };
+        readonly HashSet<double> shownSpeeds = new HashSet<double>(DefaultSpeeds);
+
+        double[] Speeds { get { return AllSpeeds.Where(x => x == 1 || shownSpeeds.Contains(x)).ToArray(); } }
+
+        static string SpeedText(double s) { return s.ToString(CultureInfo.InvariantCulture) + "x"; }
+
+        void LoadSpeeds(string v)
+        {
+            shownSpeeds.Clear();
+            foreach (var part in v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                double d;
+                if (double.TryParse(part.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out d) && AllSpeeds.Contains(d)) shownSpeeds.Add(d);
+            }
+            shownSpeeds.Add(1);
+        }
+
+        string SpeedsLine() { return "speeds=" + string.Join(",", Speeds.Select(x => x.ToString(CultureInfo.InvariantCulture))); }
 
         // -1 slower, 1 faster, 0 back to normal (the same steps as the video "..." menu).
         void StepSpeed(int direction)
         {
             if (shown == null || !shown.IsVideo) return;
+            var list = Speeds;
             double s = direction == 0 ? 1
-                : direction > 0 ? Speeds.Where(x => x > speed + 0.01).DefaultIfEmpty(speed).First()
-                : Speeds.Where(x => x < speed - 0.01).DefaultIfEmpty(speed).Last();
+                : direction > 0 ? list.Where(x => x > speed + 0.01).DefaultIfEmpty(speed).First()
+                : list.Where(x => x < speed - 0.01).DefaultIfEmpty(speed).Last();
             SetSpeed(s);
-            ShowToast("Speed " + s.ToString(CultureInfo.InvariantCulture) + "x", null, null, 2, "speed");
+            ShowToast("Speed " + SpeedText(s), null, null, 2, "speed");
         }
 
         // ---------------------------------------------------------------- mouse buttons (Settings > Mouse)

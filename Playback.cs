@@ -149,7 +149,7 @@ namespace FastViewer
             if (!d.HasTimeSpan) return;
             LoadPositions();
             double length = d.TimeSpan.TotalSeconds, at = s.Video.Position.TotalSeconds;
-            if (resumeVideos && length >= ResumeMinSeconds && at >= 5 && at <= length - 5)
+            if (resumeVideos && length >= (s.IsAudio ? 600 : ResumeMinSeconds) && at >= 5 && at <= length - 5)
             {
                 positions[s.File] = at;
                 positionChanges.Add(new KeyValuePair<string, double>(s.File, at));
@@ -172,7 +172,7 @@ namespace FastViewer
         void StepFrame(int direction)
         {
             var s = shown;
-            if (s == null || !s.IsVideo || s.Failed) return;
+            if (s == null || !s.IsVideo || s.IsAudio || s.Failed) return;
             if (playing) TogglePlay();
             var d = s.Video.NaturalDuration;
             double at = s.Video.Position.TotalSeconds + direction * s.FrameSeconds;
@@ -276,7 +276,7 @@ namespace FastViewer
         void MakeCompatibleCopy()
         {
             var s = shown;
-            if (s == null || !s.IsVideo || s.Failed) return;
+            if (s == null || !s.IsVideo || s.IsAudio || s.Failed) return;
             if (playing) TogglePlay();
             string target = AskSaveVideo(s.File, " (compatible)");
             if (target != null) RunConversion(s.File, target, null, null, "Making compatible copy");

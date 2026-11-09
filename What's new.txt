@@ -5,6 +5,35 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.20.0  (10 Nov 2026)
+  New
+  - Music: FastViewer now plays .mp3, .m4a, .aac, .wav, .flac and .wma files. You see the album cover (or a
+    music note) with the song's title and artist, and the normal video controls: play/pause, the time bar, skip,
+    volume, speed, Repeat and A-B loop. Music shows up instantly while you click through a folder, never waiting.
+    Long recordings (10 minutes or more, like podcasts) continue where you left off; songs always start at the
+    beginning. "Open with" in File Explorer now offers FastViewer for music files too (after Settings > Default app).
+  - Change cover (MP3): right-click the music view, or music "..." menu > Change cover..., and pick any picture.
+    It is saved into the song as its cover and shows right away, also in File Explorer. The song keeps its place
+    when sorted by date. Only the tag at the start of the file changes: the sound stays exactly the same.
+    FastViewer writes a new copy first and only swaps it in when that copy checks out, so if anything goes wrong
+    (for example another app has the song open) the original stays as it was. No extra programs needed.
+  - Taskbar buttons: point at FastViewer's taskbar icon and the preview has Previous, Play/Pause and Next buttons,
+    like media players. Play/Pause shows for videos and music and switches icon as you play or pause.
+  - Copy frame: copies the video frame on screen to the clipboard, ready to paste into Discord, Paint, Word...
+    In the video "..." menu, or press Ctrl+Shift+C. The video keeps playing.
+  - Speeds from 0.25x to 5x: 0.25x, 0.5x, 0.75x, 1x, 1.25x, 1.5x, 1.75x, 2x, 2.5x, 3x, 4x and 5x. Pick the ones
+    you want in the video "..." menu in Settings > Videos > "Speeds in the menu" (0.5x, 1x, 1.5x and 2x until you
+    change it). The Slower/Faster keys step through the same ones.
+  Changed
+  - Settings > Viewing > Show now has: Everything, Photos and videos, Only photos, Only videos, Only music.
+    Your earlier choice is kept ("Only videos" still means just videos).
+  Fixed
+  - Rotating a photo with "Also save it to the file" now really shows everywhere: the turn was saved, but File
+    Explorer (and FastViewer's thumbnail strip and grid) kept showing the old, unturned thumbnail, because the
+    file's date was put back exactly as it was. The date now moves by a hundredth of a second (the photo keeps its
+    place when sorted by date), Windows is made to redraw its saved thumbnails of the photo in every size, and
+    File Explorer is told to show them. Works for JPG (also phone photos), PNG, BMP and TIFF.
+
 1.19.0  (9 Nov 2026)
   New
   - Mini player: photos with see-through parts (PNG, GIF, ...) now really are see-through. There is no black

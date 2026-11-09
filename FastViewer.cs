@@ -293,6 +293,10 @@ namespace FastViewer
         public bool Reduced;                      // the picture in memory is screen-sized; zooming in loads the full one
         public string File;
         public bool IsVideo, Ready, Failed;
+        public bool IsAudio;                      // music: plays in the video player (IsVideo too), shows its cover card in Picture
+        public BitmapSource AudioCover;           // the album cover from Windows, or null
+        public string AudioTitle, AudioArtist;
+        public TimeSpan? SeekOnOpen;              // where to continue once the player has opened the file again (after a cover change)
         public string Error;
         public long LastUsed;
         public int Token;
@@ -304,6 +308,8 @@ namespace FastViewer
             { ".jpg", ".jpeg", ".jfif", ".jpe", ".png", ".bmp", ".gif", ".tif", ".tiff", ".ico", ".webp", ".heic", ".heif", ".jxr", ".wdp", ".dng" };
         static readonly HashSet<string> VideoExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".mp4", ".m4v", ".mov", ".wmv", ".avi", ".mkv", ".3gp", ".3g2", ".mts", ".m2ts", ".ts", ".mpg", ".mpeg", ".asf", ".webm" };
+        static readonly HashSet<string> AudioExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { ".mp3", ".m4a", ".aac", ".wav", ".flac", ".wma" };
 
         static string SettingsFile = Path.Combine( // --settings <file>: tests save to a scratch file instead
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FastViewer", "settings.ini");
@@ -615,6 +621,7 @@ namespace FastViewer
             stage.MouseLeftButtonDown += OnStageDown;
             stage.MouseMove += OnStageMove;
             stage.MouseLeftButtonUp += OnStageUp;
+            stage.MouseRightButtonUp += OnStageRightUp; // music: right-click the cover to change it
             Drop += OnDrop;
             // Dragging a file over the window: an outline shows it will open here.
             DragEnter += delegate(object o, DragEventArgs e) { if (e.Data.GetDataPresent(DataFormats.FileDrop)) Motion.Show(F<FrameworkElement>("DropOutline"), 0, 0, 0.98, Motion.Fast); };
@@ -674,6 +681,7 @@ namespace FastViewer
                 message.Text = EmptyMessage();
                 UpdateWindowFrame();
                 InitShortcuts();
+                InitTaskbarButtons(); // previous, play/pause, next under the taskbar preview
                 BuildSettingsPage();
                 InitExtras();
                 InitGallery();
@@ -777,11 +785,12 @@ namespace FastViewer
         // ---------------------------------------------------------------- opening files
 
         static bool IsVideoFile(string f) { return VideoExts.Contains(Path.GetExtension(f)); }
+        internal static bool IsAudioFile(string f) { return f != null && AudioExts.Contains(Path.GetExtension(f)); }
         static bool IsGifFile(string f) { return f != null && Path.GetExtension(f).Equals(".gif", StringComparison.OrdinalIgnoreCase); }
         static bool IsMedia(string f)
         {
             string ext = Path.GetExtension(f);
-            return ImageExts.Contains(ext) || VideoExts.Contains(ext);
+            return ImageExts.Contains(ext) || VideoExts.Contains(ext) || AudioExts.Contains(ext);
         }
 
         void OpenPath(string path)
@@ -861,7 +870,7 @@ namespace FastViewer
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
                 Title = "Open a photo or video",
-                Filter = "Photos and videos|" + string.Join(";", ImageExts.Concat(VideoExts).Select(e => "*" + e)) +
+                Filter = "Photos, videos and music|" + string.Join(";", ImageExts.Concat(VideoExts).Concat(AudioExts).Select(e => "*" + e)) +
                          "|All files|*.*"
             };
             if (dlg.ShowDialog(this) == true) OpenPath(dlg.FileName);
@@ -948,10 +957,11 @@ namespace FastViewer
             s.Ready = false;
             s.Failed = false;
             s.Error = null;
-            s.IsVideo = IsVideoFile(file);
+            s.IsAudio = IsAudioFile(file);
+            s.IsVideo = IsVideoFile(file) || s.IsAudio;
             ResetZoom(s);
             // Phones store some videos sideways with a "turn me" note; Windows ignores it, so apply it here.
-            if (s.IsVideo && !rotations.ContainsKey(file))
+            if (s.IsVideo && !s.IsAudio && !rotations.ContainsKey(file))
             {
                 int stored = VideoInfo.Rotation(file);
                 if (stored != 0) rotations[file] = stored;
@@ -968,8 +978,15 @@ namespace FastViewer
             s.Poster.Visibility = Visibility.Collapsed;
             s.Gif = null;
             s.GifState = 0;
-            if (s.IsVideo)
+            s.Picture.MaxHeight = double.PositiveInfinity; // (a music card is capped)
+            s.Picture.Margin = new Thickness(0);
+            if (s.IsAudio)
             {
+                LoadAudio(s, file, token);
+            }
+            else if (s.IsVideo)
+            {
+                s.Video.ScrubbingEnabled = true; // (off while the player held music)
                 s.Picture.Source = null;
                 s.Picture.Visibility = Visibility.Collapsed;
                 s.Video.Visibility = Visibility.Visible;
@@ -1140,8 +1157,9 @@ namespace FastViewer
             if (!s.IsVideo) return;
             if (selfTestInterval > 0) testLog.Add("  opened " + Path.GetFileName(s.File) + " at " + switchWatch.ElapsedMilliseconds + " ms");
             s.Ready = true;
-            if (s != shown) GoToResumePoint(s, true);
-            if (s != wanted) SchedulePoster(s, 0);
+            if (s.SeekOnOpen != null) { s.Video.Position = s.SeekOnOpen.Value; s.SeekOnOpen = null; }
+            else if (s != shown) GoToResumePoint(s, true);
+            if (s != wanted && !s.IsAudio) SchedulePoster(s, 0);
             if (s == wanted) TryShow();
             if (s == shown) { UpdateControls(); UpdateFacts(); UpdateZoomUi(); }
         }
@@ -1204,6 +1222,21 @@ namespace FastViewer
                 shown.Video.IsMuted = true;
             }
 
+            if (c.IsAudio && !c.Failed)
+            {
+                // Music shows its card at once; only the sound starts.
+                playing = autoplay;
+                Reveal(c);
+                if (autoplay)
+                {
+                    c.Video.Volume = volume;
+                    c.Video.IsMuted = muted;
+                    c.Video.Play();
+                    c.Video.SpeedRatio = speed;
+                }
+                else ShowOverlay();
+                return;
+            }
             if (c.IsVideo && !c.Failed)
             {
                 if (!autoplay)
@@ -1672,6 +1705,7 @@ namespace FastViewer
 
         void UpdateControls()
         {
+            UpdateTaskbarButtons();
             bool isVideo = shown != null && shown.IsVideo && !shown.Failed;
             // A small mini player has no room for the control bar; play/pause stays in the middle.
             transport.Visibility = isVideo && !trimming && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
@@ -1717,7 +1751,8 @@ namespace FastViewer
             bool hasFile = CurrentFile != null && !gridOpen && !settingsOpen;
             foreach (var name in new[] { "DeleteBtn", "CopyBtn", "MoreBtn", "OpenWithBtn", "SlideshowBtn", "InfoBtn", "GridBtn" })
                 F<Button>(name).IsEnabled = hasFile;
-            F<Button>("RotateBtn").IsEnabled = F<Button>("MiniBtn").IsEnabled = hasFile;
+            bool music = shown != null && shown.IsAudio; // music has no picture to turn or to show in the mini player
+            F<Button>("RotateBtn").IsEnabled = F<Button>("MiniBtn").IsEnabled = hasFile && !music;
             UpdateTime();
         }
 
@@ -2286,24 +2321,36 @@ namespace FastViewer
         void ShowVideoMenu()
         {
             var items = new List<Control>();
-            foreach (var s in new[] { 0.5, 1.0, 1.5, 2.0 })
+            var speedList = Speeds;
+            if (!speedList.Any(x => Math.Abs(x - speed) < 0.01)) speedList = speedList.Concat(new[] { speed }).OrderBy(x => x).ToArray(); // a speed picked before it was hidden stays visible
+            foreach (var s in speedList)
             {
                 double value = s;
-                items.Add(Item("Speed " + value.ToString(CultureInfo.InvariantCulture) + "x",
+                items.Add(Item("Speed " + SpeedText(value),
                                Math.Abs(speed - value) < 0.01 ? "" : null, delegate { SetSpeed(value); }));
             }
             items.Add(new Separator());
             items.Add(Item("Repeat", loop ? "" : null, ToggleLoop, KeyOf("repeat")));
-            items.Add(Item("Save a frame", "", SaveFrame, KeyOf("saveFrame")));
+            bool music = shown != null && shown.IsAudio; // no picture to save, step through or trim
+            if (!music) items.Add(Item("Copy frame", "\uE8C8", CopyFrame, KeyOf("copyFrame")));
+            if (!music) items.Add(Item("Save a frame", "", SaveFrame, KeyOf("saveFrame")));
             items.Add(new Separator());
-            items.Add(Item("Previous frame", "\uE76B", delegate { StepFrame(-1); }, KeyOf("frameBack")));
-            items.Add(Item("Next frame", "\uE76C", delegate { StepFrame(1); }, KeyOf("frameForward")));
+            if (!music) items.Add(Item("Previous frame", "\uE76B", delegate { StepFrame(-1); }, KeyOf("frameBack")));
+            if (!music) items.Add(Item("Next frame", "\uE76C", delegate { StepFrame(1); }, KeyOf("frameForward")));
             items.Add(Item("Loop from here (A)", "\uE8EE", SetLoopStart, KeyOf("loopA")));
             items.Add(Item("Loop until here (B)", "\uE8EE", SetLoopEnd, KeyOf("loopB")));
             if (loopA != null || loopB != null) items.Add(Item("Stop A-B loop", "\uE711", ClearLoop, KeyOf("loopStop")));
-            items.Add(new Separator());
-            items.Add(Item("Trim...", "\uE7A8", StartTrim, KeyOf("trim")));
-            items.Add(Item("Make compatible copy...", "\uE8C8", MakeCompatibleCopy, KeyOf("compatible")));
+            if (music)
+            {
+                items.Add(new Separator());
+                items.Add(Item("Change cover...", "\uEB9F", ChangeCover));
+            }
+            if (!music)
+            {
+                items.Add(new Separator());
+                items.Add(Item("Trim...", "\uE7A8", StartTrim, KeyOf("trim")));
+                items.Add(Item("Make compatible copy...", "\uE8C8", MakeCompatibleCopy, KeyOf("compatible")));
+            }
             items.AddRange(HiddenButtonItems(true));
             ShowMenu("VideoMoreBtn", PlacementMode.Top, items.ToArray());
         }

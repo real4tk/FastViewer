@@ -29,7 +29,8 @@ namespace FastViewer
         static readonly int[] SkipChoices = { 5, 10, 15, 30, 60 };
         int centerButton;         // play/pause in the middle of a video: 0 show, 1 only while paused, 2 hide
         bool fadePaused;          // let the controls fade on a paused video too
-        int filter;              // 0 photos and videos, 1 only videos, 2 only photos
+        int filter;              // Settings > Viewing > Show: 0 everything, 1 photos and videos, 2 only photos, 3 only videos, 4 only music
+        static readonly string[] ShowChoices = { "Everything", "Photos and videos", "Only photos", "Only videos", "Only music" };
         int order;                // 0 like File Explorer, 1 name, 2 newest first, 3 oldest first
 
         bool settingsOpen, narrow;
@@ -50,7 +51,9 @@ namespace FastViewer
                 case "wrap": wrapAround = v == "1"; break;
                 case "hideDelay": hideDelay = Clamp(Num(v), 0, 60, 2.5); break;
                 case "slideSeconds": slideSeconds = (int)Clamp(Num(v), 1, 60, 4); break;
-                case "filter": filter = (int)Clamp(Num(v), 0, 2, 0); break;
+                case "show": filter = (int)Clamp(Num(v), 0, 4, 0); break;
+                // Before 1.20 (and its test builds): filter 0 photos and videos, 1 only videos, 2 only photos, plus music=0/1.
+                case "filter": filter = new[] { 0, 3, 2 }[(int)Clamp(Num(v), 0, 2, 0)]; break;
                 case "order": order = (int)Clamp(Num(v), 0, 3, 0); break;
                 case "skipBack": skipBack = (int)Clamp(Num(v), 1, 600, 10); break;
                 case "skipForward": skipForward = (int)Clamp(Num(v), 1, 600, 30); break;
@@ -64,6 +67,8 @@ namespace FastViewer
                 case "backgroundTold": toldAboutBackground = v == "1"; break;
                 case "miniVolume": miniVolume = v == "1"; break;
                 case "tips": showTips = v != "0"; break;
+                case "speeds": LoadSpeeds(v); break;
+                case "music": if (v == "0" && filter == 0) filter = 1; break; // (1.20 test builds; comes after filter=)
                 case "animations": animations = AnimationChoices.Contains(v) ? v : "Auto"; break;
                 case "fileTransition": crossfadeFiles = v == "Crossfade"; break;
                 case "strip": showStrip = v == "1"; break;
@@ -104,7 +109,7 @@ namespace FastViewer
                 "wrap=" + (wrapAround ? "1" : "0"),
                 "hideDelay=" + hideDelay.ToString(CultureInfo.InvariantCulture),
                 "slideSeconds=" + slideSeconds.ToString(CultureInfo.InvariantCulture),
-                "filter=" + filter.ToString(CultureInfo.InvariantCulture),
+                "show=" + filter.ToString(CultureInfo.InvariantCulture),
                 "order=" + order.ToString(CultureInfo.InvariantCulture),
                 "skipBack=" + skipBack.ToString(CultureInfo.InvariantCulture),
                 "skipForward=" + skipForward.ToString(CultureInfo.InvariantCulture),
@@ -118,6 +123,7 @@ namespace FastViewer
                 "backgroundTold=" + (toldAboutBackground ? "1" : "0"),
                 "miniVolume=" + (miniVolume ? "1" : "0"),
                 "tips=" + (showTips ? "1" : "0"),
+                SpeedsLine(),
                 "animations=" + animations,
                 "fileTransition=" + (crossfadeFiles ? "Crossfade" : "None"),
                 "strip=" + (showStrip ? "1" : "0"),
@@ -138,8 +144,10 @@ namespace FastViewer
         bool PassesFilter(string f)
         {
             string ext = Path.GetExtension(f);
-            if (filter == 1) return VideoExts.Contains(ext);
+            if (filter == 1) return ImageExts.Contains(ext) || VideoExts.Contains(ext);
             if (filter == 2) return ImageExts.Contains(ext);
+            if (filter == 3) return VideoExts.Contains(ext);
+            if (filter == 4) return AudioExts.Contains(ext);
             return IsMedia(f);
         }
 
@@ -327,7 +335,7 @@ namespace FastViewer
                     () => smallActualSize ? 1 : 0, i => { smallActualSize = i == 1; ApplyStretch(); }));
             AddCard("", "Show",
                 "Which files to go through when you press next or previous.",
-                Dropdown(new[] { "Photos and videos", "Only videos", "Only photos" },
+                Dropdown(ShowChoices,
                     () => filter, i => { filter = i; ReloadFolder(); }));
             AddCard("", "Order",
                 "\"Same as File Explorer\" follows how the folder is sorted in an open Explorer window.",
@@ -393,6 +401,9 @@ namespace FastViewer
                 "How far the skip forward button and the L key jump.",
                 Dropdown(skipLabels, () => Math.Max(0, Array.IndexOf(SkipChoices, skipForward)),
                     i => { skipForward = SkipChoices[i]; UpdateSkipButtons(); }));
+            AddWideCard("", "Speeds in the menu",
+                "Pick the playback speeds the video \"...\" menu shows. The Slower and Faster keys step through the same ones. " +
+                "Normal (1x) is always there.", SpeedChips());
             AddCard("", "Slideshow speed",
                 "How long each photo shows in a slideshow. Videos play to the end.",
                 Dropdown(new[] { "2 seconds", "4 seconds", "8 seconds" },
@@ -629,6 +640,35 @@ namespace FastViewer
 
         readonly List<Action> settingsRefresh = new List<Action>();
 
+        // One button per speed: highlighted ones are shown in the menu. Click to add or remove.
+        FrameworkElement SpeedChips()
+        {
+            var row = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
+            foreach (var value in AllSpeeds)
+            {
+                double sp = value;
+                var b = new Button { Content = SpeedText(sp), MinWidth = 56, Height = 32, Margin = new Thickness(0, 0, 6, 6) };
+                System.Windows.Automation.AutomationProperties.SetName(b, "Speed " + SpeedText(sp));
+                Action paint = delegate
+                {
+                    bool on = sp == 1 || shownSpeeds.Contains(sp);
+                    b.Style = (Style)Application.Current.Resources[on ? "AccentButton" : "Filled"];
+                    b.ToolTip = sp == 1 ? "Always shown" : on ? "Shown in the menu: click to hide" : "Hidden: click to show it in the menu";
+                };
+                paint();
+                settingsRefresh.Add(paint);
+                b.Click += delegate
+                {
+                    if (sp == 1) return;
+                    if (!shownSpeeds.Remove(sp)) shownSpeeds.Add(sp);
+                    paint();
+                    SaveSettings();
+                };
+                row.Children.Add(b);
+            }
+            return row;
+        }
+
         CheckBox Toggle(Func<bool> get, Action<bool> set)
         {
             var cb = new CheckBox { Style = (Style)Application.Current.Resources["ToggleSwitch"], IsChecked = get() };
@@ -687,7 +727,7 @@ namespace FastViewer
         void Rotate()
         {
             var s = shown;
-            if (s == null || s.File == null || s.Failed || !s.Ready) return;
+            if (s == null || s.File == null || s.Failed || !s.Ready || s.IsAudio) return;
             string file = s.File;
             int from;
             rotations.TryGetValue(file, out from);
@@ -762,18 +802,48 @@ namespace FastViewer
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "Couldn't save", MessageBoxButton.OK); }
         }
 
+        // The video frame on screen at its own size (at most 4K wide), turned the way it's shown.
+        BitmapSource FrameAsShown(Slot s)
+        {
+            double k = Math.Min(1.0, 3840.0 / s.Video.NaturalVideoWidth);
+            BitmapSource frame = Grab(s.Video, (int)(s.Video.NaturalVideoWidth * k), (int)(s.Video.NaturalVideoHeight * k));
+            int turn;
+            if (rotations.TryGetValue(s.File, out turn) && turn != 0) frame = new TransformedBitmap(frame, new RotateTransform(turn));
+            return frame;
+        }
+
+        // Puts the video frame on screen on the clipboard (as a picture and as PNG, so Discord, Paint, Word... all
+        // take it). The video keeps playing; the frame is the one showing when you pressed.
+        void CopyFrame()
+        {
+            var s = shown;
+            if (s == null || !s.IsVideo || s.IsAudio || s.Failed || s.Video.NaturalVideoWidth == 0) return;
+            try
+            {
+                var frame = new CachedBitmap(FrameAsShown(s), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                frame.Freeze();
+                var png = new MemoryStream();
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(frame));
+                enc.Save(png);
+                var data = new DataObject();
+                data.SetImage(frame);
+                data.SetData("PNG", png, false);
+                if (snapDir == null) Clipboard.SetDataObject(data, true); // tests never touch the user's clipboard
+                else Log("copy frame " + frame.PixelWidth + "x" + frame.PixelHeight + " png " + png.Length + " bytes");
+                ShowToast("Frame copied", null, null, 2, "copyFrame");
+            }
+            catch (Exception ex) { ShowToast("Couldn't copy the frame: " + ex.Message, null, null, 3, "copyFrame"); }
+        }
+
         // Saves the video frame on screen as a PNG picture.
         void SaveFrame()
         {
             var s = shown;
-            if (s == null || !s.IsVideo || s.Failed || s.Video.NaturalVideoWidth == 0) return;
+            if (s == null || !s.IsVideo || s.IsAudio || s.Failed || s.Video.NaturalVideoWidth == 0) return;
             if (playing) TogglePlay();
             var pos = s.Video.Position;
-            double k = Math.Min(1.0, 3840.0 / s.Video.NaturalVideoWidth);
-            BitmapSource frame = Grab(s.Video, (int)(s.Video.NaturalVideoWidth * k), (int)(s.Video.NaturalVideoHeight * k));
-            int turn;
-            if (rotations.TryGetValue(s.File, out turn) && turn != 0) // save it the way it's shown
-                frame = new TransformedBitmap(frame, new RotateTransform(turn));
+            BitmapSource frame = FrameAsShown(s);
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Title = "Save a frame",
@@ -822,9 +892,9 @@ namespace FastViewer
                     using (var icon = app.CreateSubKey("DefaultIcon")) icon.SetValue("", "\"" + exe + "\",0");
                     using (var cmd = app.CreateSubKey(@"shell\open\command")) cmd.SetValue("", "\"" + exe + "\" \"%1\"");
                     using (var types = app.CreateSubKey("SupportedTypes"))
-                        foreach (var ext in ImageExts.Concat(VideoExts)) types.SetValue(ext, "");
+                        foreach (var ext in ImageExts.Concat(VideoExts).Concat(AudioExts)) types.SetValue(ext, "");
                 }
-                foreach (var ext in ImageExts.Concat(VideoExts))
+                foreach (var ext in ImageExts.Concat(VideoExts).Concat(AudioExts))
                     using (Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\" + ext + @"\OpenWithList\FastViewer.exe")) { }
                 SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); // SHCNE_ASSOCCHANGED
                 return true;

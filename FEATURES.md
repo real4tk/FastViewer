@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.19.0)
+# FastViewer: complete feature list (version 1.20.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.2 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -25,6 +25,24 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Videos: .mp4 .m4v .mov .wmv .avi .mkv .3gp .3g2 .mts .m2ts .ts .mpg .mpeg .asf .webm
   (played with Windows' own video engine; HEVC needs Microsoft's "HEVC Video Extensions").
 - Animated GIFs play (frames composed correctly; only the GIF on screen keeps its frames in memory).
+- Music (1.20.0): .mp3 .m4a .aac .wav .flac .wma, played in the slot's video player (Slot.IsVideo and IsAudio; ScrubbingEnabled
+  off, or an audio-only file never finishes opening). Shown at once as a card (a DrawingImage, no bitmap work): the album
+  cover from Windows' thumbnail (or a music note), title and artist from Windows' property system (System.Title,
+  System.Music.Artist), in the look's colours and font, at most 640 px high and clear of the floating video bar. Normal
+  video controls, speed, Repeat, A-B loop; resume only for files of 10 minutes or more. Copy/Save frame, frame steps,
+  Trim, compatible copy, Rotate and the mini player are off for music. Grid/strip tiles show the cover or a music note;
+  Open dialog and "Open with" registration include music.
+- Taskbar thumbnail buttons (1.20.0, Taskbar.cs, WPF TaskbarItemInfo): Previous, Play/Pause, Next under the taskbar
+  preview. Play/Pause only for a video or music (hidden on photos, in the grid and Settings), icon and tooltip follow
+  the playing state (updated from UpdateControls, only when changed); Previous/Next off with one file. Icons are Segoe MDL2
+  glyphs drawn at 32 px, white on a dark taskbar, black on a light one (SystemUsesLightTheme). Test: --case taskbar.
+- Change cover (MP3, 1.20.0; Audio.cs ChangeCoverTo/WriteMp3Cover/ReadId3, no ffmpeg): right-click anywhere on the music view or music
+  "..." > Change cover... The picture becomes a JPEG of at most 1000 px (see-through parts on white) in an APIC front-cover
+  frame; old APIC frames go, all other ID3 frames are kept as they are; ID3 2.3/2.4 keep their version, untagged files get
+  2.3; ID3 2.2, whole-tag unsynchronisation and extended headers are refused. Written to <song>.fvcover.tmp, checked
+  (new cover present, sound length equal), then swapped in by two renames (original -> .fvcover.old, copy -> original;
+  rolled back if the second fails), creation time/attributes kept, date + 10 ms (same place by date; Windows' thumbnails rebuilt like rotation). Players holding the song let go first and continue at
+  the same place with the new cover; strip/grid and File Explorer thumbnails refresh. Other formats show "MP3 only for now".
 
 ## Instant switching (the core)
 - The current file plus 1, 2 or 3 files each way (Settings > Speed > Preload, default 2) are loaded ahead
@@ -48,7 +66,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Goes through only that folder (not subfolders), skipping hidden files.
 - Order: "Same as File Explorer" (asks the open Explorer window how that folder is sorted and grouped,
   e.g. Downloads newest first), Name, Date modified newest first, Date modified oldest first.
-- Show filter: photos and videos, only videos, or only photos.
+- Show (Settings > Viewing, settings line show=, 1.20.0): Everything, Photos and videos, Only photos, Only videos,
+  Only music. Older filter= lines (0 photos+videos, 1 videos, 2 photos) and the 1.20 test builds' music=0 are converted.
 - "Go back to the start after the last file" (wrap around), on by default.
 - Folder watching: new, renamed and deleted files in the open folder appear/disappear by themselves.
 - Each file opened from Explorer while a FastViewer window is open gets its own window.
@@ -84,8 +103,11 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - "Zoom preference": fit to window, or view small photos at actual size.
 - EXIF orientation is applied (phone photos show upright).
 - Rotate 90 degrees (Ctrl+R) with a short animation; optional "Also save it to the file" (JPEG: lossless
-  orientation tag when possible; PNG/BMP/TIFF re-saved), also "..." > Save rotation to file. Keeps the
-  file's date; rotations are saved even if you switch away right after rotating.
+  orientation tag when possible; PNG/BMP/TIFF re-saved), also "..." > Save rotation to file. The date moves by
+  10 ms (keeps its place by date, but Windows' thumbnail cache, keyed by date, refreshes; 1.20.0 fix: with the exact old
+  date Explorer, the strip and the grid kept the unturned thumbnail), then Thumbs.RebuildCachedThumbnails (IThumbnailCache
+  GetThumbnail with WTS_FORCEEXTRACTION for 16-1280 px, on an STA thread), then SHCNE_UPDATEITEM and the strip refresh; rotations are saved even if
+  you switch away right after rotating.
 - Delete to the Recycle Bin (Delete key) with an optional confirmation ("Ask for permission to delete");
   the dialog always deletes the file it names and nothing moves on while it's open.
 - Copy (Ctrl+C copies the file), Copy file path, Show in folder, Open with another app, Save as (Ctrl+S).
@@ -102,7 +124,9 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Short notes when a key or the wheel changes something while the controls are hidden ("Volume 45%",
   "+30 s 1:42 / 5:00").
 - Autoplay (optional), Repeat (R), "When a video ends": stop or play the next file.
-- Speed 0.5x / 1x / 1.5x / 2x (video "..." menu, optional keys).
+- Speed 0.25x to 5x (0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5; 1.20.0): Settings > Videos > "Speeds in the menu"
+  picks which ones the video "..." menu shows (default 0.5/1/1.5/2; 1x always; settings line speeds=); the Slower/Faster keys
+  step through the same ones. A speed picked before it was hidden still shows in the menu while it's in use.
 - Frame by frame: , and . step one frame (uses the real frame length read from the file).
 - A-B loop: [ start, ] end, \ stop; the looped part shows as a band on the time bar.
 - Continue where you left off: videos over a minute resume where you stopped (300 most recent, shared
@@ -120,6 +144,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   (Trim and compatible copy use Windows' Media Foundation; progress and Cancel in a message;
   closing the window while saving finishes the save first.)
 - Save a frame as PNG (as shown, including rotation).
+- Copy frame (1.20.0, video "..." menu or Ctrl+Shift+C): the frame on screen (up to 4K wide, turned as shown) goes on the
+  clipboard as a picture and as PNG; the video keeps playing.
 - Phone rotation metadata in MP4/MOV is read and applied (videos filmed upright show upright).
 - Rotate videos for viewing (Ctrl+R).
 
@@ -129,7 +155,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   Previous frame ",", Next frame ".", Loop A "[", Loop B "]", Stop loop "\", Repeat R, Volume up Up,
   Volume down Down, Mute M, Trim Ctrl+T, Rotate Ctrl+R, Zoom in +/Num+, Zoom out -/Num-, Fit 0/Num0,
   Full screen F/F11, Mini player Ctrl+M, Slideshow F5, File info I, Open Ctrl+O, Save as Ctrl+S,
-  Copy Ctrl+C, Delete Delete, Settings Ctrl+,
+  Copy Ctrl+C, Copy frame Ctrl+Shift+C, Delete Delete, Settings Ctrl+,
 - Actions without a default key (assignable): thumbnail strip, slower/faster/normal speed, save a frame,
   make compatible copy, save rotation to file, actual size, keep on top, copy file path, show in folder,
   open with, close window.
@@ -274,7 +300,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
-  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full),
+  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).

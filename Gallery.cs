@@ -103,11 +103,11 @@ namespace FastViewer
             t.Px = px;
             t.ToolTip = Path.GetFileName(file);
             t.SetName(Path.GetFileName(file));
-            bool video = IsVideoFile(file);
+            bool video = IsVideoFile(file), audio = IsAudioFile(file);
             BitmapSource image;
             if (Thumbs.TryGet(file, px, out image))
             {
-                t.SetPicture(image, video);
+                t.SetPicture(image, video, audio);
                 return;
             }
             t.SetLoading(video);
@@ -115,7 +115,7 @@ namespace FastViewer
             {
                 if (t.File != file) return;
                 t.Job = null;
-                t.SetPicture(b, video);
+                t.SetPicture(b, video, audio);
                 t.FadeInPicture();
             });
         }
@@ -340,7 +340,7 @@ namespace FastViewer
             string folder = CurrentFile == null ? "" : Path.GetDirectoryName(CurrentFile);
             F<Run>("GridFolder").Text = Path.GetFileName(folder.TrimEnd('\\')).Length > 0 ? Path.GetFileName(folder.TrimEnd('\\')) : folder;
             int n = gridFiles.Count;
-            string kind = filter == 1 ? (n == 1 ? "video" : "videos") : filter == 2 ? (n == 1 ? "photo" : "photos") : (n == 1 ? "item" : "items");
+            string kind = filter == 3 ? (n == 1 ? "video" : "videos") : filter == 2 ? (n == 1 ? "photo" : "photos") : filter == 4 ? (n == 1 ? "song" : "songs") : (n == 1 ? "item" : "items");
             F<Run>("GridCount").Text = "    " + n + " " + kind + (shuffled ? "  ·  shuffle stays on" : "");
 
             foreach (var t in gridShown.Values)

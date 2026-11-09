@@ -16,6 +16,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace FastViewer
@@ -70,6 +71,11 @@ namespace FastViewer
                 case "showcase": HuntShowcase(); break;
                 case "wheel": HuntWheel(); break;
                 case "tips": HuntTips(); break;
+                case "music": HuntMusic(); break;
+                case "cover": HuntCover(); break;
+                case "taskbar": HuntTaskbar(); break;
+                case "rotsave": HuntRotSave(); break;
+                case "showmigrate": HuntShowMigrate(); break;
                 case "minivol":
                     After(1500, () => { if (playing) TogglePlay(); miniVolume = true; ToggleMini(); });
                     After(2500, () => { ShowOverlay(); SetVolume(0.45); });
@@ -236,7 +242,7 @@ namespace FastViewer
                     maxLagMs = Math.Max(maxLagMs, lagWatch.ElapsedMilliseconds);
                 }
                 var s = shown;
-                bool content = s != null && (s.Failed || (!s.IsVideo && s.Picture.Source != null) ||
+                bool content = s != null && (s.Failed || ((!s.IsVideo || s.IsAudio) && s.Picture.Source != null) ||
                                (s.IsVideo && (s.Poster.Source != null && s.Poster.Visibility == Visibility.Visible || s.Video.NaturalVideoWidth > 0)));
                 if (!content)
                 {
@@ -797,6 +803,284 @@ namespace FastViewer
                 HuntLog("Photos again: accent " + res("Accent") + ", corners " + res("Radius.Float") + ", font " + res("Font.Ui") + ", bars float " + barsFloat);
                 HuntDone();
             });
+        }
+
+        // Settings > Viewing > Show: old settings lines become the new choice; each choice lets the right files through.
+        void HuntShowMigrate()
+        {
+            After(800, () =>
+            {
+                foreach (var lines in new[] { new string[0], new[] { "filter=0" }, new[] { "filter=1" }, new[] { "filter=2" }, new[] { "filter=0", "music=0" }, new[] { "filter=0", "music=1" }, new[] { "filter=1", "music=0" }, new[] { "show=4" } })
+                {
+                    filter = 0;
+                    foreach (var l in lines) { var kv = l.Split('='); LoadOption(kv[0], kv[1]); }
+                    HuntLog("[" + string.Join(", ", lines) + "] -> " + ShowChoices[filter]);
+                }
+                var names = new[] { "a.jpg", "b.mp4", "c.mp3", "d.flac", "e.txt" };
+                for (filter = 0; filter < ShowChoices.Length; filter++)
+                    HuntLog(ShowChoices[filter] + ": " + string.Join(" ", names.Where(PassesFilter)));
+                filter = 3;
+                HuntLog("saved line: " + OptionLines().First(l => l.StartsWith("show=")) + ", old lines written: " + OptionLines().Count(l => l.StartsWith("filter=") || l.StartsWith("music=")));
+                HuntDone();
+            });
+        }
+        // Rotate with "Also save it to the file": JPEGs with and without an orientation tag, a sideways phone JPEG (tag 6),
+        // a PNG and a BMP. Each is turned once, saved, then "reopened" (decoded fresh, and opened again in the window)
+        // and checked: size turned, the red corner where it should be, the date, Windows' thumbnail. Scratch folder only!
+        void HuntRotSave()
+        {
+            string dir = Path.GetDirectoryName(files[0]);
+            // Make the tagged JPEGs from plain.jpg (400 x 200, red square top-left).
+            Action<string, ushort> tagged = (name, o) =>
+            {
+                BitmapSource src;
+                using (var fs = File.OpenRead(Path.Combine(dir, "plain.jpg"))) src = BitmapFrame.Create(fs, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                if (o == 6) src = new TransformedBitmap(src, new RotateTransform(270)); // stored sideways, the tag turns it back up
+                var meta = new BitmapMetadata("jpg");
+                meta.SetQuery("/app1/ifd/{ushort=274}", o);
+                var enc = new JpegBitmapEncoder { QualityLevel = 95 };
+                enc.Frames.Add(BitmapFrame.Create(src, null, meta, null));
+                using (var fs = File.Create(Path.Combine(dir, name))) enc.Save(fs);
+            };
+            Func<BitmapSource, string> corners = b =>
+            {
+                var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0);
+                Func<int, int, string> at = (x, y) => { var px = new byte[4]; c.CopyPixels(new Int32Rect(x, y, 1, 1), px, 4, 0); return px[2] > 150 && px[0] < 100 ? "red" : px[0] > 150 ? "blue" : "rgb(" + px[2] + "," + px[1] + "," + px[0] + ")"; };
+                int w = c.PixelWidth, h = c.PixelHeight, m = Math.Max(2, Math.Min(w, h) / 20);
+                return w + "x" + h + " TL " + at(m, m) + " TR " + at(w - m, m) + " BR " + at(w - m, h - m) + " BL " + at(m, h - m);
+            };
+            Func<string, string> onDisk = f =>
+            {
+                try
+                {
+                    int fw, fh;
+                    var b = DecodeImage(f, 4000, out fw, out fh);
+                    object tag = null;
+                    try { using (var fs = File.OpenRead(f)) { var m = BitmapFrame.Create(fs, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).Metadata as BitmapMetadata; tag = m == null ? null : m.GetQuery("System.Photo.Orientation"); } } catch { }
+                    return "as shown " + corners(b) + ", orientation tag " + (tag ?? "none") + ", modified " + File.GetLastWriteTime(f).ToString("HH:mm:ss.fff") + ", Windows thumbnail " + corners(ThumbsWide(f)) + ", Explorer's cache 96: " + (Thumbs.FromCache(f, 96) == null ? "none" : corners(Thumbs.FromCache(f, 96))) + " 256: " + (Thumbs.FromCache(f, 256) == null ? "none" : corners(Thumbs.FromCache(f, 256)));
+                }
+                catch (Exception ex) { return "error " + ex.Message; }
+            };
+            // Like a phone photo: 4000 x 3000, stored sideways (tag 6) with the small preview phones put inside the JPEG.
+            Action phone = () =>
+            {
+                BitmapSource src;
+                using (var fs = File.OpenRead(Path.Combine(dir, "plain.jpg"))) src = BitmapFrame.Create(fs, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                var big = new TransformedBitmap(src, new ScaleTransform(10, 15)); // 4000 x 3000
+                var stored = new TransformedBitmap(big, new RotateTransform(270));
+                var preview = new TransformedBitmap(stored, new ScaleTransform(0.04, 0.04)); // 120 x 160, stored sideways too
+                var meta = new BitmapMetadata("jpg");
+                meta.SetQuery("/app1/ifd/{ushort=274}", (ushort)6);
+                var enc = new JpegBitmapEncoder { QualityLevel = 90 };
+                enc.Frames.Add(BitmapFrame.Create(stored, BitmapFrame.Create(preview), meta, null));
+                using (var fs = File.Create(Path.Combine(dir, "phone.jpg"))) enc.Save(fs);
+            };
+            var names = new[] { "phone.jpg", "plain.jpg", "tag1.jpg", "tag6.jpg", "photo.png", "photo.bmp" };
+            After(800, () =>
+            {
+                tagged("tag1.jpg", 1); tagged("tag6.jpg", 6); phone();
+                File.SetLastWriteTime(Path.Combine(dir, "tag1.jpg"), DateTime.Now.AddHours(-1));
+                saveRotation = true;
+                OpenPath(files[0]);
+            });
+            int t = 2500;
+            foreach (var n in names)
+            {
+                string name = n;
+                After(t, () =>
+                {
+                    ShowIndex(files.FindIndex(f => Path.GetFileName(f) == name), 1);
+                    HuntLog(name + " before: " + onDisk(Path.Combine(dir, name)));
+                });
+                After(t + 700, () => { Thumbs.TestSkipRebuild = name == "plain.jpg" || name == "photo.png"; toastKind = null; Rotate(); });
+                After(t + 3000, () =>
+                {
+                    HuntLog("  message: " + F<TextBlock>("ToastText").Text + ", still waiting to save " + rotationsToSave.Count + ", turn kept in memory " + rotations.ContainsKey(shown.File));
+                    if (Thumbs.lastRebuild != null) Thumbs.lastRebuild.Join(5000);
+                    HuntLog("  after" + (Thumbs.TestSkipRebuild ? " (cache NOT rebuilt, like before the fix)" : "") + ": " + onDisk(Path.Combine(dir, name)));
+                });
+                t += 3500;
+            }
+            After(t, () =>
+            {
+                // reopen everything as a new window would: forget turns in memory, open the folder again
+                rotations.Clear();
+                OpenPath(Path.Combine(dir, names[0]));
+            });
+            int t2 = t + 1000;
+            foreach (var n in names)
+            {
+                string name = n;
+                After(t2, () => ShowIndex(files.FindIndex(f => Path.GetFileName(f) == name), 1));
+                After(t2 + 600, () => HuntLog("reopened " + name + ": window shows " + corners(ShownPixels()) + " (turned on screen " + shown.Rotation.Angle + ")"));
+                t2 += 900;
+            }
+            After(t2 + 300, () => { Snap("rotsave_last"); HuntDone(); });
+        }
+
+        // Windows' thumbnail as it is (not cropped square).
+        static BitmapSource ThumbsWide(string f) { return Thumbs.MakeWide(f, 256); }
+
+        BitmapSource ShownPixels()
+        {
+            var b = shown.Picture.Source as BitmapSource;
+            if (b == null) return null;
+            double a = shown.Rotation.Angle;
+            return a == 0 ? b : new TransformedBitmap(b, new RotateTransform(a));
+        }
+        // Taskbar thumbnail buttons: their state on a photo, a video and music, and what a click does (as Windows would click).
+        void HuntTaskbar()
+        {
+            Func<string> state = () => "prev " + (thumbPrev.IsEnabled ? "on" : "off") + ", play/pause " + (thumbPlay.Visibility == Visibility.Visible ? "'" + thumbPlay.Description + "'" : "hidden") +
+                ", next " + (thumbNext.IsEnabled ? "on" : "off") + " | shown " + Path.GetFileName(shown.File) + " playing " + playing;
+            Action<System.Windows.Shell.ThumbButtonInfo> click = b => typeof(System.Windows.Shell.ThumbButtonInfo).GetMethod("InvokeClick", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(b, null);
+            Action<string> go = name => ShowIndex(files.FindIndex(f => Path.GetFileName(f) == name), 1);
+            After(1500, () => { go("photo.jpg"); });
+            After(2000, () => { HuntLog("photo: " + state()); Snap("taskbar_photo"); go("clip.mp4"); });
+            After(3000, () => { HuntLog("video: " + state()); click(thumbPlay); });
+            After(3300, () => { HuntLog("after clicking pause: " + state()); click(thumbPlay); });
+            After(3600, () => { HuntLog("after clicking play: " + state()); TogglePlay(); });
+            After(3900, () => { HuntLog("after Space-like pause in the window: " + state()); go("song.mp3"); });
+            After(4900, () => { HuntLog("music: " + state()); click(thumbPlay); });
+            After(5200, () => { HuntLog("music after clicking pause: " + state()); string before = Path.GetFileName(shown.File); click(thumbNext); HuntLog("next from " + before); });
+            After(5800, () => { HuntLog("  now: " + state()); click(thumbPrev); });
+            After(6400, () => { HuntLog("after previous: " + state()); OpenSettings(); });
+            After(6800, () => { HuntLog("Settings open: " + state()); HuntDone(); });
+        }
+        // 1.20: Change cover (MP3). Folder: song.mp3 (ID3 2.3 with a cover), v24.mp3 (ID3 2.4, no cover), bare.mp3 (no tag),
+        // locked.mp3; pictures in a "pics" subfolder: red.png, blue.jpg. Use a scratch copy: the files are changed!
+        void HuntCover()
+        {
+            string dir = Path.GetDirectoryName(files[0]);
+            Func<BitmapSource, string> centre = b =>
+            {
+                if (b == null) return "none";
+                var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0);
+                var px = new byte[4];
+                c.CopyPixels(new Int32Rect(c.PixelWidth / 2, c.PixelHeight / 2, 1, 1), px, 4, 0);
+                return "rgb(" + px[2] + "," + px[1] + "," + px[0] + ")";
+            };
+            Func<string, string> inFile = f =>
+            {
+                try
+                {
+                    int version; long start; int covers = 0; string mime = null; BitmapSource pic = null;
+                    using (var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                        ReadId3(fs, out version, out start, null, (id, body) =>
+                        {
+                            if (id != "APIC") return;
+                            covers++;
+                            int z = Array.IndexOf(body, (byte)0, 1);
+                            mime = System.Text.Encoding.ASCII.GetString(body, 1, z - 1);
+                            int d = Array.IndexOf(body, (byte)0, z + 2); // after the picture type: description, then 0
+                            var ms = new MemoryStream(body, d + 1, body.Length - d - 1);
+                            pic = BitmapFrame.Create(ms, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                        });
+                    string title, artist;
+                    ReadMusicTags(f, out title, out artist);
+                    return "ID3 2." + version + ", covers " + covers + " " + mime + " " + (pic == null ? "" : pic.PixelWidth + "x" + pic.PixelHeight + " centre " + centre(pic)) +
+                        ", sound starts at " + start + ", tags '" + title + "' / '" + artist + "', Windows thumbnail centre " + centre(Thumbs.Make(f, 200));
+                }
+                catch (Exception ex) { return "error " + ex.Message; }
+            };
+            Action<string> go = name => ShowIndex(files.FindIndex(f => Path.GetFileName(f) == name), 1);
+            var coverDates = new Dictionary<string, DateTime>();
+            int t = 1500;
+            foreach (var pair in new[] { new[] { "song.mp3", "red.png" }, new[] { "v24.mp3", "blue.jpg" }, new[] { "bare.mp3", "red.png" } })
+            {
+                string name = pair[0], pic = pair[1];
+                double before = 0;
+                After(t, () => { go(name); coverDates[name] = File.GetLastWriteTime(Path.Combine(dir, name)); HuntLog(name + " before: " + inFile(Path.Combine(dir, name)) + ", cache 256 centre " + centre(Thumbs.FromCache(Path.Combine(dir, name), 256))); });
+                After(t + 1500, () => { before = shown.Video.Position.TotalSeconds; HuntLog("  playing " + playing + " at " + before.ToString("0.00") + " s, changing cover to " + pic); ChangeCoverTo(shown.File, Path.Combine(dir, "pics", pic)); });
+                After(t + 6500, () =>
+                {
+                    HuntLog("  result: " + lastCoverResult);
+                    HuntLog("  date " + File.GetLastWriteTime(Path.Combine(dir, name)).ToString("HH:mm:ss.fff") + " (was " + coverDates[name].ToString("HH:mm:ss.fff") + "), Explorer's cache 256 centre " + centre(Thumbs.FromCache(Path.Combine(dir, name), 256)));
+                    HuntLog("  on screen: " + Path.GetFileName(shown.File) + " playing " + playing + " at " + shown.Video.Position.TotalSeconds.ToString("0.00") + " s (was " + before.ToString("0.00") + "), card cover centre " + centre(shown.AudioCover));
+                    HuntLog("  after: " + inFile(Path.Combine(dir, name)) + ", leftover temp files " + Directory.GetFiles(dir, "*.fvcover.tmp").Length);
+                });
+                t += 7000;
+            }
+            byte[] lockedBefore = null;
+            FileStream lockStream = null;
+            After(t, () =>
+            {
+                go("locked.mp3");
+                string f = Path.Combine(dir, "locked.mp3");
+                lockedBefore = File.ReadAllBytes(f);
+                lockStream = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read); // another app has it open
+            });
+            After(t + 1500, () => ChangeCoverTo(shown.File, Path.Combine(dir, "pics", "red.png")));
+            After(t + 7000, () =>
+            {
+                lockStream.Dispose();
+                string f = Path.Combine(dir, "locked.mp3");
+                HuntLog("locked.mp3 (open in another app): " + lastCoverResult + "; file unchanged " + File.ReadAllBytes(f).SequenceEqual(lockedBefore) +
+                    ", leftover temp files " + Directory.GetFiles(dir, "*.fvcover.tmp").Length + ", still plays " + playing);
+                var hit = stage.InputHitTest(new Point(stage.ActualWidth / 2, stage.ActualHeight / 2)) as DependencyObject;
+                bool reachesStage = false;
+                for (var d = hit; d != null; d = VisualTreeHelper.GetParent(d)) if (d == stage) reachesStage = true;
+                var right = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Right) { RoutedEvent = UIElement.MouseRightButtonUpEvent };
+                stage.RaiseEvent(right);
+                HuntLog("right-click on the cover: hits " + (hit == null ? "nothing" : hit.GetType().Name) + ", reaches the music view " + reachesStage + ", opens Change cover " + right.Handled);
+                var saved = huntMenuHook;
+                huntMenuHook = (m, b) => HuntLog("music '...' menu: " + string.Join(" | ", m.Items.OfType<MenuItem>().Select(i => i.Header is string ? (string)i.Header : FindAll<TextBlock>(i).Select(x => x.Text).FirstOrDefault())));
+                ShowVideoMenu();
+                huntMenuHook = saved;
+                filter = 1; ReloadFolder();
+                HuntLog("Show: Photos and videos: " + string.Join(", ", files.Select(Path.GetFileName)) + " (only the song on screen stays)");
+                filter = 0; ReloadFolder();
+                HuntLog("on again: " + files.Count + " files");
+                HuntDone();
+            });
+        }
+        // 1.20: music files, speeds 0.25x-5x and Copy frame. Folder: a tagged .mp3 with a cover, an untagged .wav,
+        // a video and a photo (use --settings <scratch.ini>).
+        void HuntMusic()
+        {
+            Func<string> state = () => shown == null ? "nothing" : Path.GetFileName(shown.File) + " audio=" + shown.IsAudio + " ready=" + shown.Ready +
+                " playing=" + playing + " pos=" + shown.Video.Position.TotalSeconds.ToString("0.00") + " card=" + (shown.Picture.Source == null ? "none" : shown.Picture.Source.GetType().Name) +
+                " title='" + shown.AudioTitle + "' artist='" + shown.AudioArtist + "' cover=" + (shown.AudioCover != null) + " shownAfter=" + switchWatch.ElapsedMilliseconds + "ms";
+            Action<string> go = name => { int i = files.FindIndex(f => Path.GetFileName(f) == name); ShowIndex(i, 1); };
+            After(1500, () => { go("song.mp3"); HuntLog("right after switching: " + state()); });
+            After(2000, () => HuntLog("0.5 s later: " + state()));
+            After(3500, () => { HuntLog("2 s later: " + state()); Snap("music_card"); ShowVideoMenuForTest(); });
+            After(4000, () => { SetSpeed(5); HuntLog("speed 5: " + state()); });
+            After(5000, () => { HuntLog("1 s at 5x: " + state() + " ratio " + shown.Video.SpeedRatio); SetSpeed(0.25); });
+            After(6000, () => { HuntLog("1 s at 0.25x: " + state()); SetSpeed(1); go("plain.wav"); HuntLog("wav: " + state()); });
+            After(7000, () => { HuntLog("wav 1 s: " + state()); Snap("music_nocover"); go("clip.mp4"); });
+            After(8000, () => { HuntLog("video: " + state()); CopyFrame(); SetSpeed(4); });
+            After(9000, () => { HuntLog("video 1 s at 4x: " + state()); SetSpeed(1);
+                shownSpeeds.Clear(); shownSpeeds.Add(1);
+                var seen = new List<string>(); speed = 1;
+                foreach (var x in AllSpeeds) shownSpeeds.Add(x);
+                for (int i = 0; i < 14; i++) { StepSpeed(1); seen.Add(SpeedText(speed)); }
+                StepSpeed(0); seen.Add("normal " + SpeedText(speed));
+                for (int i = 0; i < 6; i++) { StepSpeed(-1); seen.Add(SpeedText(speed)); }
+                HuntLog("all speeds, stepping: " + string.Join(" ", seen));
+                LoadSpeeds("0.25,3,7,abc"); HuntLog("loaded '0.25,3,7,abc' -> " + SpeedsLine());
+                OpenSettings();
+                ShowSettingsPage(settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Videos").Value);
+            });
+            After(9800, () =>
+            {
+                var chips = FindAll<Button>(F<FrameworkElement>("SettingsPage")).Where(b => b.Content is string && ((string)b.Content).EndsWith("x")).ToList();
+                HuntLog("speed buttons: " + string.Join(" ", chips.Select(b => b.Content + (b.Style == Application.Current.Resources["AccentButton"] ? "*" : ""))));
+                var five = chips.First(b => (string)b.Content == "5x");
+                five.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                chips.First(b => (string)b.Content == "1x").RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                HuntLog("after clicking 5x and 1x: " + string.Join(" ", chips.Select(b => b.Content + (b.Style == Application.Current.Resources["AccentButton"] ? "*" : ""))) +
+                    ", saved " + string.Join("", File.ReadAllLines(SettingsFile).Where(l => l.StartsWith("speeds="))));
+                Snap("speed_settings");
+                HuntDone();
+            });
+        }
+
+        void ShowVideoMenuForTest()
+        {
+            // what the video "..." menu would list for the file on screen (the menu itself isn't opened in tests)
+            bool music = shown != null && shown.IsAudio;
+            HuntLog("video menu for " + (music ? "music" : "video") + ": speeds " + string.Join(" ", Speeds.Select(SpeedText)) + (music ? ", no Copy frame / Save a frame / frame steps / Trim / compatible copy" : ""));
         }
 
         // Settings > Buttons > Tips when pointing at a button (use with --settings <scratch.ini>).

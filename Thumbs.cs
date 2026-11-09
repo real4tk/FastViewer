@@ -184,9 +184,124 @@ namespace FastViewer
 
         const int BiggerSizeOk = 0x1, ThumbnailOnly = 0x8, CropToSquare = 0x20;
 
+        // ---------------------------------------------------------------- Windows' thumbnail cache (thumbcache_*.db)
+
+        [ComImport, Guid("F676C15D-596A-4ce2-8234-33996F445DB1"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IThumbnailCache
+        {
+            [PreserveSig] int GetThumbnail(IntPtr shellItem, uint size, int flags, out IntPtr sharedBitmap, out int outFlags, IntPtr thumbnailId);
+            [PreserveSig] int GetThumbnailByID(IntPtr id, uint size, out IntPtr sharedBitmap, out int outFlags);
+        }
+
+        [ComImport, Guid("091162a4-bc96-411f-aae8-c5122cd03363"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface ISharedBitmap
+        {
+            [PreserveSig] int GetSharedBitmap(out IntPtr bitmap);
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        static extern int SHCreateItemFromParsingName(string path, IntPtr bindContext, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IntPtr item);
+
+        static readonly Guid ShellItemId = new Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe");
+        static readonly Guid LocalThumbnailCache = new Guid("50EF4544-AC9F-4A8E-B21B-8A26180DB13F");
+        const int InCacheOnly = 0x1, ForceExtraction = 0x4;
+        // The sizes File Explorer keeps (thumbcache_16 ... _1280): every view and zoom level.
+        static readonly uint[] CacheSizes = { 16, 32, 48, 96, 256, 768, 1280 };
+
+        // A file was changed in place (turned, new cover): Windows checks its cached thumbnails only loosely, so File
+        // Explorer can keep showing the old one. Make it draw them again from the file, for every size it keeps.
+        // Runs on a thread of its own (the shell needs an STA thread; a big photo takes a moment).
+        [DllImport("shell32.dll")]
+        static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
+
+        internal static bool TestSkipRebuild; // tests: behave like 1.19 (to show the stale thumbnail)
+
+        internal static void RebuildCachedThumbnails(string file, Action done)
+        {
+            if (TestSkipRebuild) { if (done != null) done(); return; }
+            var t = new Thread(delegate()
+            {
+                IThumbnailCache cache = null;
+                IntPtr item = IntPtr.Zero;
+                try
+                {
+                    cache = (IThumbnailCache)Activator.CreateInstance(Type.GetTypeFromCLSID(LocalThumbnailCache));
+                    if (SHCreateItemFromParsingName(file, IntPtr.Zero, ShellItemId, out item) != 0 || item == IntPtr.Zero) return;
+                    foreach (var size in CacheSizes)
+                    {
+                        IntPtr bmp; int flags;
+                        if (cache.GetThumbnail(item, size, ForceExtraction, out bmp, out flags, IntPtr.Zero) == 0 && bmp != IntPtr.Zero) Marshal.Release(bmp);
+                    }
+                }
+                catch { }
+                finally
+                {
+                    if (item != IntPtr.Zero) Marshal.Release(item);
+                    if (cache != null) Marshal.ReleaseComObject(cache);
+                }
+                var path = Marshal.StringToHGlobalUni(file);
+                try { SHChangeNotify(0x2000, 0x0005, path, IntPtr.Zero); } catch { } finally { Marshal.FreeHGlobal(path); } // SHCNE_UPDATEITEM: Explorer redraws it
+                if (done != null) done();
+            }) { IsBackground = true, Name = "Thumbnail cache" };
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+            lastRebuild = t;
+        }
+        internal static Thread lastRebuild; // tests: wait for it
+
+        // Tests: the thumbnail File Explorer would get from the cache right now (null if none is cached).
+        internal static BitmapSource FromCache(string file, uint size)
+        {
+            IThumbnailCache cache = null;
+            IntPtr item = IntPtr.Zero, shared = IntPtr.Zero;
+            try
+            {
+                cache = (IThumbnailCache)Activator.CreateInstance(Type.GetTypeFromCLSID(LocalThumbnailCache));
+                if (SHCreateItemFromParsingName(file, IntPtr.Zero, ShellItemId, out item) != 0) return null;
+                int flags;
+                if (cache.GetThumbnail(item, size, InCacheOnly, out shared, out flags, IntPtr.Zero) != 0 || shared == IntPtr.Zero) return null;
+                var sb = (ISharedBitmap)Marshal.GetObjectForIUnknown(shared);
+                IntPtr hbm;
+                if (sb.GetSharedBitmap(out hbm) != 0 || hbm == IntPtr.Zero) return null;
+                var src = Imaging.CreateBitmapSourceFromHBitmap(hbm, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                var result = new CachedBitmap(src, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                result.Freeze();
+                return result;
+            }
+            catch { return null; }
+            finally
+            {
+                if (shared != IntPtr.Zero) Marshal.Release(shared);
+                if (item != IntPtr.Zero) Marshal.Release(item);
+                if (cache != null) Marshal.ReleaseComObject(cache);
+            }
+        }
+
+        // Windows' thumbnail at its own shape (tests: is the saved turn in it?).
+        internal static BitmapSource MakeWide(string file, int px)
+        {
+            IShellItemImageFactory factory = null;
+            IntPtr bitmap = IntPtr.Zero;
+            try
+            {
+                if (SHCreateItemFromParsingName(file, IntPtr.Zero, typeof(IShellItemImageFactory).GUID, out factory) != 0 || factory == null) return null;
+                if (factory.GetImage(new NativeSize { Width = px, Height = px }, ThumbnailOnly, out bitmap) != 0 || bitmap == IntPtr.Zero) return null;
+                var src = Imaging.CreateBitmapSourceFromHBitmap(bitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                var result = new CachedBitmap(src, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                result.Freeze();
+                return result;
+            }
+            catch { return null; }
+            finally
+            {
+                if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+                if (factory != null) Marshal.ReleaseComObject(factory);
+            }
+        }
+
         // A square thumbnail exactly px wide, or null when Windows has no thumbnail for the file
         // (for example a video whose codec isn't installed).
-        static BitmapSource Make(string file, int px)
+        internal static BitmapSource Make(string file, int px)
         {
             IShellItemImageFactory factory = null;
             IntPtr bitmap = IntPtr.Zero;
@@ -312,12 +427,12 @@ namespace FastViewer
             Visibility = Visibility.Visible;
         }
 
-        public void SetPicture(BitmapSource image, bool video)
+        public void SetPicture(BitmapSource image, bool video, bool audio = false)
         {
             if (image == null)
             {
                 ShowPlaceholder(); // no thumbnail from Windows: show what kind of file it is
-                glyph.Code = video ? "\uE714" : "\uE91B";
+                glyph.Code = audio ? "\uE8D6" : video ? "\uE714" : "\uE91B";
                 glyph.Visibility = Visibility.Visible;
             }
             else

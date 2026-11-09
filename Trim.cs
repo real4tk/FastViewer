@@ -96,7 +96,7 @@ namespace FastViewer
         void StartTrim()
         {
             var s = shown;
-            if (s == null || !s.IsVideo || s.Failed || !s.Video.NaturalDuration.HasTimeSpan || trimming) return;
+            if (s == null || !s.IsVideo || s.IsAudio || s.Failed || !s.Video.NaturalDuration.HasTimeSpan || trimming) return;
             if (mini) ToggleMini();
             if (playing) TogglePlay();
             trimming = true;
