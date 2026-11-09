@@ -5,6 +5,30 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.19.0  (9 Nov 2026)
+  New
+  - Mini player: photos with see-through parts (PNG, GIF, ...) now really are see-through. There is no black
+    or grey box behind the picture any more, so the mini player only covers what's actually in the picture.
+    Photos and videos without see-through parts look the same as before.
+  - Liquid Glass: every button now squishes when you press it and springs back with a little wobble, like on
+    an iPhone: also the side arrows, switches, the Settings side menu and every button on every Settings page.
+    Even a very quick click plays the whole squish. A Custom look based on Liquid Glass does it too.
+  - Skip buttons have a clearer icon in every look: an open circle with an arrow pointing back or forward and
+    a bigger number inside (it used to look like a "reload" sign).
+  - Custom look > Motion: the styles now feel really different. Smooth is like Windows 11, Subtle is quick and
+    barely moves, Springy travels far and bounces, Calm fades slowly in and out, and the new Snappy gets there
+    almost at once. Speed now goes from Fastest (0.4x) through Extra fast, Fast, Normal, Slow and Extra slow to
+    Super slow (3x). Your old "Faster" and "Slower" choices become Fast and Slow. The speed now applies to
+    everything that opens or closes (menus, messages, dialogs, Settings, the colour picker...), while zooming,
+    panning and wheel scrolling keep following your hand at their usual pace.
+  - Menus now also fade out when you close them by clicking elsewhere, clicking their button again or pressing
+    Esc, at the look's speed (before, only choosing an item faded them).
+  Fixed
+  - Liquid Glass: faint shapes of the next and previous files could show beside the picture. The files that
+    are loaded ahead are now completely hidden, and switching is just as instant as before.
+  - Thin blue lines around the mini player and along the screen edges in full screen. They were Windows' own
+    window border, drawn in your accent colour when "Show accent colour on title bars and window borders" is
+    on. Full screen and the mini player now have no Windows border at all.
 1.18.0  (2 Nov 2026)
   New
   - Settings > Buttons > "Tips when pointing at a button": switch off the little notes that appear when you

@@ -3,6 +3,7 @@
 // dark/light, bars docking) and the fade-through for full screen and the mini player.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -47,8 +48,12 @@ namespace FastViewer
             EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.OpenedEvent, new RoutedEventHandler(OnMenuOpened));
             EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.ClosedEvent, new RoutedEventHandler(OnMenuClosed));
             EventManager.RegisterClassHandler(typeof(ContextMenu), UIElement.PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler(OnMenuClick));
-            EventManager.RegisterClassHandler(typeof(Button), UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler(OnButtonPressed));
-            EventManager.RegisterClassHandler(typeof(Button), UIElement.LostMouseCaptureEvent, new MouseEventHandler(OnButtonReleased));
+            EventManager.RegisterClassHandler(typeof(ContextMenu), UIElement.PreviewMouseDownEvent, new MouseButtonEventHandler(OnMenuMouseDown), true);
+            EventManager.RegisterClassHandler(typeof(ContextMenu), UIElement.PreviewKeyDownEvent, new KeyEventHandler(OnMenuKey), true);
+            EventManager.RegisterClassHandler(typeof(ButtonBase), UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler(OnButtonPressed), true);
+            EventManager.RegisterClassHandler(typeof(ButtonBase), UIElement.PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler(OnButtonReleased), true);
+            EventManager.RegisterClassHandler(typeof(ButtonBase), UIElement.MouseLeaveEvent, new MouseEventHandler(OnButtonReleased), true);
+            EventManager.RegisterClassHandler(typeof(ButtonBase), UIElement.LostMouseCaptureEvent, new MouseEventHandler(OnButtonReleased), true);
         }
 
         // ---------------------------------------------------------------- switches
@@ -86,35 +91,85 @@ namespace FastViewer
                 }
                 Motion.FromTo(rootBorder, UIElement.OpacityProperty, 0, 1, Motion.Ms(Motion.Fast, false), Motion.Smooth);
             }
-            menuGhost = null; // closing by clicking elsewhere (or the menu's own button) is instant, like Windows' menus
+            DropGhost(); // a ghost still up from a click that didn't close the menu
         }
 
-        static BitmapSource menuGhost;
-        static Point menuGhostAt;
+        // Closing (every way: an item, a click outside or on the menu's own button, Esc or Enter) follows the look's
+        // style and Speed like opening does: just before the menu closes, an exact picture of it goes on top, and
+        // once the menu has closed that picture fades out and shrinks a little toward the button. Putting it up
+        // before the close means there's never a frame with neither the menu nor its picture.
+        static Popup ghostPop;
+        static object ghostMenu; // the menu or popup the picture belongs to
 
-        // Clicking an item: a picture of the menu, with that item highlighted, fades out as it closes (a menu
-        // disappears the moment it closes).
-        static void OnMenuClick(object sender, MouseButtonEventArgs e)
+        static void PutGhost(ContextMenu menu)
         {
-            var menu = (ContextMenu)sender;
             var rootBorder = menu.Template == null ? null : menu.Template.FindName("MenuRoot", menu) as FrameworkElement;
-            if (rootBorder != null) menuGhost = Capture(rootBorder, out menuGhostAt);
+            if (rootBorder != null) PutGhost(menu, rootBorder, () => menu.IsOpen);
         }
 
-        static void OnMenuClosed(object sender, RoutedEventArgs e)
+        // Also used by other popups (the colour picker): `root` is what gets pictured, `isOpen` says whether it stayed.
+        static void PutGhost(object menu, FrameworkElement rootBorder, Func<bool> isOpen)
         {
-            var ghost = menuGhost;
-            menuGhost = null;
-            if (ghost == null || !Motion.Animates) return;
-            double dpiX = ghost.DpiX / 96, dpiY = ghost.DpiY / 96;
-            var img = new Image { Source = ghost, Width = ghost.PixelWidth / dpiX, Height = ghost.PixelHeight / dpiY, IsHitTestVisible = false };
-            var pop = new Popup
+            if (!Motion.Animates || ghostMenu == menu) return;
+            if (rootBorder == null || !rootBorder.IsVisible) return;
+            Point at;
+            var pic = Capture(rootBorder, out at);
+            if (pic == null) return;
+            DropGhost();
+            double dpiX = pic.DpiX / 96, dpiY = pic.DpiY / 96;
+            var img = new Image { Source = pic, Width = pic.PixelWidth / dpiX, Height = pic.PixelHeight / dpiY, IsHitTestVisible = false,
+                RenderTransformOrigin = rootBorder.RenderTransformOrigin };
+            ghostPop = new Popup
             {
                 Child = img, AllowsTransparency = true, Placement = PlacementMode.AbsolutePoint,
-                HorizontalOffset = menuGhostAt.X / dpiX, VerticalOffset = menuGhostAt.Y / dpiY, IsHitTestVisible = false
+                HorizontalOffset = at.X / dpiX, VerticalOffset = at.Y / dpiY, IsHitTestVisible = false
             };
-            pop.IsOpen = true;
-            Motion.To(img, UIElement.OpacityProperty, 0, Motion.Ms(83, false), Motion.Out, delegate { pop.IsOpen = false; });
+            ghostMenu = menu;
+            ghostPop.IsOpen = true;
+            // If the menu stays open after all (a click that didn't close it), the picture goes again.
+            var pop = ghostPop;
+            var check = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+            check.Tick += delegate { check.Stop(); if (ghostPop == pop && isOpen()) DropGhost(); };
+            check.Start();
+        }
+
+        static void DropGhost()
+        {
+            if (ghostPop != null) ghostPop.IsOpen = false;
+            ghostPop = null;
+            ghostMenu = null;
+        }
+
+        static void OnMenuClick(object sender, MouseButtonEventArgs e) { PutGhost((ContextMenu)sender); }
+
+        // The menu holds the mouse while open, so a click anywhere (also outside it) comes here first.
+        static void OnMenuMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            var menu = (ContextMenu)sender;
+            var p = e.GetPosition(menu);
+            if (p.X < 0 || p.Y < 0 || p.X > menu.ActualWidth || p.Y > menu.ActualHeight) PutGhost(menu); // outside: it closes
+        }
+
+        static void OnMenuKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape || e.Key == Key.Enter || e.Key == Key.System) PutGhost((ContextMenu)sender);
+        }
+
+        static void OnMenuClosed(object sender, RoutedEventArgs e) { FadeGhost(sender); }
+
+        static void FadeGhost(object sender)
+        {
+            var pop = ghostPop;
+            if (pop == null || ghostMenu != sender) return;
+            ghostPop = null;
+            ghostMenu = null;
+            var img = (Image)pop.Child;
+            double ms = Motion.Ms(Motion.Fast, false);
+            Motion.To(img, UIElement.OpacityProperty, 0, ms, Motion.Out, delegate { pop.IsOpen = false; });
+            if (!Motion.Moves) return;
+            var p = Motion.PartsOf(img);
+            Motion.To(p.Scale, ScaleTransform.ScaleXProperty, 0.96, ms, Motion.Out);
+            Motion.To(p.Scale, ScaleTransform.ScaleYProperty, 0.96, ms, Motion.Out);
         }
 
         static BitmapSource Capture(FrameworkElement el, out Point screenPx)
@@ -134,33 +189,42 @@ namespace FastViewer
             catch { return null; }
         }
 
-        // ---------------------------------------------------------------- pressed buttons (Liquid Glass presses in and springs back)
+        // ---------------------------------------------------------------- pressed buttons (Liquid Glass squishes, others may press in)
 
-        static void OnButtonPressed(object sender, MouseButtonEventArgs e)
+        // Every clickable button (Button, toggle and radio buttons, switches, the side arrows...) is covered, also when
+        // something above it handles the press first. Buttons that move by themselves keep their own transform: the
+        // press scale goes in front of it (Motion.PartsOf). A press ends on release, lost capture or leaving the button.
+        static readonly HashSet<ButtonBase> pressedButtons = new HashSet<ButtonBase>();
+
+        static void OnButtonPressed(object sender, MouseButtonEventArgs e) { PressButton(sender as ButtonBase); }
+
+        static void OnButtonReleased(object sender, EventArgs e) { ReleaseButton(sender as ButtonBase); }
+
+        static void PressButton(ButtonBase b)
         {
-            if (Motion.Press >= 1 || !Motion.Moves) return;
-            var b = (Button)sender;
-            if (!PressShrinks(b)) return;
+            if (b == null || (Motion.Press >= 1 && !Motion.Squish) || !Motion.Moves || !PressShrinks(b)) return;
+            pressedButtons.Add(b);
             b.RenderTransformOrigin = new Point(0.5, 0.5);
             var p = Motion.PartsOf(b);
-            Motion.To(p.Scale, ScaleTransform.ScaleXProperty, Motion.Press, 90, Motion.Smooth);
-            Motion.To(p.Scale, ScaleTransform.ScaleYProperty, Motion.Press, 90, Motion.Smooth);
+            if (Motion.Squish) { Motion.SquishIn(p.Scale); return; } // Liquid Glass: squishy, iOS-like
+            Motion.To(p.Scale, ScaleTransform.ScaleXProperty, Motion.Press, Motion.Ms(90, false), Motion.Smooth);
+            Motion.To(p.Scale, ScaleTransform.ScaleYProperty, Motion.Press, Motion.Ms(90, false), Motion.Smooth);
         }
 
-        static void OnButtonReleased(object sender, MouseEventArgs e)
+        static void ReleaseButton(ButtonBase b)
         {
-            var b = (Button)sender;
-            if (!PressShrinks(b)) return;
+            if (b == null || !pressedButtons.Remove(b)) return;
             var p = Motion.PartsOf(b);
-            if (p.Scale.ScaleX == 1 && !Motion.Busy(p.Scale)) return;
+            if (Motion.Squish) { Motion.SquishOut(p.Scale); return; }
             Motion.To(p.Scale, ScaleTransform.ScaleXProperty, 1, Motion.Ms(Motion.Normal), Motion.In);
             Motion.To(p.Scale, ScaleTransform.ScaleYProperty, 1, Motion.Ms(Motion.Normal), Motion.In);
         }
 
-        // Buttons with a transform of their own (the middle play button, sliders' parts) keep it.
-        static bool PressShrinks(Button b)
+        // The parts of sliders and scroll bars (their page areas are buttons too) don't squish.
+        static bool PressShrinks(ButtonBase b)
         {
-            return b.RenderTransform == null || b.RenderTransform == Transform.Identity || b.RenderTransform is TransformGroup;
+            var owner = b.TemplatedParent;
+            return !(owner is ScrollBar || owner is Slider);
         }
 
         // ---------------------------------------------------------------- smooth scrolling
@@ -177,7 +241,7 @@ namespace FastViewer
                 target = Math.Max(0, Math.Min(sv.ScrollableHeight, from - e.Delta * 0.6));
                 Motion.Run(sv, dt =>
                 {
-                    double now = sv.VerticalOffset, next = now + (target - now) * Motion.Follow(dt, Motion.Ms(220));
+                    double now = sv.VerticalOffset, next = now + (target - now) * Motion.Follow(dt, Motion.Follows(220));
                     bool done = Math.Abs(target - next) < 0.5;
                     sv.ScrollToVerticalOffset(done ? target : next);
                     return !done;

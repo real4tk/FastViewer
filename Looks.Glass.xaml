@@ -23,6 +23,7 @@
   <sys:String x:Key="Motion.Ease">spring</sys:String>
   <sys:Double x:Key="Motion.Distance">1.2</sys:Double>
   <sys:Double x:Key="Motion.Press">0.95</sys:Double>
+  <sys:Boolean x:Key="Motion.Squish">True</sys:Boolean>
   <sys:String x:Key="Font.Ui">@Inter</sys:String>
   <sys:String x:Key="Font.Title">@Inter Display</sys:String>
   <FontWeight x:Key="Weight.Title">SemiBold</FontWeight>

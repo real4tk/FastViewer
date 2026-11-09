@@ -72,7 +72,7 @@ namespace FastViewer
             }
             SetVolumeSlider(false);
             PlaceBars();
-            ApplyWindowLook(); // the mini player is never see-through
+            ApplyWindowLook(); // the mini player is only see-through around a photo with see-through parts
             UpdateMiniUi();
             UpdateControls();
             UpdateResponsive();

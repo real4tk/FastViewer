@@ -21,6 +21,7 @@
   <sys:String x:Key="Motion.Ease">decelerate</sys:String>
   <sys:Double x:Key="Motion.Distance">1</sys:Double>
   <sys:Double x:Key="Motion.Press">1</sys:Double>
+  <sys:Boolean x:Key="Motion.Squish">False</sys:Boolean>
   <FontFamily x:Key="Font.Ui">Segoe UI</FontFamily>
   <FontFamily x:Key="Font.Title">Segoe UI</FontFamily>
   <FontWeight x:Key="Weight.Title">SemiBold</FontWeight>

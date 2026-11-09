@@ -66,8 +66,8 @@ namespace FastViewer
 
         static readonly string[] FontChoices = { "Segoe UI", "Segoe UI Variable Text", "Inter", "Bahnschrift", "Calibri", "Verdana", "Georgia", "Trebuchet MS", "Consolas", "Comic Sans MS" };
         static readonly string[] WeightChoices = { "Light", "Normal", "SemiBold", "Bold" };
-        static readonly string[] MotionStyles = { "windows", "subtle", "springy", "calm" };
-        static readonly string[] MotionSpeeds = { "0.7", "1", "1.4" };
+        static readonly string[] MotionStyles = { "windows", "subtle", "springy", "calm", "snappy" };
+        static readonly string[] MotionSpeeds = { "0.4", "0.55", "0.7", "1", "1.4", "2", "3" }; // x the style's durations
 
         // ---------------------------------------------------------------- building the look
 
@@ -127,13 +127,23 @@ namespace FastViewer
                 {
                     int i = Array.IndexOf(MotionStyles, v);
                     if (i < 0) return;
-                    var ms = new[] { new[] { 167.0, 250, 333, 1, 1 }, new[] { 200.0, 300, 400, 0.5, 1 }, new[] { 180.0, 280, 380, 1.2, 0.95 }, new[] { 150.0, 220, 300, 0.4, 1 } }[i];
+                    // Each style has its own timing, travel, curve and press, so they really feel different:
+                    //            Fast  Normal Slow  Distance Press FadeIn FadeOut
+                    var ms = new[] {
+                        new[] { 167.0, 250, 333, 1.0, 1.00, 120, 300 },   // Smooth: Windows 11, decelerating
+                        new[] { 120.0, 170, 220, 0.3, 1.00,  90, 200 },   // Subtle: quick, barely moves, even curve
+                        new[] { 200.0, 300, 400, 1.8, 0.92, 150, 320 },   // Springy: travels far, overshoots and wobbles
+                        new[] { 300.0, 450, 600, 0.2, 1.00, 260, 700 },   // Calm: slow fades, eases in and out, hardly moves
+                        new[] { 100.0, 150, 200, 1.3, 0.96,  70, 160 },   // Snappy: there almost at once, short settle
+                    }[i];
                     d["Motion.Fast"] = ms[0];
                     d["Motion.Normal"] = ms[1];
                     d["Motion.Slow"] = ms[2];
                     d["Motion.Distance"] = ms[3];
                     d["Motion.Press"] = ms[4];
-                    d["Motion.Ease"] = new[] { "decelerate", "decelerate", "spring", "calm" }[i];
+                    d["Motion.FadeIn"] = ms[5];
+                    d["Motion.FadeOut"] = ms[6];
+                    d["Motion.Ease"] = new[] { "decelerate", "subtle", "bouncy", "drift", "snappy" }[i];
                     d["Look.Spring"] = v == "springy";
                     break;
                 }
@@ -147,9 +157,7 @@ namespace FastViewer
             if (!custom.TryGetValue("motionSpeed", out v)) return;
             double k;
             if (!double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out k)) return;
-            k = Math.Max(0.5, Math.Min(2, k));
-            foreach (var key in new[] { "Motion.Fast", "Motion.Normal", "Motion.Slow", "Motion.FadeIn", "Motion.FadeOut" })
-                if (d[key] is double) d[key] = (double)d[key] * k;
+            d["Motion.Speed"] = Math.Max(0.4, Math.Min(3, k)); // Motion.Ms multiplies every animation by it
         }
 
         static Color ParseColor(string v)
@@ -533,11 +541,13 @@ namespace FastViewer
                 "icons", new[] { "Like the look", "Windows", "Lines" }, new[] { null, "segoe", "lines" });
 
             AddSubheading("Motion");
-            AddChoiceCard("", "Style", "Smooth like Windows 11, subtle (smaller moves), springy (a little bounce) or calm (mostly fades). " +
+            AddChoiceCard("", "Style", "Smooth: like Windows 11. Subtle: quick and barely moves. Springy: travels far, overshoots and wobbles. " +
+                "Calm: slow fades that ease in and out. Snappy: there almost at once. " +
                 "Settings > Appearance > Animations still decides how much moves.",
-                "motionStyle", new[] { "Like the look", "Smooth", "Subtle", "Springy", "Calm" }, new string[] { null }.Concat(MotionStyles).ToArray());
-            AddChoiceCard("", "Speed", "How long animations take.", "motionSpeed",
-                new[] { "Normal", "Faster", "Slower" }, new[] { null, "0.7", "1.4" });
+                "motionStyle", new[] { "Like the look", "Smooth", "Subtle", "Springy", "Calm", "Snappy" }, new string[] { null }.Concat(MotionStyles).ToArray());
+            AddChoiceCard("", "Speed", "How long animations take, from Fastest (0.4x) to Super slow (3x).", "motionSpeed",
+                new[] { "Fastest", "Extra fast", "Fast", "Normal", "Slow", "Extra slow", "Super slow" },
+                new[] { "0.4", "0.55", "0.7", null, "1.4", "2", "3" });
 
             AddSubheading("All colours");
             var all = new StackPanel { Visibility = Visibility.Collapsed };
@@ -576,7 +586,8 @@ namespace FastViewer
             AddCard(glyph, title, description, Dropdown(labels, () =>
             {
                 string v;
-                return custom.TryGetValue(key, out v) ? Math.Max(0, Array.IndexOf(values, v)) : 0;
+                int i = custom.TryGetValue(key, out v) ? Array.IndexOf(values, v) : -1;
+                return Math.Max(0, i >= 0 ? i : Array.IndexOf(values, null)); // not set or unknown: the "null" choice (Normal sits mid-list)
             }, i => SetCustomValue(key, values[i])));
         }
 
@@ -812,12 +823,19 @@ namespace FastViewer
             box.SetResourceReference(Border.CornerRadiusProperty, "Radius.Float");
             box.SetResourceReference(TextElement.ForegroundProperty, "TextMain");
             var popup = new Popup { PlacementTarget = owner, Placement = PlacementMode.Bottom, VerticalOffset = 4, StaysOpen = false, AllowsTransparency = true, Child = box };
+            // Closing fades like the menus do (Animations.cs): a click outside or Esc pictures it just before it goes.
+            popup.PreviewMouseDown += delegate(object o, MouseButtonEventArgs e)
+            {
+                var p = e.GetPosition(box);
+                if (p.X < 0 || p.Y < 0 || p.X > box.ActualWidth || p.Y > box.ActualHeight) PutGhost(popup, box, () => popup.IsOpen);
+            };
             popup.Closed += delegate
             {
+                FadeGhost(popup);
                 if (changed) set(FromHsv(h, s, v, a), true);
                 if (Mouse.LeftButton == MouseButtonState.Pressed && owner.IsMouseOver) MenuClosedBy(owner);
             };
-            popup.KeyDown += delegate(object o, KeyEventArgs e) { if (e.Key == Key.Escape) { popup.IsOpen = false; e.Handled = true; } };
+            popup.KeyDown += delegate(object o, KeyEventArgs e) { if (e.Key == Key.Escape) { PutGhost(popup, box, () => popup.IsOpen); popup.IsOpen = false; e.Handled = true; } };
             update(false);
             changed = false;
             if (huntPickerInWindow)

@@ -29,7 +29,13 @@ namespace FastViewer
         public static double Fast = 167, Normal = 250, Slow = 333; // milliseconds, from the look
         public static double Distance = 1;                         // how far things travel (x the base distance)
         public static double Press = 1;                            // pressed buttons shrink to this (1 = they don't)
-        public static string Style = "decelerate";                 // decelerate | spring | calm
+        // decelerate | spring | calm (the built-in looks); subtle | bouncy | drift | snappy (Custom look styles)
+        public static string Style = "decelerate";
+        public static bool Squish;                                 // Liquid Glass: buttons squish and wobble back like iOS
+        // The Custom look's Speed (0.4x Fastest .. 3x Super slow): every animation's length is multiplied by it in
+        // Ms(), including the fixed ones (menus, dialogs, messages), so everything that opens or closes follows it.
+        // Things that follow your hand (zoom, panning, wheel scrolling) use Follows() and keep their pace.
+        public static double Speed = 1;
 
         public static bool Moves { get { return Level == MotionLevel.Full; } }      // movement and scaling
         public static bool Animates { get { return Level != MotionLevel.Off; } }    // at least fades
@@ -38,20 +44,99 @@ namespace FastViewer
         static readonly IEasingFunction accelerate = Frozen(new BezierEase(0.7, 0, 1, 0.5)); // for things leaving
         static readonly IEasingFunction calm = Frozen(new SineEase { EasingMode = EasingMode.EaseOut });
         static readonly IEasingFunction spring = Frozen(new SpringEase());
+        // Custom look styles, each with its own character:
+        static readonly IEasingFunction subtle = Frozen(new BezierEase(0.25, 0.1, 0.25, 1));  // gentle, even, no drama
+        static readonly IEasingFunction bouncy = Frozen(new SpringEase(0.42, 13));           // ~23% overshoot, a visible wobble
+        static readonly IEasingFunction drift = Frozen(new SineEase { EasingMode = EasingMode.EaseInOut }); // eases in and out slowly
+        static readonly IEasingFunction snappy = Frozen(new BezierEase(0.16, 1, 0.3, 1));    // almost there at once, then a short settle
+        static readonly IEasingFunction squishBack = Frozen(new SpringEase(0.32, 16));       // a pressed Liquid Glass button wobbling back
 
         static IEasingFunction Frozen(EasingFunctionBase e) { e.Freeze(); return e; }
 
         // Easing for things arriving or moving into place, per look.
-        public static IEasingFunction In { get { return Style == "spring" ? spring : Style == "calm" ? calm : decelerate; } }
+        public static IEasingFunction In
+        {
+            get
+            {
+                switch (Style)
+                {
+                    case "spring": return spring;
+                    case "calm": return calm;
+                    case "subtle": return subtle;
+                    case "bouncy": return bouncy;
+                    case "drift": return drift;
+                    case "snappy": return snappy;
+                    default: return decelerate;
+                }
+            }
+        }
         public static IEasingFunction Out { get { return accelerate; } }
-        public static IEasingFunction Smooth { get { return Style == "calm" ? calm : decelerate; } } // never overshoots (fades, colours)
+        // Never overshoots (fades, colours).
+        public static IEasingFunction Smooth
+        {
+            get
+            {
+                switch (Style)
+                {
+                    case "calm": return calm;
+                    case "subtle": return subtle;
+                    case "drift": return drift;
+                    case "snappy": return snappy;
+                    default: return decelerate;
+                }
+            }
+        }
 
         // A duration in this level: springs need longer to settle; Reduced keeps only short fades.
         public static double Ms(double ms, bool moving = true)
         {
             if (Level == MotionLevel.Off) return 0;
             if (Level == MotionLevel.Reduced) return Math.Min(ms, 120);
-            return moving && Style == "spring" ? ms * 1.7 : ms;
+            if (!moving) return ms * Speed;
+            return (Style == "spring" ? ms * 1.7 : Style == "bouncy" ? ms * 2 : ms) * Speed;
+        }
+
+        // A settle time for things that follow the mouse or wheel (not scaled by Speed, so they stay responsive).
+        public static double Follows(double ms)
+        {
+            if (Level == MotionLevel.Off) return 0;
+            if (Level == MotionLevel.Reduced) return Math.Min(ms, 120);
+            return Style == "spring" ? ms * 1.7 : Style == "bouncy" ? ms * 2 : ms;
+        }
+
+        // ---------------------------------------------------------------- squishy buttons (Liquid Glass)
+
+        // Pressing squishes the button in quickly; letting go springs it back past its size and lets it wobble to
+        // rest. A quick tap (released before the squish got deep) still plays the whole squish first, so even fast
+        // clicks feel like pressing something soft. Each step starts from where the button is right now.
+        public const double SquishDepth = 0.86;
+        public const double SquishInMs = 70;
+
+        public static void SquishIn(ScaleTransform s)
+        {
+            if (!Moves) return;
+            To(s, ScaleTransform.ScaleXProperty, SquishDepth - 0.02, SquishInMs * Speed, Smooth); // a touch wider than tall: squashed
+            To(s, ScaleTransform.ScaleYProperty, SquishDepth + 0.01, SquishInMs * Speed, Smooth);
+        }
+
+        public static void SquishOut(ScaleTransform s)
+        {
+            if (!Moves) { Set(s, ScaleTransform.ScaleXProperty, 1); Set(s, ScaleTransform.ScaleYProperty, 1); return; }
+            double reached = 1 - s.ScaleX;
+            Action back = delegate
+            {
+                double ms = Fast * 3.2 * Speed; // the wobble needs time to settle (~530 ms with Liquid Glass' timing)
+                To(s, ScaleTransform.ScaleXProperty, 1, ms, squishBack);
+                To(s, ScaleTransform.ScaleYProperty, 1, ms * 1.06, squishBack); // slightly out of step: jelly, not a zoom
+            };
+            if (reached < (1 - SquishDepth) * 0.7)
+            {
+                // A quick tap: finish the squish first (short, since part of it may already be done), then spring back.
+                double left = SquishInMs * Speed * Math.Max(0.4, 1 - reached / (1 - SquishDepth));
+                To(s, ScaleTransform.ScaleXProperty, SquishDepth - 0.02, left, Smooth, back);
+                To(s, ScaleTransform.ScaleYProperty, SquishDepth + 0.01, left, Smooth);
+            }
+            else back();
         }
 
         // WPF runs its animations at 60 frames a second unless told otherwise; on a 120, 144, 240 or 500 Hz screen
@@ -224,19 +309,25 @@ namespace FastViewer
         // ---------------------------------------------------------------- showing and hiding an element
 
         // The element's own scale + offset (set up once; RenderTransformOrigin decides where it scales from).
-        public class Parts { public ScaleTransform Scale = new ScaleTransform(1, 1); public TranslateTransform Move = new TranslateTransform(); }
+        public class Parts { public ScaleTransform Scale = new ScaleTransform(1, 1); public TranslateTransform Move = new TranslateTransform(); public TransformGroup Group; }
         static readonly ConditionalWeakTable<UIElement, Parts> parts = new ConditionalWeakTable<UIElement, Parts>();
 
+        // An element's own scale + offset. A transform the element already has (from its XAML, or one its code
+        // moves, like the side arrows' slide) is kept in the middle of the group, so both work together: scale
+        // first (around RenderTransformOrigin), then its own transform, then Motion's offset. If the element's
+        // code later puts a new transform on it, the group is rebuilt around that one (running moves continue).
         public static Parts PartsOf(UIElement e)
         {
             Parts p;
-            if (parts.TryGetValue(e, out p)) return p;
-            p = new Parts();
+            if (parts.TryGetValue(e, out p) && e.RenderTransform == p.Group) return p;
+            if (p == null) { p = new Parts(); parts.Add(e, p); }
             var g = new TransformGroup();
             g.Children.Add(p.Scale);
+            var own = e.RenderTransform;
+            if (own != null && own != Transform.Identity && !(own is MatrixTransform && ((MatrixTransform)own).Matrix.IsIdentity)) g.Children.Add(own);
             g.Children.Add(p.Move);
+            p.Group = g;
             e.RenderTransform = g;
-            parts.Add(e, p);
             return p;
         }
 

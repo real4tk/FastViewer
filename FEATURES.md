@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.18.0)
+# FastViewer: complete feature list (version 1.19.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -75,7 +75,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - View: Rotate, Save rotation to file, Mini player, Keep on top, Slideshow, Shuffle, All files in folder,
   File info; "Hidden buttons" section for buttons switched off in Settings > Buttons; Settings.
 - Every item shows its current keyboard shortcut (punctuation keys as the character on your keyboard layout,
-  e.g. ` instead of Oem3). Clicking a menu's button again (or anywhere else) closes the menu at once (all menus,
+  e.g. ` instead of Oem3). Clicking a menu's button again (or anywhere else), Esc or an item closes the menu with a fade that follows the look's style and Speed (1.19.0: a picture of the menu goes on top just before it closes, then fades and shrinks a little; also the colour picker) (all menus,
   also the zoom %, grid size and Settings drop-downs).
 
 ## Photos
@@ -91,7 +91,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Copy (Ctrl+C copies the file), Copy file path, Show in folder, Open with another app, Save as (Ctrl+S).
 
 ## Videos
-- Floating control bar: play/pause, skip back/forward (5/10/15/30/60 s, shown inside the icons),
+- Floating control bar: play/pause, skip back/forward (5/10/15/30/60 s, shown inside the icons: since 1.19.0 an open circle with an arrow pointing back or forward, drawn the same in every look),
   volume (point at the speaker for a slider, click to mute, wheel changes volume; on a touch screen a tap
   opens the slider), time, seek bar, duration, Repeat, video "..." menu. The seek bar's dot moves every screen
   frame while playing (with animations on); dragging it holds the video still and shows the frames passed (at
@@ -160,6 +160,14 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   (Settings > Appearance > "Volume button in the mini player", off by default): click mutes, the wheel
   changes the volume, and the level shows as a number next to it (no slider or message over the small
   window). The wheel over the mini player's buttons never changes the file.
+  Photos with see-through parts (1.19.0: alpha channel or a transparent palette colour, e.g. PNG, GIF) make the
+  mini player itself see-through: no background behind the picture, and the preloaded hidden files are fully
+  hidden (opacity 0; since 1.19.0 also in the Liquid Glass window, where 1% showed as faint ghost shapes beside the picture; switching speed measured unchanged).
+  Clicks on clear parts still go to the mini player. Other photos and videos keep the black background.
+- No Windows frame in full screen and the mini player (1.19.0): a plain square window region (Windows 10 then
+  draws no frame, border or shadow), glass frame 0, and DWMWA_BORDER_COLOR = none on Windows 11. Before, the
+  1-pixel Windows border showed as accent-coloured (e.g. blue) lines around the mini player and on the screen
+  edges in full screen when "Show accent colour on title bars and window borders" was on.
 - Slideshow (F5): full screen, photos every 2/4/8 s, videos play to the end; the button turns into
   "Stop slideshow"; a short message says how to stop it.
 - Keep on top (pin) for the normal window.
@@ -179,7 +187,9 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 ## Animations (1.16.0)
 - One shared animation system (Motion.cs) for everything that moves. Each look has its own motion:
   Photos like Windows 11 (167/250/333 ms, decelerating, no overshoot), Clean subtle (smaller movements),
-  Liquid Glass springy (a little overshoot that settles; buttons press in), Midnight calm (mostly fades).
+  Liquid Glass springy (a little overshoot that settles; buttons squish when pressed and wobble back, iOS-like,
+  since 1.19.0: Motion.Squish in the look, inherited by a Custom look based on it; every ButtonBase (toggle/radio buttons, switches, side arrows, Settings) except slider and scroll bar parts, also when a parent handles the press; a button's own transform is kept inside Motion.PartsOf; a quick tap still plays the
+  whole squish), Midnight calm (mostly fades).
 - Settings > Appearance > Animations: Like Windows (default: Full, or Reduced when Windows' "Show animations"
   is off), Full, Reduced (only short fades), Off.
 - Every animation starts from where things are right now (can be interrupted without jumping), runs at the
@@ -210,7 +220,10 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   Segoe UI, Segoe UI Variable, Inter, Bahnschrift, Calibri, Verdana, Georgia, Trebuchet MS, Consolas, Comic
   Sans MS when installed; page title weight); Shape (corner roundness 0-24 for buttons, cards, menus, the
   control bar, dialogs and the window; docked or floating bars; see-through window; Windows or line icons);
-  Motion (Smooth, Subtle, Springy, Calm; Normal, Faster, Slower); All colours (every part on its own, 58);
+  Motion: styles Smooth (Windows 11 decelerate, 167/250/333 ms), Subtle (quick, even curve, 0.3x travel), Springy
+  (bouncy spring with ~23% overshoot, 1.8x travel, press 0.92), Calm (slow sine in-out, 300/450/600 ms, 0.2x travel),
+  Snappy (100/150/200 ms, expo-out); speed Fastest 0.4x, Extra fast 0.55x, Fast 0.7x, Normal, Slow 1.4x, Extra slow
+  2x, Super slow 3x (1.19.0: a factor in Motion.Ms applied to every animation incl. fixed ones; zoom, pan and wheel scrolling use Motion.Follows and keep their pace); All colours (every part on its own, 58);
   Share and start over.
 - Live: colours go straight into the window's resources while a picker is dragged; shapes, fonts and motion
   re-apply 60 ms later; saved half a second after the last change.
@@ -261,7 +274,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
-  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings),
+  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).

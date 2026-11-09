@@ -21,6 +21,7 @@ Mini player
   Ctrl + M (or the button left of "Open with") shows just the video in a small
   window that stays on top of everything. It takes the shape of the video.
   Drag the video to move it, drag the edges to resize, double-click or Esc to go back.
+  Photos with see-through parts (PNG, GIF) stay see-through: only the picture covers your screen.
 
 Trimming a video
   Ctrl + T (or video "..." -> Trim) shows the video as a filmstrip with a handle at each end.

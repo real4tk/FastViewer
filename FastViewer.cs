@@ -714,7 +714,7 @@ namespace FastViewer
             s.Host.Children.Add(s.Rotor);
             s.Host.IsHitTestVisible = false;
             stage.Children.Insert(0, s.Host);
-            if (glassSlots) s.Host.Opacity = HiddenSlotOpacity;
+            if (glassSlots) s.Host.Opacity = HiddenOpacity;
             return s;
         }
 
@@ -1410,7 +1410,7 @@ namespace FastViewer
                 {
                     ResetZoom(shown);
                     Panel.SetZIndex(shown.Host, 0);
-                    if (glassSlots) shown.Host.Opacity = HiddenSlotOpacity;
+                    if (glassSlots) shown.Host.Opacity = HiddenOpacity;
                 }
             }
             Panel.SetZIndex(c.Host, 2);
@@ -1432,7 +1432,7 @@ namespace FastViewer
             var s = fading;
             if (s == null) return;
             fading = null;
-            Motion.Set(s.Host, OpacityProperty, glassSlots && s != shown ? HiddenSlotOpacity : 1);
+            Motion.Set(s.Host, OpacityProperty, glassSlots && s != shown ? HiddenOpacity : 1);
             if (s == shown) return;
             Panel.SetZIndex(s.Host, 0);
             ResetZoom(s);
@@ -1460,7 +1460,11 @@ namespace FastViewer
             UpdateControls();
             UpdateFacts();
             UpdateZoomUi();
-            if (mini) FitMiniWindow(false); // the mini player takes the shape of each new video
+            if (mini)
+            {
+                FitMiniWindow(false); // the mini player takes the shape of each new video
+                if (MiniSeeThrough() != miniClear) ApplyWindowLook(); // clear around a see-through photo, black for the rest
+            }
         }
 
         // ---------------------------------------------------------------- playback
@@ -2364,7 +2368,7 @@ namespace FastViewer
             {
                 if (s != shown) return false;
                 double now = s.Zoom.ScaleX;
-                double next = Math.Exp(Math.Log(now) + (Math.Log(zoomTarget) - Math.Log(now)) * Motion.Follow(dt, Motion.Ms(200)));
+                double next = Math.Exp(Math.Log(now) + (Math.Log(zoomTarget) - Math.Log(now)) * Motion.Follow(dt, Motion.Follows(200)));
                 bool done = Math.Abs(next - zoomTarget) < 0.002 * zoomTarget;
                 ZoomStep(s, done ? zoomTarget : next, p);
                 return !done;

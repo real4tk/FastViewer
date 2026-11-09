@@ -6,11 +6,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -61,6 +63,10 @@ namespace FastViewer
                 case "toggles": HuntToggles(); break;
                 case "scrub": HuntScrub(); break;
                 case "custom": HuntCustom(); break;
+                case "squish": HuntSquish(); break;
+                case "squishall": HuntSquishAll(); break;
+                case "skipicons": HuntSkipIcons(); break;
+                case "preloadghost": HuntPreloadGhost(); break;
                 case "showcase": HuntShowcase(); break;
                 case "wheel": HuntWheel(); break;
                 case "tips": HuntTips(); break;
@@ -69,12 +75,85 @@ namespace FastViewer
                     After(2500, () => { ShowOverlay(); SetVolume(0.45); });
                     After(2900, () => { Snap("mini_volume_level"); HuntLog("mini player " + mini + ", " + ActualWidth.ToString("0") + "x" + ActualHeight.ToString("0") + ", level '" + F<TextBlock>("MiniVolText").Text + "', top message " + (toastKind ?? "none")); HuntDone(); });
                     break;
-                default: HuntLog("unknown case " + huntCase); HuntDone(); break;
+                case "miniclear": // folder: a see-through PNG first, then an ordinary photo and a video (wraps around)
+                    After(1500, () => { if (playing) TogglePlay(); ToggleMini(); });
+                    After(2500, () => { HuntLog(MiniClearState("see-through png")); Go(1); });
+                    After(3500, () => { HuntLog(MiniClearState("next file")); Go(1); });
+                    After(4500, () => { HuntLog(MiniClearState("video") + ", video drawn " + (shown.IsVideo && shown.Video.NaturalVideoWidth > 0)); Go(1); });
+                    After(5500, () => { HuntLog(MiniClearState("back to png")); Go(-1); });
+                    After(6500, () => { HuntLog(MiniClearState("video again") + ", video drawn " + (shown.IsVideo && shown.Video.NaturalVideoWidth > 0)); Go(1); });
+                    After(7500, () => { HuntLog(MiniClearState("png again")); ToggleMini(); });
+                    After(8500, () => { HuntLog(MiniClearState("left mini")); ToggleFullscreen(); });
+                    After(9500, () => { HuntLog("full screen: frame " + chrome.GlassFrameThickness.Left + ", square region " + rounded + (chrome.GlassFrameThickness.Left == 0 && rounded ? "" : " FAIL")); ToggleFullscreen(); });
+                    After(10500, () => { HuntLog("normal window: frame " + chrome.GlassFrameThickness.Left + ", region " + rounded + (chrome.GlassFrameThickness.Left == (seeThrough ? -1 : 1) && rounded == seeThrough ? "" : " FAIL")); HuntDone(); });
+                    break;
+                default: After(500, () => { HuntLog("unknown case " + huntCase); HuntDone(); }); break; // (not while the window is still being set up)
             }
         }
 
         readonly List<string> huntLog = new List<string>();
         void HuntLog(string text) { huntLog.Add(text); }
+
+        // The mini player's see-through state, and how clear it really is: the window drawn over white and over
+        // black, measured outside the test picture's circle (anything faint there shows as a grey box on screen).
+        string MiniClearState(string step)
+        {
+            int w = Math.Max(1, (int)ActualWidth), h = Math.Max(1, (int)ActualHeight);
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+            var overlay = F<FrameworkElement>("Overlay"); double was = overlay.Opacity;
+            overlay.Opacity = 0; UpdateLayout(); // the mini player's own buttons and arrows are meant to show
+            rtb.Render(this);
+            overlay.Opacity = was;
+            var px = new byte[w * h * 4];
+            rtb.CopyPixels(px, w * 4, 0);
+            int outside = 0, tinted = 0, darkest = 255, brightest = 0;
+            double r = 0.27 * w;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    double dx = x - w / 2.0, dy = y - h / 2.0;
+                    if (dx * dx + dy * dy < r * r) continue; // the picture itself
+        
+                    outside++;
+                    int i = (y * w + x) * 4, a = px[i + 3];
+                    int overWhite = Math.Min(px[i], Math.Min(px[i + 1], px[i + 2])) + 255 - a; // premultiplied
+                    int overBlack = Math.Max(px[i], Math.Max(px[i + 1], px[i + 2]));
+                    if (overWhite < 255 || overBlack > 0) tinted++;
+                    darkest = Math.Min(darkest, overWhite);
+                    brightest = Math.Max(brightest, overBlack);
+                }
+            var src = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            return step + ": " + Path.GetFileName(shown.File) + ", mini " + mini + ", miniClear " + miniClear +
+                ", stage " + stage.Background + ", cover " + cover.Visibility + ", window bg " + Background + ", frame " + chrome.GlassFrameThickness.Left +
+                ", composition " + src.CompositionTarget.BackgroundColor + ", region " + rounded + ", " + w + "x" + h +
+                ", around the picture: " + (100.0 * tinted / Math.Max(1, outside)).ToString("0.0") + "% not clear, over white darkest " + darkest +
+                ", over black brightest " + brightest + (miniClear && tinted > 0 ? " FAIL" : "") + (miniClear && tinted > 0 ? Painters(this, 1.0, "") : "");
+        }
+
+        // Every visible element that draws something (a background, picture, video or shape), with its opacity
+        // after all its parents' opacities: what can leave a faint box behind a see-through picture.
+        string Painters(DependencyObject o, double opacity, string path)
+        {
+            var fe = o as FrameworkElement;
+            if (fe != null)
+            {
+                if (fe.Visibility != Visibility.Visible) return "";
+                opacity *= fe.Opacity;
+                if (opacity <= 0 || fe.ActualWidth < 1 || fe.ActualHeight < 1) return "";
+            }
+            string found = "";
+            Brush b = o is Panel ? ((Panel)o).Background : o is Border ? ((Border)o).Background : o is Control ? ((Control)o).Background
+                : o is System.Windows.Shapes.Shape ? ((System.Windows.Shapes.Shape)o).Fill : null;
+            var sc = b as SolidColorBrush;
+            bool paints = (b != null && (sc == null || sc.Color.A > 0)) || (o is Image && ((Image)o).Source != null) || (o is MediaElement && ((MediaElement)o).Source != null);
+            if (paints && fe != null)
+                found += "\n   " + o.GetType().Name + " " + fe.Name + (b != null ? " " + b : "") + " opacity " + opacity.ToString("0.###") + " " +
+                    fe.ActualWidth.ToString("0") + "x" + fe.ActualHeight.ToString("0") + " in " + path;
+            string here = fe != null && fe.Name != "" ? fe.Name : (fe != null ? o.GetType().Name : "");
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(o); i++)
+                found += Painters(VisualTreeHelper.GetChild(o, i), opacity, here == "" ? path : path + "/" + here);
+            return found;
+        }
 
         void HuntDone()
         {
@@ -1014,6 +1093,193 @@ namespace FastViewer
         // Plays each kind of animation with the frame timing of a 60, 144, 240 and 500 Hz screen (frames are
         // simulated, so no such screen is needed) and compares: how long it takes, where it is at the same
         // moments, the biggest single step, and where it ends.
+        // --case squish (run with --look Glass --motion full): a Liquid Glass button squished by taps of different
+        // lengths, frame by frame at 144 Hz; then how each Custom look motion style moves.
+        void HuntSquish()
+        {
+            After(1500, () =>
+            {
+                HuntLog("look " + lookId + ", squish " + Motion.Squish + ", motion " + Motion.Level);
+                var b = F<Button>("OpenBtn");
+                b.RenderTransformOrigin = new Point(0.5, 0.5);
+                var s = Motion.PartsOf(b).Scale;
+                const double frame = 1 / 144.0;
+                foreach (int hold in new[] { 0, 1, 4, 40 })
+                {
+                    Motion.Set(s, ScaleTransform.ScaleXProperty, 1);
+                    Motion.Set(s, ScaleTransform.ScaleYProperty, 1);
+                    Motion.SquishIn(s);
+                    for (int f = 0; f < hold; f++) Motion.SimulateFrame(frame);
+                    double atRelease = s.ScaleX;
+                    Motion.SquishOut(s);
+                    double low = s.ScaleX, high = s.ScaleX, lowY = s.ScaleY;
+                    int frames = 0, wobbles = 0;
+                    bool above = false;
+                    for (; frames < 1000 && Motion.Busy(s); frames++)
+                    {
+                        Motion.SimulateFrame(frame);
+                        low = Math.Min(low, s.ScaleX); high = Math.Max(high, s.ScaleX); lowY = Math.Min(lowY, s.ScaleY);
+                        if (!above && s.ScaleX > 1.002) { above = true; wobbles++; }
+                        if (above && s.ScaleX < 0.998) above = false;
+                    }
+                    HuntLog(string.Format(CultureInfo.InvariantCulture,
+                        "tap held {0,2} frames ({1,3:0} ms): scale at release {2:0.000}, deepest {3:0.000} x {4:0.000}, overshoot {5:0.000}, times past full size {6}, back at rest after {7:0} ms at {8:0.000}{9}",
+                        hold, hold * frame * 1000, atRelease, low, lowY, high, wobbles, frames * frame * 1000, s.ScaleX,
+                        low > 0.9 || high < 1.01 || frames >= 1000 || s.ScaleX != 1 ? " FAIL" : ""));
+                }
+                var look = Looks.Find(lookId);
+                var styles = new[] { "windows", "subtle", "springy", "calm", "snappy" };
+                string was = Motion.Style;
+                foreach (var st in styles)
+                {
+                    var d = new ResourceDictionary();
+                    ApplyCustomValue(d, look, "motionStyle", st);
+                    Motion.Style = (string)d["Motion.Ease"];
+                    var ease = Motion.In;
+                    double peak = 0;
+                    for (int i = 0; i <= 200; i++) peak = Math.Max(peak, ease.Ease(i / 200.0));
+                    HuntLog(string.Format(CultureInfo.InvariantCulture,
+                        "style {0,-8}: curve {1,-10} move {2,4:0} ms, fade in {3,3:0} ms, distance x{4:0.0}, press {5:0.00}, progress at 10% {6:0.00} / 25% {7:0.00} / 50% {8:0.00}, overshoot {9:0}%",
+                        st, Motion.Style, Motion.Ms((double)d["Motion.Normal"]), (double)d["Motion.FadeIn"], (double)d["Motion.Distance"], (double)d["Motion.Press"],
+                        ease.Ease(0.1), ease.Ease(0.25), ease.Ease(0.5), (peak - 1) * 100));
+                }
+                Motion.Style = was;
+                HuntDone();
+            });
+        }
+
+        // --case preloadghost: hidden preloaded files must never show. The window is drawn as it is and again with
+        // every hidden player taken out; any pixel that differs is a hidden file showing through (Liquid Glass used
+        // to keep them at 1%, which showed as faint shapes beside the picture). Checked on a see-through PNG, a
+        // photo with empty space beside it and a video, in the normal window and the mini player.
+        void HuntPreloadGhost()
+        {
+            int t = 3000;
+            foreach (var step in new[] { "first file", "next", "next", "next", "next", "next", "mini", "next", "next", "next" })
+            {
+                string name = step;
+                After(t, () =>
+                {
+                    if (name == "mini") ToggleMini();
+                    else if (name == "next") Go(1);
+                });
+                After(t + 1000, () => { if (playing) TogglePlay(); }); // a playing video would differ between the two pictures
+                After(t + 1300, () => HuntLog(GhostCheck(name)));
+                t += 1500;
+            }
+            After(t + 300, HuntDone);
+        }
+
+        string GhostCheck(string step)
+        {
+            int w = Math.Max(1, (int)ActualWidth), h = Math.Max(1, (int)ActualHeight);
+            Func<byte[]> draw = () =>
+            {
+                var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+                rtb.Render(this);
+                var px = new byte[w * h * 4];
+                rtb.CopyPixels(px, w * 4, 0);
+                return px;
+            };
+            var asIs = draw();
+            var hidden = slots.Where(s => s != shown && s.Host.Visibility == Visibility.Visible).ToList();
+            foreach (var s in hidden) s.Host.Visibility = Visibility.Collapsed;
+            UpdateLayout();
+            var clean = draw();
+            foreach (var s in hidden) s.Host.Visibility = Visibility.Visible;
+            UpdateLayout();
+            int differ = 0, most = 0;
+            for (int i = 0; i < asIs.Length; i++)
+            {
+                int d = Math.Abs(asIs[i] - clean[i]);
+                if (d > 0) { differ++; most = Math.Max(most, d); }
+            }
+            return string.Format("{0,-10} {1,-12} look {2}, {3}, {4} hidden players: {5} pixel values differ (most {6}){7}",
+                step, Path.GetFileName(shown.File), lookId, mini ? "mini player" : "window", hidden.Count, differ, most, differ > 0 ? " FAIL" : "");
+        }
+
+        // --case skipicons: saves the skip buttons at 4x (skip_<look>_<dark|light>.png) to look at them closely.
+        void HuntSkipIcons()
+        {
+            After(1500, () => { if (playing) TogglePlay(); ShowOverlay(); });
+            After(2500, () =>
+            {
+                var back = F<FrameworkElement>("BackBtn");
+                var bar = (FrameworkElement)VisualTreeHelper.GetParent(back);
+                var a = back.TranslatePoint(new Point(0, 0), bar);
+                var fwd = F<FrameworkElement>("FwdBtn");
+                double w = fwd.TranslatePoint(new Point(fwd.ActualWidth, 0), bar).X - a.X, h = back.ActualHeight;
+                var dv = new DrawingVisual();
+                using (var dc = dv.RenderOpen())
+                {
+                    dc.DrawRectangle((Brush)FindResource("FloatBg"), null, new Rect(0, 0, w, h));
+                    dc.DrawRectangle(new VisualBrush(bar) { Viewbox = new Rect(a.X, a.Y, w, h), ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill }, null, new Rect(0, 0, w, h));
+                }
+                var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(w * 4), (int)(h * 4), 384, 384, PixelFormats.Pbgra32);
+                rtb.Render(dv);
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+                using (var f = File.Create(Path.Combine(snapDir, "skip_" + lookId + "_" + (Looks.Light ? "light" : "dark") + ".png"))) enc.Save(f);
+                HuntLog("skip buttons " + lookId + ": back '" + F<TextBlock>("BackText").Text + "', forward '" + F<TextBlock>("FwdText").Text + "', " + w.ToString("0") + "x" + h.ToString("0"));
+                HuntDone();
+            });
+        }
+
+        // --case squishall (--look Glass --motion full): presses every button in the window, in Settings and on every
+        // Settings page, frame by frame at 144 Hz. Each must really shrink on screen (its whole transform, including
+        // any of its own) and end exactly where it started.
+        void HuntSquishAll()
+        {
+            After(1500, () => { if (playing) TogglePlay(); ShowOverlay(); HuntLog("look " + lookId + ", squish " + Motion.Squish + ", motion " + Motion.Level); SquishEvery("window"); OpenSettings(); });
+            int t = 3000;
+            for (int i = 0; i < 14; i++)
+            {
+                int page = i;
+                After(t, () =>
+                {
+                    var menu = F<StackPanel>("SettingsNav").Children.OfType<ButtonBase>().ToList();
+                    if (page == 0) HuntLog("Settings side menu: " + menu.Count + " entries");
+                    if (page < menu.Count) { menu[page].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); }
+                });
+                After(t + 500, () => SquishEvery("settings page " + (page + 1)));
+                t += 800;
+            }
+            After(t + 300, () => { HuntLog("checked " + squishChecked.Count + " buttons, " + squishFailed + " FAIL"); HuntDone(); });
+        }
+
+        readonly HashSet<ButtonBase> squishChecked = new HashSet<ButtonBase>();
+        int squishFailed;
+
+        void SquishEvery(string where)
+        {
+            const double frame = 1 / 144.0;
+            int n = 0, bad = 0;
+            foreach (var b in FindAll<ButtonBase>(this))
+            {
+                if (!b.IsVisible || squishChecked.Contains(b) || !PressShrinks(b)) continue;
+                squishChecked.Add(b);
+                n++;
+                var before = b.RenderTransform.Value;
+                PressButton(b);
+                for (int f = 0; f < 30; f++) Motion.SimulateFrame(frame);
+                var pressed = b.RenderTransform.Value;
+                ReleaseButton(b);
+                for (int f = 0; f < 300 && Motion.Busy(Motion.PartsOf(b).Scale); f++) Motion.SimulateFrame(frame);
+                var after = b.RenderTransform.Value;
+                double k = Math.Abs(before.M11) > 0 ? Math.Abs(pressed.M11 / before.M11) : 1;
+                bool back = Math.Abs(after.M11 - before.M11) < 1e-6 && Math.Abs(after.M22 - before.M22) < 1e-6 && Math.Abs(after.OffsetX - before.OffsetX) < 1e-6 && Math.Abs(after.OffsetY - before.OffsetY) < 1e-6;
+                if (k > 0.9 || !back)
+                {
+                    bad++;
+                    squishFailed++;
+                    HuntLog(string.Format("  {0} {1} '{2}': pressed scale {3:0.00}, back to start {4} FAIL", where, b.GetType().Name, b.Name,
+                        k, back) + (b.Name == "" ? " in " + ((FrameworkElement)VisualTreeHelper.GetParent(b)).Name : ""));
+                }
+            }
+            HuntLog(where + ": " + n + " new buttons pressed, " + bad + " FAIL");
+        }
+
+
         void HuntRates()
         {
             After(1000, () =>

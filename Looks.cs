@@ -204,6 +204,14 @@ namespace FastViewer
             finally { Marshal.FreeHGlobal(p); }
         }
 
+        [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
+
+        // A plain square region the size of the window (no shadow or frame drawn around it).
+        public static void SetSquareRegion(IntPtr hwnd, int width, int height)
+        {
+            SetWindowRgn(hwnd, CreateRectRgn(0, 0, width, height), true);
+        }
+
         // Rounded corners (radius in pixels; 0 = the normal square window).
         public static void SetRoundCorners(IntPtr hwnd, int width, int height, int radius)
         {
@@ -214,9 +222,11 @@ namespace FastViewer
     // A damped spring like iOS uses: quick, a few percent of overshoot, settles by the end (from Image Converter).
     public class SpringEase : EasingFunctionBase
     {
-        const double Zeta = 0.74, Omega = 12.5;
+        // Zeta: damping (lower = more overshoot and wobble), Omega: stiffness (over the animation's length).
+        readonly double Zeta = 0.74, Omega = 12.5;
 
         public SpringEase() { EasingMode = EasingMode.EaseIn; }
+        public SpringEase(double zeta, double omega) : this() { Zeta = zeta; Omega = omega; }
 
         protected override double EaseInCore(double t)
         {
@@ -225,7 +235,7 @@ namespace FastViewer
             return 1 - Math.Exp(-Zeta * Omega * t) * (Math.Cos(wd * t) + Zeta * Omega / wd * Math.Sin(wd * t));
         }
 
-        protected override Freezable CreateInstanceCore() { return new SpringEase(); }
+        protected override Freezable CreateInstanceCore() { return new SpringEase(Zeta, Omega); }
     }
 
     // An icon. Code is the Segoe MDL2 symbol; when the look has its own line icon for that symbol (resource

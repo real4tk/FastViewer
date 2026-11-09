@@ -135,21 +135,22 @@
           <Button x:Name="PlayBtn" Style="{StaticResource Transport}" ToolTip="Play / Pause (Space)">
             <fv:Glyph x:Name="PlayIcon" Code="&#xE769;"/>
           </Button>
-          <!-- Skip buttons: a circular arrow with the number of seconds (set in Settings) inside -->
+          <!-- Skip buttons (every look): an open circle whose arrow at the top points back (left) or forward (right),
+               like a media player's "back 10 s", with the number of seconds (set in Settings) inside. -->
           <Button x:Name="BackBtn" Grid.Column="1" Style="{StaticResource Transport}">
-            <Grid Width="20" Height="20">
-              <fv:Glyph Code="&#xE72C;" Size="18" RenderTransformOrigin="0.5,0.5">
-                <fv:Glyph.RenderTransform>
-                  <ScaleTransform ScaleX="-1"/>
-                </fv:Glyph.RenderTransform>
-              </fv:Glyph>
-              <TextBlock x:Name="BackText" FontSize="7.5" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,1,0,0"/>
+            <Grid Width="22" Height="22">
+              <Path Data="M4.07,7 A8,8 0 1 0 11,3" StrokeThickness="1.6" StrokeStartLineCap="Round"
+                    Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
+              <Path Data="M7.4,3 L11.2,0.4 L11.2,5.6 Z" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
+              <TextBlock x:Name="BackText" FontSize="8.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,3,0,0"/>
             </Grid>
           </Button>
           <Button x:Name="FwdBtn" Grid.Column="2" Style="{StaticResource Transport}">
-            <Grid Width="20" Height="20">
-              <fv:Glyph Code="&#xE72C;" Size="18"/>
-              <TextBlock x:Name="FwdText" FontSize="7.5" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,1,0,0"/>
+            <Grid Width="22" Height="22">
+              <Path Data="M17.93,7 A8,8 0 1 1 11,3" StrokeThickness="1.6" StrokeStartLineCap="Round"
+                    Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
+              <Path Data="M14.6,3 L10.8,0.4 L10.8,5.6 Z" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
+              <TextBlock x:Name="FwdText" FontSize="8.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,3,0,0"/>
             </Grid>
           </Button>
           <Button x:Name="VolBtn" Grid.Column="3" Style="{StaticResource Transport}" ToolTip="Mute (M). Point at it for the volume slider">

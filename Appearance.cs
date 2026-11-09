@@ -20,10 +20,13 @@ namespace FastViewer
         string lookMode = "Auto";        // Auto (like Windows) / Dark / Light
         string lookOverride;             // --look <id>: test runs in a look without touching settings
         bool barsFloat, seeThrough, springMotion, glassSlots, rounded;
+        bool miniClear; // the mini player is on a photo with see-through parts: the window is clear around it
         double fadeInMs = 120, fadeOutMs = 300;
         // Liquid Glass: the hidden players can't hide behind an opaque cover (that would hide the blurred desktop
         // too), so they stay drawn, ready to switch to instantly, at an opacity too low to see.
-        const double HiddenSlotOpacity = 0.01;
+        const double HiddenSlotOpacity = 0;
+        // A see-through mini player hides them completely: even 1% shows as a faint box over a light background.
+        double HiddenOpacity { get { return miniClear ? 0 : HiddenSlotOpacity; } }
 
         static double Number(Look look, string key, double fallback)
         {
@@ -46,6 +49,8 @@ namespace FastViewer
             Motion.Slow = Number(look, "Motion.Slow", 333);
             Motion.Distance = Number(look, "Motion.Distance", 1);
             Motion.Press = Number(look, "Motion.Press", 1);
+            Motion.Speed = Number(look, "Motion.Speed", 1); // only a Custom look sets it (Speed: Fastest .. Super slow)
+            Motion.Squish = look.Flag("Motion.Squish"); // Liquid Glass (and a Custom look based on it, whatever its motion style)
             Motion.Style = look.Get("Motion.Ease") as string ?? "decelerate";
             ApplyMotionLevel();
             if (root == null) return; // starting up: the window does the rest once it exists
@@ -64,19 +69,44 @@ namespace FastViewer
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
             bool glass = seeThrough && !fullscreen && !mini;
+            miniClear = MiniSeeThrough();
+            bool clear = glass || miniClear; // the window itself is see-through
             try
             {
                 int dark = Looks.Light ? 0 : 1; // dark or light window frame (Windows 10 20H1+ uses 20, older builds 19)
                 if (DwmSetWindowAttribute(hwnd, 20, ref dark, 4) != 0) DwmSetWindowAttribute(hwnd, 19, ref dark, 4);
             }
             catch { }
+            // Full screen and the mini player get no Windows frame: its 1-pixel border is drawn in the Windows
+            // accent colour when "Show accent colour on title bars and window borders" is on (blue lines on the
+            // screen edges / around the mini player). Windows 11 is told directly; both also get a square window
+            // region (see RoundCorners), which stops Windows 10 drawing the frame and shadow.
+            bool frameless = fullscreen || mini;
+            try
+            {
+                int border = frameless ? unchecked((int)0xFFFFFFFE) : unchecked((int)0xFFFFFFFF); // DWMWA_BORDER_COLOR: none / default
+                DwmSetWindowAttribute(hwnd, 34, ref border, 4); // (fails harmlessly before Windows 11)
+            }
+            catch { }
             var src = HwndSource.FromHwnd(hwnd);
             if (src != null && src.CompositionTarget != null)
-                src.CompositionTarget.BackgroundColor = glass ? Colors.Transparent : Colors.Black;
-            chrome.GlassFrameThickness = glass ? new Thickness(-1) : new Thickness(1);
+                src.CompositionTarget.BackgroundColor = clear ? Colors.Transparent : Colors.Black;
+            chrome.GlassFrameThickness = clear ? new Thickness(-1) : frameless ? new Thickness(0) : new Thickness(1);
             if (glass && snapDir != null) Background = TestDesktop(); // tests: a stand-in for the desktop (never the real one)
-            else if (glass) Background = Brushes.Transparent;
+            else if (clear) Background = Brushes.Transparent;
             else SetResourceReference(BackgroundProperty, "WindowBg");
+            if (mini)
+            {
+                // Mini player on a photo with see-through parts (PNG, GIF...): nothing behind the picture.
+                if (miniClear) stage.Background = Brushes.Transparent;
+                else stage.SetResourceReference(Panel.BackgroundProperty, "FullBg");
+            }
+            var rootGrid = Content as Panel;
+            if (rootGrid != null)
+            {
+                if (miniClear) rootGrid.Background = Brushes.Transparent;
+                else rootGrid.SetResourceReference(Panel.BackgroundProperty, "WindowBg");
+            }
             if (snapDir == null || !glass) Looks.SetBlurBehind(hwnd, glass);
             RoundCorners();
             UpdateSlotOpacity();
@@ -88,20 +118,37 @@ namespace FastViewer
             var src = PresentationSource.FromVisual(this);
             if (hwnd == IntPtr.Zero || src == null || src.CompositionTarget == null) return;
             bool round = seeThrough && !fullscreen && !mini && WindowState == WindowState.Normal;
-            if (!round && !rounded) return;
+            bool square = mini || fullscreen;
+            if (!round && !square && !rounded) return;
             var m = src.CompositionTarget.TransformToDevice;
             var r = Application.Current.Resources["Radius.Window"];
             int radius = round && r is double ? (int)Math.Round((double)r * m.M11) : 0;
-            Looks.SetRoundCorners(hwnd, (int)Math.Round(ActualWidth * m.M11), (int)Math.Round(ActualHeight * m.M22), radius);
-            rounded = round;
+            int w = (int)Math.Round(ActualWidth * m.M11), h = (int)Math.Round(ActualHeight * m.M22);
+            // Full screen and the mini player get a plain square region: Windows then draws no frame, border or
+            // shadow around them (no accent-coloured lines; no outline around a see-through mini player).
+            if (square) Looks.SetSquareRegion(hwnd, w, h);
+            else Looks.SetRoundCorners(hwnd, w, h, radius);
+            rounded = round || square;
+        }
+
+        // Mini player showing a photo whose pixels can be see-through (an alpha channel or a transparent colour).
+        bool MiniSeeThrough()
+        {
+            if (!mini || fullscreen || shown == null || shown.IsVideo || shown.Failed) return false;
+            var b = shown.Picture.Source as System.Windows.Media.Imaging.BitmapSource;
+            if (b == null) return false;
+            var f = b.Format;
+            if (f == PixelFormats.Bgra32 || f == PixelFormats.Pbgra32 || f == PixelFormats.Rgba64 || f == PixelFormats.Prgba64
+                || f == PixelFormats.Rgba128Float || f == PixelFormats.Prgba128Float) return true;
+            return b.Palette != null && b.Palette.Colors.Any(c => c.A < 255);
         }
 
         void UpdateSlotOpacity()
         {
             if (slots == null) return;
-            glassSlots = seeThrough && !fullscreen && !mini;
+            glassSlots = (seeThrough && !fullscreen && !mini) || miniClear;
             cover.Visibility = glassSlots ? Visibility.Collapsed : Visibility.Visible;
-            foreach (var s in slots) s.Host.Opacity = !glassSlots || s == shown ? 1 : HiddenSlotOpacity;
+            foreach (var s in slots) s.Host.Opacity = !glassSlots || s == shown ? 1 : HiddenOpacity;
         }
 
         static Brush testDesktop;
@@ -122,7 +169,7 @@ namespace FastViewer
         {
             var move = e.RenderTransform as TranslateTransform;
             if (move == null) e.RenderTransform = move = new TranslateTransform();
-            move.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(from, 0, TimeSpan.FromSeconds(0.55)) { EasingFunction = new SpringEase() });
+            move.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(550 * Motion.Speed)) { EasingFunction = new SpringEase() });
         }
 
         // ---------------------------------------------------------------- buttons

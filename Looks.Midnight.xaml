@@ -21,6 +21,7 @@
   <sys:String x:Key="Motion.Ease">calm</sys:String>
   <sys:Double x:Key="Motion.Distance">0.4</sys:Double>
   <sys:Double x:Key="Motion.Press">1</sys:Double>
+  <sys:Boolean x:Key="Motion.Squish">False</sys:Boolean>
   <sys:String x:Key="Font.Ui">@Inter</sys:String>
   <FontFamily x:Key="Font.Title">Segoe UI Light</FontFamily>
   <FontWeight x:Key="Weight.Title">Light</FontWeight>
