@@ -1,4 +1,4 @@
-FastViewer 1.22.0 - a fast photo, video and music viewer for Windows 10 and 11
+FastViewer 1.23.0 - a fast photo, video and music viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -67,6 +67,9 @@ font, shapes, motion) and share it as a .fvlook file; Buttons picks which button
 every action's keys can be changed in Settings > Keyboard (two keys each), and the mouse
 buttons in Settings > Mouse. Esc always goes back. X shuffles the folder.
 Closing FastViewer keeps it ready in the background (icon by the clock) so files open instantly.
+While it is minimized or behind another app for a while, it frees the memory of the videos it keeps
+ready out of sight, and gets them ready again the moment you come back.
+In Settings, "More" behind an explanation shows the rest of it.
 Each file you open from File Explorer while FastViewer is open gets a window of its own.
 Music (.mp3 .m4a .wav .flac ...) plays too, with its album cover, title and artist.
 Point at FastViewer's taskbar icon for Previous / Play-Pause / Next buttons.

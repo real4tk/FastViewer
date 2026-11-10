@@ -345,6 +345,9 @@ namespace FastViewer
             Margin = new Thickness(3, 3, 3, 0), Visibility = Visibility.Collapsed, IsHitTestVisible = false
         };
         readonly Border badge;
+        // How long a video or song is, bottom right (grid tiles; the small strip tiles have none).
+        readonly TextBlock length = new TextBlock { FontSize = 11, Foreground = Brushes.White };
+        readonly Border lengthBadge;
         bool selected;
 
         public int Index, Offset, Px;
@@ -369,6 +372,13 @@ namespace FastViewer
             var layers = new Grid();
             layers.Children.Add(glyph);
             layers.Children.Add(badge);
+            lengthBadge = new Border
+            {
+                Child = length, Visibility = Visibility.Collapsed, CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 2),
+                Margin = new Thickness(5), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom
+            };
+            lengthBadge.SetResourceReference(Border.BackgroundProperty, "BadgeBg");
+            layers.Children.Add(lengthBadge);
             picture.Child = layers;
             var stack = new DockPanel();
             DockPanel.SetDock(name, Dock.Bottom);
@@ -451,6 +461,12 @@ namespace FastViewer
             if (Motion.Animates) Motion.FromTo(picture, OpacityProperty, 0, 1, Motion.Ms(150, false), Motion.Smooth);
         }
 
+        public void SetLength(string text)
+        {
+            if (text != null) length.Text = text;
+            lengthBadge.Visibility = text == null ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         public void SetName(string text)
         {
             name.Text = text;
@@ -472,6 +488,7 @@ namespace FastViewer
             }
             File = null;
             name.Text = "";
+            lengthBadge.Visibility = Visibility.Collapsed;
             brush.ImageSource = null;
             ShowPlaceholder();
             Visibility = Visibility.Hidden;

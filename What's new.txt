@@ -5,6 +5,44 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.23.0  (10 Nov 2026)
+  A polish release: no new features, everything that was there looks and moves better.
+  Changed
+  - The File info pane slides in and out, and the picture glides to its new place instead of jumping. Before, the
+    pane just appeared and had no closing animation at all.
+  - Animations no longer skip their first part when the PC is busy for a moment (opening Settings, changing pages,
+    full screen, changing looks): each one starts from its beginning.
+  - New side arrows: larger, with a clear chevron that leans the way it goes when you point at it. In Midnight
+    they no longer take on the colour of the video behind them.
+  - Nothing open, an empty folder or a file that can't be opened now shows an icon, a headline, the reason and a
+    proper button ("Open a file" / "Open with another app") instead of a few lines of grey text.
+  - Settings is a screen of its own: the title bar says "Settings" and the greyed-out file buttons step aside.
+    In Liquid Glass the photo no longer shows through the pages.
+  - Settings is calmer to read: long explanations show their first sentence with "More" behind it. Point at More
+    for the rest, or click it to open the whole text in the card. Nothing was removed.
+  - Appearance: the look previews have rounded corners and share the row evenly (all five side by side when
+    there's room).
+  - Keyboard: an empty key box shows a quiet "+" instead of "Not set" thirty times, and key boxes have an
+    outline in every look, so they read as boxes you can click.
+  - With no file open, the zoom buttons and slider are off like the other file buttons.
+  - Icons in the menus are the same size and weight as the ones in the bars.
+  - Delete dialog and messages: Cancel, "Start over", "Update now" and the like are outlined buttons in every
+    look (in Clean and Midnight they were bare text), and messages carry a small icon.
+  - Grid: videos and songs show their length on the thumbnail, and a search that finds nothing says so in the
+    middle of the page.
+  - Mini player and very small windows: smaller side arrows and middle play button, and the control bar keeps
+    clear of the arrows.
+  - The seconds inside the skip buttons are a little larger.
+  - "Couldn't save" is an in-app message now, not a Windows box.
+  - Memory: while FastViewer is minimized (5 seconds) or another app has been in front for 30 seconds, it closes
+    the videos it keeps ready out of sight (about 30 MB each in this version's measurements, more for large
+    videos). The file on screen is never touched, nothing is closed while something plays, and they are loaded
+    again the moment you come back (the window becomes active or the pointer moves onto it), so the first
+    switch is instant as always.
+  Fixed
+  - Opening a file no longer builds the "drop a photo here" screen first.
+
+
 1.22.0  (10 Nov 2026)
   New
   - Make GIF: in the trim bar (Ctrl+T), choose the part with the handles and press "Make GIF": Small (320 pixels),

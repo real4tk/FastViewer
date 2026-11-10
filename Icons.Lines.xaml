@@ -24,6 +24,7 @@
   <Geometry x:Key="Ic.E72A">M5 12 H18.5 M13 6.5 L18.5 12 L13 17.5</Geometry>
   <Geometry x:Key="Ic.EDD9">M14.5 5.5 L8 12 L14.5 18.5</Geometry>
   <Geometry x:Key="Ic.EDDA">M9.5 5.5 L16 12 L9.5 18.5</Geometry>
+  <Geometry x:Key="Ic.E7BA">M12 4.5 L21 19.5 H3 Z M12 10.5 V14.5 M12 17 V17.2</Geometry>
   <Geometry x:Key="Ic.E76B">M14.5 5.5 L8 12 L14.5 18.5</Geometry>
   <Geometry x:Key="Ic.E76C">M9.5 5.5 L16 12 L9.5 18.5</Geometry>
   <Geometry x:Key="Ic.E790">M12 3.5 A8.5 8.5 0 1 0 12 20.5 C13.2 20.5 13.6 19.6 13.2 18.7 C12.6 17.4 13.3 16 14.8 16 H17 A3.5 3.5 0 0 0 20.5 12.5 C20.5 7.5 16.7 3.5 12 3.5 Z M7.6 11.5 H7.7 M10 7.6 H10.1 M14.4 7.6 H14.5</Geometry>

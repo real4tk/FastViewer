@@ -318,6 +318,7 @@ namespace FastViewer
                         Style = (Style)Application.Current.Resources["Filled"], MinWidth = 130, Height = 32,
                         Margin = new Thickness(k == 0 ? 0 : 8, 0, 0, 0), ToolTip = "Click to change; right-click (or Delete) to remove"
                     };
+                    b.SetResourceReference(BorderBrushProperty, "OutlineEdge"); // an outline in every look (some looks draw buttons without one), so a key box reads as a box
                     b.Click += delegate { StartCapture(sc, slot); };
                     b.MouseRightButtonUp += delegate(object o, MouseButtonEventArgs e) { RemoveKey(sc, slot); e.Handled = true; };
                     b.KeyDown += delegate(object o, KeyEventArgs e) // the keyboard's way to remove a key
@@ -343,8 +344,9 @@ namespace FastViewer
                 {
                     // A new key goes into the first free box, so an empty box always comes after the set ones.
                     bool waiting = s == capturing && Math.Min(capturingSlot, s.Keys.Count) == k;
-                    s.Editors[k].Content = waiting ? "Press a key..." : k < s.Keys.Count ? Display(s.Keys[k]) : "Not set";
-                    s.Editors[k].SetResourceReference(ForegroundProperty, waiting || k < s.Keys.Count ? "ControlText" : "TextSecondary");
+                    s.Editors[k].Content = waiting ? "Press a key..." : k < s.Keys.Count ? Display(s.Keys[k]) : "+"; // an empty box: just a quiet plus (the page had "Not set" some thirty times)
+                    s.Editors[k].SetResourceReference(ForegroundProperty, waiting || k < s.Keys.Count ? "TextMain" : "TextDim");
+                    s.Editors[k].ToolTip = k < s.Keys.Count ? "Click to change; right-click (or Delete) to remove" : "Click, then press a key to add one";
                 }
             }
         }

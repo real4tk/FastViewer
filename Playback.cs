@@ -388,6 +388,11 @@ namespace FastViewer
             b.Visibility = button == null ? Visibility.Collapsed : Visibility.Visible;
             toastAction = action;
             toastKind = kind;
+            // An icon says what kind of message it is (the short notes of a key or the wheel have none).
+            var toastIcon = F<Glyph>("ToastIcon");
+            string code = kind == "feedback" || kind == null ? null : kind == "error" ? "\uE7BA" : kind == "update" ? "\uE72C" : kind == "resume" ? "\uE768" : kind == "convert" ? "\uE74E" : "\uE946";
+            toastIcon.Visibility = code == null ? Visibility.Collapsed : Visibility.Visible;
+            if (code != null) toastIcon.Code = code;
             // Drops in from just above (a message that's already showing only changes its text).
             Motion.Show(F<FrameworkElement>("Toast"), 0, -8);
             if (kind != "convert") F<FrameworkElement>("ToastProgress").Visibility = Visibility.Collapsed;

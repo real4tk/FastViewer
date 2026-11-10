@@ -69,22 +69,31 @@
 
     <Grid x:Name="Stage" Background="{DynamicResource StageBg}" ClipToBounds="True"/>
 
-    <StackPanel x:Name="MessagePanel" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40">
-      <TextBlock x:Name="Message" Foreground="{DynamicResource TextSecondary}" FontSize="16" TextAlignment="Center"
-                 TextWrapping="Wrap" IsHitTestVisible="False"/>
-      <!-- A file FastViewer can't open: offer another app -->
-      <Button x:Name="MessageBtn" Style="{StaticResource Filled}" Height="32" Margin="0,18,0,0" HorizontalAlignment="Center"
-              Content="Open with another app" Visibility="Collapsed"/>
+    <!-- Nothing open, or a file that can't be shown: an icon, a headline, the details and what to do next.
+         The whole text is set from many places (message.Text); ArrangeMessage splits it over the parts. -->
+    <StackPanel x:Name="MessagePanel" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40" MaxWidth="520">
+      <fv:Glyph x:Name="MessageIcon" Code="&#xE8B9;" Size="44" Foreground="{DynamicResource TextDim}" Margin="0,0,0,18" Visibility="Collapsed"/>
+      <TextBlock x:Name="MessageTitle" Foreground="{DynamicResource TextMain}" FontSize="20" FontFamily="{DynamicResource Font.Title}"
+                 FontWeight="{DynamicResource Weight.Title}" TextAlignment="Center" TextWrapping="Wrap" IsHitTestVisible="False" Visibility="Collapsed"/>
+      <TextBlock x:Name="MessageBody" Foreground="{DynamicResource TextSecondary}" FontSize="14" TextAlignment="Center" LineHeight="20"
+                 TextWrapping="Wrap" IsHitTestVisible="False" Margin="0,8,0,0" Visibility="Collapsed"/>
+
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
+        <Button x:Name="MessageOpenBtn" Style="{StaticResource AccentButton}" Height="34" MinWidth="120" Content="Open a file" Visibility="Collapsed"/>
+        <!-- A file FastViewer can't open: offer another app -->
+        <Button x:Name="MessageBtn" Style="{StaticResource Outlined}" Height="34" MinWidth="120"
+                Content="Open with another app" Visibility="Collapsed"/>
+      </StackPanel>
     </StackPanel>
 
     <Grid x:Name="Overlay">
       <!-- Darkens the video slightly while the controls are showing, like Photos -->
       <Rectangle x:Name="Scrim" Fill="{DynamicResource ScrimFill}" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"/>
       <Button x:Name="PrevBtn" Style="{StaticResource NavArrow}" HorizontalAlignment="Left" Margin="8,0,0,0" ToolTip="Previous (Left arrow)">
-        <fv:Glyph Code="&#xEDD9;" Size="8"/>
+        <fv:Glyph x:Name="PrevGlyph" Code="&#xE76B;" Size="13"/>
       </Button>
       <Button x:Name="NextBtn" Style="{StaticResource NavArrow}" HorizontalAlignment="Right" Margin="0,0,8,0" ToolTip="Next (Right arrow)">
-        <fv:Glyph Code="&#xEDDA;" Size="8"/>
+        <fv:Glyph x:Name="NextGlyph" Code="&#xE76C;" Size="13"/>
       </Button>
 
       <Button x:Name="CenterPlayBtn" Style="{StaticResource CenterPlay}" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -138,7 +147,7 @@
           <!-- Skip buttons (every look): an open circle whose arrow at the top points back (left) or forward (right),
                like a media player's "back 10 s", with the number of seconds (set in Settings) inside. -->
           <Button x:Name="BackBtn" Grid.Column="1" Style="{StaticResource Transport}">
-            <Grid Width="22" Height="22">
+            <Grid Width="22" Height="22"><!-- drawn a little larger since 1.23 so the seconds inside are readable (9.7 instead of 8.5) --><Grid.LayoutTransform><ScaleTransform ScaleX="1.14" ScaleY="1.14"/></Grid.LayoutTransform>
               <Path Data="M4.07,7 A8,8 0 1 0 11,3" StrokeThickness="1.6" StrokeStartLineCap="Round"
                     Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
               <Path Data="M7.4,3 L11.2,0.4 L11.2,5.6 Z" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
@@ -146,7 +155,7 @@
             </Grid>
           </Button>
           <Button x:Name="FwdBtn" Grid.Column="2" Style="{StaticResource Transport}">
-            <Grid Width="22" Height="22">
+            <Grid Width="22" Height="22"><!-- drawn a little larger since 1.23 so the seconds inside are readable (9.7 instead of 8.5) --><Grid.LayoutTransform><ScaleTransform ScaleX="1.14" ScaleY="1.14"/></Grid.LayoutTransform>
               <Path Data="M17.93,7 A8,8 0 1 1 11,3" StrokeThickness="1.6" StrokeStartLineCap="Round"
                     Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
               <Path Data="M14.6,3 L10.8,0.4 L10.8,5.6 Z" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
@@ -207,8 +216,9 @@
         <Rectangle.RenderTransform><ScaleTransform ScaleX="0"/></Rectangle.RenderTransform>
       </Rectangle>
       <StackPanel Orientation="Horizontal">
-        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="13"/>
-        <Button x:Name="ToastBtn" Style="{StaticResource Filled}" Height="28" Margin="12,0,0,0" Visibility="Collapsed"/>
+        <fv:Glyph x:Name="ToastIcon" Code="&#xE946;" Size="14" Margin="0,0,10,0" Foreground="{DynamicResource TextSecondary}" Visibility="Collapsed"/>
+        <TextBlock x:Name="ToastText" VerticalAlignment="Center" FontSize="13" TextWrapping="Wrap" MaxWidth="520"/>
+        <Button x:Name="ToastBtn" Style="{StaticResource Outlined}" Height="28" Margin="12,0,0,0" Visibility="Collapsed"/>
         <Button x:Name="ToastClose" Style="{StaticResource Subtle}" Height="28" MinWidth="28" Padding="6,0" Margin="4,0,0,0" ToolTip="Close">
           <fv:Glyph Code="&#xE711;" Size="10"/>
         </Button>
@@ -312,10 +322,11 @@
     </Border>
 
     <!-- File info pane -->
-    <Border x:Name="InfoPanel" Grid.Column="1" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelEdge}" BorderThickness="1,0,0,0">
+    <Border x:Name="InfoPanel" Grid.ColumnSpan="2" HorizontalAlignment="Right" Width="320" Visibility="Collapsed"
+            Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelEdge}" BorderThickness="1,0,0,0">
       <DockPanel Margin="20,14,10,16">
         <Grid DockPanel.Dock="Top" Margin="0,0,0,18">
-          <TextBlock Text="Info" FontSize="20" FontFamily="{DynamicResource Font.Title}" FontWeight="{DynamicResource Weight.Title}" VerticalAlignment="Center"/>
+          <TextBlock Text="Info" FontSize="20" FontFamily="{DynamicResource Font.Title}" FontWeight="{DynamicResource Weight.Title}" VerticalAlignment="Center" HorizontalAlignment="Left"/>
           <Button x:Name="InfoCloseBtn" Style="{StaticResource Subtle}" HorizontalAlignment="Right" ToolTip="Close">
             <fv:Glyph Code="&#xE711;" Size="12"/>
           </Button>
@@ -429,9 +440,17 @@
           </StackPanel>
         </Button>
       </Grid>
-      <ScrollViewer x:Name="GridScroll" VerticalScrollBarVisibility="Auto" Focusable="False">
-        <Canvas x:Name="GridCanvas" Margin="16,4,16,16" VerticalAlignment="Top"/>
-      </ScrollViewer>
+      <Grid>
+        <ScrollViewer x:Name="GridScroll" VerticalScrollBarVisibility="Auto" Focusable="False">
+          <Canvas x:Name="GridCanvas" Margin="16,4,16,16" VerticalAlignment="Top"/>
+        </ScrollViewer>
+        <!-- A search with no matches (or a filter that leaves nothing) -->
+        <StackPanel x:Name="GridEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="460" Margin="24,0,24,60" Visibility="Collapsed" IsHitTestVisible="False">
+          <fv:Glyph Code="&#xE721;" Size="40" Foreground="{DynamicResource TextDim}" Margin="0,0,0,16"/>
+          <TextBlock x:Name="GridEmptyTitle" FontSize="20" FontFamily="{DynamicResource Font.Title}" FontWeight="{DynamicResource Weight.Title}" TextAlignment="Center" TextWrapping="Wrap"/>
+          <TextBlock x:Name="GridEmptyText" FontSize="14" Foreground="{DynamicResource TextSecondary}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"/>
+        </StackPanel>
+      </Grid>
     </DockPanel>
   </Grid>
 
@@ -481,7 +500,7 @@
                 BorderBrush="{DynamicResource DialogEdge}" BorderThickness="0,1,0,0">
           <UniformGrid Columns="2">
             <Button x:Name="DialogOk" Style="{StaticResource AccentButton}" Height="32" Margin="0,0,4,0" Content="Delete"/>
-            <Button x:Name="DialogCancel" Style="{StaticResource Filled}" Height="32" Margin="4,0,0,0" Content="Cancel"/>
+            <Button x:Name="DialogCancel" Style="{StaticResource Outlined}" Height="32" Margin="4,0,0,0" Content="Cancel"/>
           </UniformGrid>
         </Border>
       </StackPanel>

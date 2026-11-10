@@ -90,6 +90,54 @@ namespace FastViewer
             return IsVideoFile(file) ? 0 : rotations.TryGetValue(file, out angle) ? angle : (TurnMemory.Get(file) ?? 0);
         }
 
+        // A video's or song's length on its tile: known ones at once, the others are read from Windows on a
+        // background thread (newest request first, so the tiles on screen now come before ones scrolled past).
+        static readonly List<KeyValuePair<string, Action<double>>> lengthWaiting = new List<KeyValuePair<string, Action<double>>>();
+        static bool lengthWorker;
+
+        void ShowTileLength(Tile t, string file)
+        {
+            double d;
+            bool known;
+            lock (lengthCache) known = lengthCache.TryGetValue(file, out d);
+            if (known)
+            {
+                if (d >= 1) t.SetLength(Fmt(TimeSpan.FromSeconds(d)));
+                return;
+            }
+            Action<double> show = len => { if (t.File == file && len >= 1) t.SetLength(Fmt(TimeSpan.FromSeconds(len))); };
+            lock (lengthWaiting)
+            {
+                lengthWaiting.Add(new KeyValuePair<string, Action<double>>(file, show));
+                if (lengthWorker) return;
+                lengthWorker = true;
+            }
+            var th = new System.Threading.Thread(delegate()
+            {
+                for (;;)
+                {
+                    KeyValuePair<string, Action<double>> job;
+                    lock (lengthWaiting)
+                    {
+                        if (lengthWaiting.Count == 0) { lengthWorker = false; return; }
+                        job = lengthWaiting[lengthWaiting.Count - 1];
+                        lengthWaiting.RemoveAt(lengthWaiting.Count - 1);
+                    }
+                    double len;
+                    bool have;
+                    lock (lengthCache) have = lengthCache.TryGetValue(job.Key, out len);
+                    if (!have)
+                    {
+                        len = MediaLength(job.Key);
+                        lock (lengthCache) lengthCache[job.Key] = len;
+                    }
+                    Dispatcher.BeginInvoke(job.Value, len);
+                }
+            }) { IsBackground = true, Name = "Tile lengths" };
+            th.SetApartmentState(System.Threading.ApartmentState.STA);
+            th.Start();
+        }
+
         // Shows `file` on a tile: from memory right away, otherwise asks the thumbnail thread.
         void BindTile(Tile t, int i, string file, int px, bool selected)
         {
@@ -104,6 +152,8 @@ namespace FastViewer
             t.ToolTip = Path.GetFileName(file);
             t.SetName(Path.GetFileName(file));
             bool video = IsVideoFile(file), audio = IsAudioFile(file);
+            t.SetLength(null);
+            if ((video || audio) && t.Width >= 96) ShowTileLength(t, file); // (grid tiles: the strip's are too small)
             BitmapSource image;
             if (Thumbs.TryGet(file, px, out image))
             {

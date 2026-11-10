@@ -364,7 +364,14 @@ namespace FastViewer
         readonly Border cover = new Border();
         readonly RowDefinition topRow, bottomRow;
         readonly ColumnDefinition infoCol;
-        readonly TextBlock titleText, message, posText, durText, volText, typeText, dimText, sizeText, zoomText, dialogText;
+        readonly MessageText message; // the middle-of-the-window message: setting its Text arranges the icon, headline and buttons
+        internal class MessageText
+        {
+            string text = "";
+            public Action Changed;
+            public string Text { get { return text; } set { value = value ?? ""; if (value == text) return; text = value; if (Changed != null) Changed(); } }
+        }
+        readonly TextBlock titleText, posText, durText, volText, typeText, dimText, sizeText, zoomText, dialogText;
         readonly Glyph playIcon, volIcon, muteIcon, loopIcon, fullIcon, maxIcon;
         readonly Slider seek, vol, zoomSlider;
         readonly Border transport;
@@ -496,7 +503,9 @@ namespace FastViewer
             bottomRow = F<RowDefinition>("BottomRow");
             infoCol = F<ColumnDefinition>("InfoCol");
             titleText = F<TextBlock>("TitleText");
-            message = F<TextBlock>("Message");
+            message = new MessageText();
+            message.Changed = ArrangeMessage;
+
             playIcon = F<Glyph>("PlayIcon");
             volIcon = F<Glyph>("VolIcon");
             muteIcon = F<Glyph>("MuteIcon");
@@ -534,6 +543,7 @@ namespace FastViewer
             stage.Children.Add(cover);
 
             OnClick("OpenBtn", OpenDialog);
+            OnClick("MessageOpenBtn", OpenDialog);
             OnClick("DeleteBtn", AskDelete);
             OnClick("CopyBtn", CopyFile);
             OnClick("RotateBtn", Rotate);
@@ -574,6 +584,14 @@ namespace FastViewer
             // Previous/next react on press, not release: feels snappier when clicking through quickly.
             F<Button>("PrevBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(-1); e.Handled = true; };
             F<Button>("NextBtn").PreviewMouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { Go(1); e.Handled = true; };
+            // Pointing at a side arrow: its chevron leans the way it goes.
+            foreach (var arrow in new[] { "Prev", "Next" })
+            {
+                var glyph = F<FrameworkElement>(arrow + "Glyph");
+                double lean = arrow == "Prev" ? -3 : 3;
+                F<Button>(arrow + "Btn").MouseEnter += delegate { if (Motion.Moves) Motion.To(Motion.PartsOf(glyph).Move, TranslateTransform.XProperty, lean, Motion.Ms(Motion.Fast), Motion.In); };
+                F<Button>(arrow + "Btn").MouseLeave += delegate { Motion.To(Motion.PartsOf(glyph).Move, TranslateTransform.XProperty, 0, Motion.Ms(Motion.Fast), Motion.Smooth); };
+            }
 
             seek.PreviewMouseLeftButtonDown += delegate { StartScrub(); }; // your click or drag wins over the gliding dot
             seek.ValueChanged += delegate
@@ -596,7 +614,8 @@ namespace FastViewer
             volPopup.MouseWheel += delegate(object o, MouseWheelEventArgs e) { SetVolume(volume + (e.Delta > 0 ? 0.05 : -0.05)); e.Handled = true; };
             stage.SizeChanged += delegate
             {
-                transport.Width = Math.Max(240, Math.Min(720, stage.ActualWidth - 96));
+                FitSmallControls();
+                transport.Width = Math.Max(240, Math.Min(720, stage.ActualWidth - (compactStage ? 80 : 112))); // clear of the side arrows
                 if (trimming) SizeTrimBar();
                 UpdateControls(); // which control-bar buttons fit
                 if (shown != null) ClampPan(shown);
@@ -682,7 +701,7 @@ namespace FastViewer
 
             Loaded += delegate
             {
-                message.Text = EmptyMessage();
+                if (path == null) message.Text = EmptyMessage(); // (opening a file: no "drop a photo here" screen built first)
                 UpdateWindowFrame();
                 InitShortcuts();
                 InitTaskbarButtons(); // previous, play/pause, next under the taskbar preview
@@ -690,6 +709,7 @@ namespace FastViewer
                 InitExtras();
                 InitGallery();
                 InitGridSearch();
+                InitAway();
                 foreach (var name in new[] { "GridScroll", "SettingsScroll", "SettingsNavScroll" }) SmoothWheel(F<ScrollViewer>(name));
                 ApplyButtons();
                 if (!testMode) StartSingleInstance();
@@ -924,7 +944,7 @@ namespace FastViewer
                 if (files.Count > k + 1) Ensure(files[Wrap(index - dir * k)], keep);
             }
             string name = Path.GetFileName(files[index]);
-            titleText.Text = name;
+            titleText.Text = settingsOpen ? "Settings" : name; // (Settings names itself in the title bar)
             titleText.ToolTip = name; // the whole name, also when it's shortened with "..."
             Title = name + " - FastViewer";
             TryShow();
@@ -1489,6 +1509,36 @@ namespace FastViewer
             SchedulePoster(s, 0); // fresh snapshot of the first frame for next time
         }
 
+        // The middle-of-the-window message (nothing open, an empty folder, a file that can't be shown): the first
+        // line becomes the headline, the rest the details, with an icon that fits and the button for what to do next.
+        // Runs only when the text really changes, so switching between normal files never comes here.
+        void ArrangeMessage()
+        {
+            string text = message.Text ?? "";
+            var title = F<TextBlock>("MessageTitle");
+            var body = F<TextBlock>("MessageBody");
+            var icon = F<Glyph>("MessageIcon");
+            var open = F<FrameworkElement>("MessageOpenBtn");
+            if (text.Length == 0)
+            {
+                title.Visibility = body.Visibility = icon.Visibility = open.Visibility = Visibility.Collapsed;
+                return;
+            }
+            bool cantOpen = text.StartsWith("Can't open ");
+            int cut = text.IndexOf('\n');
+            string head = cut < 0 ? text : text.Substring(0, cut), rest = cut < 0 ? "" : text.Substring(cut + 1).Trim();
+            bool problem = cantOpen || head.StartsWith("Couldn't") || head.StartsWith("Not found");
+            bool folder = head.StartsWith("No ");
+            title.Text = cantOpen ? "Can't open this file" : head.TrimEnd(':');
+            if (rest.StartsWith("or ")) rest = char.ToUpper(rest[0]) + rest.Substring(1); // "Or press Ctrl+O to open one"
+            body.Text = rest;
+            icon.Code = problem ? "" : folder ? "" : "";
+            title.Visibility = Visibility.Visible;
+            body.Visibility = rest.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            icon.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
+            open.Visibility = cantOpen || mini ? Visibility.Collapsed : Visibility.Visible; // nothing to look at: offer Open
+        }
+
         void RefreshForShown()
         {
             var c = shown;
@@ -2038,10 +2088,56 @@ namespace FastViewer
         void ToggleInfo()
         {
             infoOpen = !infoOpen;
-            infoCol.Width = new GridLength(infoOpen && !fullscreen ? 320 : 0);
-            PlaceBars(); // floating bars (Clean) dock while the pane is open, so they don't cover it
-            if (infoOpen && !fullscreen) { var pane = F<FrameworkElement>("InfoPanel"); Motion.FromTo(pane, OpacityProperty, 0, 1, Motion.Ms(Motion.Normal, false), Motion.Smooth); Glide(pane, 24, 0); }
             if (infoOpen) FillInfo();
+            PlaceInfo(infoOpen && !fullscreen, true);
+            PlaceBars(); // floating bars (Clean) dock while the pane is open, so they don't cover it
+        }
+
+        // The Info pane lies over the right edge of the viewing area (it isn't in the column itself), so it can
+        // slide in and out while the column under it takes its final width in one go: the picture is laid out
+        // once, and it and everything floating over it glide from where they were to their new middle.
+        const double InfoWidth = 320;
+
+        void PlaceInfo(bool show, bool animate)
+        {
+            var pane = F<FrameworkElement>("InfoPanel");
+            bool was = infoCol.Width.Value > 0;
+            infoCol.Width = new GridLength(show ? InfoWidth : 0);
+            var move = Motion.PartsOf(pane).Move;
+            if (!animate || was == show || !Motion.Animates)
+            {
+                Motion.Set(move, TranslateTransform.XProperty, 0);
+                Motion.Set(pane, OpacityProperty, 1);
+                pane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                return;
+            }
+            double ms = Motion.Ms(Motion.Normal);
+            if (!Motion.Moves) // Reduced: a short fade, nothing slides
+            {
+                Motion.Set(move, TranslateTransform.XProperty, 0);
+                if (show) { pane.Visibility = Visibility.Visible; Motion.To(pane, OpacityProperty, 1, Motion.Ms(Motion.Fast, false), Motion.Smooth); }
+                else Motion.To(pane, OpacityProperty, 0, Motion.Ms(Motion.Fast, false), Motion.Smooth, delegate { pane.Visibility = Visibility.Collapsed; Motion.Set(pane, OpacityProperty, 1); });
+                return;
+            }
+            Motion.Set(pane, OpacityProperty, 1);
+            if (show)
+            {
+                if (pane.Visibility != Visibility.Visible) { pane.Visibility = Visibility.Visible; Motion.Set(move, TranslateTransform.XProperty, InfoWidth); }
+                Motion.To(move, TranslateTransform.XProperty, 0, ms, Motion.In);
+            }
+            else Motion.To(move, TranslateTransform.XProperty, InfoWidth, ms, Motion.Smooth, delegate { pane.Visibility = Visibility.Collapsed; });
+            double shift = show ? InfoWidth / 2 : -InfoWidth / 2; // the middle of the viewing area moves half the pane's width
+            foreach (var name in new[] { "Stage", "MessagePanel", "Scrim", "CenterPlayBtn", "Transport", "TrimBar", "CropBar", "Toast" })
+                SlideFrom(root.FindName(name) as FrameworkElement, shift, ms);
+            SlideFrom(F<FrameworkElement>("NextBtn"), shift * 2, ms); // (the right edge moves the whole width)
+        }
+
+        // Glides an element from exactly dx beside its place (on top of wherever it is right now) back to it.
+        static void SlideFrom(FrameworkElement e, double dx, double ms)
+        {
+            if (e == null || e.Visibility != Visibility.Visible) return;
+            var move = Motion.PartsOf(e).Move;
+            Motion.FromTo(move, TranslateTransform.XProperty, move.X + dx, 0, ms, Motion.In);
         }
 
         void FillInfo()
@@ -2241,7 +2337,7 @@ namespace FastViewer
         static MenuItem Item(string header, string glyph, Action action, string shortcut = null)
         {
             var mi = new MenuItem { Header = header, InputGestureText = shortcut ?? "" };
-            if (glyph != null) mi.Icon = new Glyph { Code = glyph, Size = 14 };
+            if (glyph != null) mi.Icon = new Glyph { Code = glyph, Size = 16 }; // the size the bar's icons have (at 14 Windows' icon font draws them heavier)
             mi.Click += delegate { action(); };
             return mi;
         }
@@ -2420,11 +2516,35 @@ namespace FastViewer
             Motion.Set(s.Pan, TranslateTransform.YProperty, 0);
         }
 
+        // A small viewing area (the mini player, a tiny window): the side arrows and the middle play button
+        // get smaller, so they don't crowd the picture and the control bar.
+        bool compactStage;
+
+        void FitSmallControls()
+        {
+            bool compact = stage.ActualWidth < 560 || stage.ActualHeight < 330;
+            if (compact == compactStage) return;
+            compactStage = compact;
+            foreach (var arrow in new[] { "Prev", "Next" })
+            {
+                var b = F<Button>(arrow + "Btn");
+                if (compact) { b.Width = 24; b.Height = 44; }
+                else { b.ClearValue(WidthProperty); b.ClearValue(HeightProperty); }
+                F<Glyph>(arrow + "Glyph").Size = compact ? 11 : 13;
+            }
+            centerPlayBtn.LayoutTransform = compact ? new ScaleTransform(0.7, 0.7) : null;
+        }
+
+        Control[] zoomControls;
+
         void UpdateZoomUi()
         {
             var s = shown;
             double fit = FitScale(s);
-            zoomText.Text = fit > 0 ? Math.Round(fit * s.Zoom.ScaleX * 100) + "%" : "-";
+            zoomText.Text = fit > 0 ? Math.Round(fit * s.Zoom.ScaleX * 100) + "%" : "";
+            // Nothing to zoom (no file, or one that can't be shown): the zoom controls are off like the file buttons.
+            if (zoomControls == null) zoomControls = new Control[] { F<Button>("FitBtn"), F<Button>("ZoomBtn"), F<Button>("ZoomOutBtn"), F<Button>("ZoomInBtn"), zoomSlider };
+            if (zoomControls[0].IsEnabled != fit > 0) foreach (var c in zoomControls) c.IsEnabled = fit > 0;
             settingSlider = true;
             zoomSlider.Value = s == null ? 0 : Math.Log(s.Zoom.ScaleX);
             settingSlider = false;
@@ -2559,7 +2679,8 @@ namespace FastViewer
             F<FrameworkElement>("TrimBar").Margin = transport.Margin;
             foreach (var bar in new[] { top, bottom })
             {
-                Motion.Set(bar, OpacityProperty, !floating || overlayVisible ? 1 : 0);
+                // (a see-through look: nothing of the viewer shows through the Settings page lying over it)
+                Motion.Set(bar, OpacityProperty, bar == bottom && settingsOpen && seeThrough ? 0 : !floating || overlayVisible ? 1 : 0);
                 Motion.Set(Motion.PartsOf(bar).Move, TranslateTransform.YProperty, 0);
                 bar.IsHitTestVisible = !floating || overlayVisible;
             }
@@ -2599,7 +2720,7 @@ namespace FastViewer
                 fullscreen = true;
                 chrome.CaptionHeight = 0;
                 chrome.ResizeBorderThickness = new Thickness(0);
-                infoCol.Width = new GridLength(0);
+                PlaceInfo(false, false);
                 stage.SetResourceReference(Panel.BackgroundProperty, "FullBg");
                 cover.SetResourceReference(Border.BackgroundProperty, "FullBg");
 
@@ -2622,7 +2743,7 @@ namespace FastViewer
                 StopSlideshow();
                 chrome.CaptionHeight = 48;
                 chrome.ResizeBorderThickness = new Thickness(6);
-                infoCol.Width = new GridLength(infoOpen ? 320 : 0);
+                PlaceInfo(infoOpen, false);
                 stage.SetResourceReference(Panel.BackgroundProperty, "StageBg");
                 cover.SetResourceReference(Border.BackgroundProperty, "CoverBg");
                 ResizeMode = ResizeMode.CanResize;

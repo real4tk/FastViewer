@@ -81,6 +81,7 @@ namespace FastViewer
                 case "menus": HuntMenus(); break;
                 case "switches": HuntSwitches(); break;
                 case "taskbar": HuntTaskbar(); break;
+                case "away": HuntAway(); break;
                 case "rotsave": HuntRotSave(); break;
                 case "showmigrate": HuntShowMigrate(); break;
                 case "minivol":
@@ -2677,6 +2678,7 @@ namespace FastViewer
                 double med = s[s.Count / 2], p95 = s[(int)(s.Count * 0.95)], max = s[s.Count - 1];
                 int dropped = frames.Count(x => x > med * 1.7);
                 HuntLog(string.Format("{0,-34} {1,4} frames  median {2,5:0.0} ms  p95 {3,5:0.0}  max {4,6:0.0}  long frames {5}", segment, frames.Count, med, p95, max, dropped));
+                if (dropped > 5) HuntLog("      frame by frame (ms): " + string.Join(" ", frames.Select(x => x.ToString("0"))));
             };
             int video = files.FindIndex(IsVideoFile), photo = files.FindIndex(f => !IsVideoFile(f) && !f.EndsWith(".gif"));
             var steps = new List<KeyValuePair<string, Action>>();

@@ -58,6 +58,7 @@ namespace FastViewer
             ApplyWindowLook();
             PlaceBars();
             UpdateControls();
+            if (settingsOpen) SettingsChrome(true); // (a look picked in Settings: see-through or not from now on)
             UpdateSettingsLens(false);
             RefreshLookCards();
             UpdateReadability();
@@ -415,7 +416,7 @@ namespace FastViewer
             {
                 var l = look;
                 var frame = new Border { BorderThickness = new Thickness(2), Padding = new Thickness(2), CornerRadius = new CornerRadius(10) };
-                frame.Child = new Border { CornerRadius = new CornerRadius(7), ClipToBounds = true, Child = Mock(look, Looks.IsLight(look, lookMode)) };
+                frame.Child = new Viewbox { Child = new Border { Child = Mock(look, Looks.IsLight(look, lookMode)) } }; // (scales with the card)
                 previewsLight = Looks.Light;
                 var name = new TextBlock { Text = look.Name, FontWeight = FontWeights.SemiBold, Margin = new Thickness(4, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
                 var text = new TextBlock { Text = look.Description, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 2, 4, 0) };
@@ -440,6 +441,20 @@ namespace FastViewer
                 lookCards.Children.Add(card);
             }
             RefreshLookCards();
+            lookCards.SizeChanged += delegate { LayoutLookCards(); };
+            LayoutLookCards();
+        }
+
+        // The cards share the row evenly: all of them side by side when there's room, otherwise rows of three
+        // or two that still fill the width (no ragged gap on the right).
+        void LayoutLookCards()
+        {
+            int n = lookCards.Children.Count;
+            double w = lookCards.ActualWidth;
+            if (n == 0 || w < 60) return;
+            int cols = w >= n * 160 ? n : w >= 3 * 160 ? 3 : w >= 2 * 160 ? 2 : 1;
+            double each = Math.Min(260, Math.Floor(w / cols) - 24); // (12 margin + 2 x 6 padding)
+            foreach (var card in lookCards.Children.OfType<Button>()) ((StackPanel)card.Content).Width = each;
         }
 
         void RefreshLookCards()
@@ -453,7 +468,7 @@ namespace FastViewer
                     if (redraw)
                     {
                         var look = Looks.Find((string)card.Tag);
-                        ((Border)frame.Child).Child = Mock(look, Looks.IsLight(look, lookMode));
+                        ((Border)((Viewbox)frame.Child).Child).Child = Mock(look, Looks.IsLight(look, lookMode));
                     }
                     if ((string)card.Tag == lookId) frame.SetResourceReference(Border.BorderBrushProperty, "Accent");
                     else frame.BorderBrush = Brushes.Transparent;
@@ -465,7 +480,7 @@ namespace FastViewer
         // A miniature viewer drawn with a look's own colours (its values go into this drawing's resources).
         FrameworkElement Mock(Look look, bool light)
         {
-            var g = new Grid { Width = 192, Height = 120 };
+            var g = new Grid { Width = 192, Height = 120, Clip = new RectangleGeometry(new Rect(0, 0, 192, 120), 9, 9) }; // rounded like the card around it
             var res = new ResourceDictionary();
             Looks.Fill(res, look, light, false);
             g.Resources = res;

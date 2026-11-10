@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.22.0)
+# FastViewer: complete feature list (version 1.23.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -82,10 +82,18 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   in the middle; Fit to window, zoom percentage menu, zoom slider with -/+, Full screen on the right.
 - Side arrows for previous/next; the controls fade away after you stop moving the mouse (1.5 / 2.5 / 5 s or
   never) and as soon as the pointer leaves the window; the mouse pointer hides over a video.
-- File info pane (I): name, folder, dates, size, dimensions, video length.
+- File info pane (I): name, folder, dates, size, dimensions, video length. Since 1.23.0 the pane (InfoPanel, 320 wide)
+  lies over the right edge of the viewing area instead of in the column (PlaceInfo in FastViewer.cs): the column takes its
+  final width in one layout, the pane slides in/out with a transform, and the stage, messages, control bar and right arrow
+  glide from where they were (SlideFrom). Collapsed when closed (the audit's old "Info cut off" false alarms are gone).
 - Narrow windows: labels drop, extras tuck into the "..." menu, the Info button steps aside, the video bar
   keeps its time bar (skip/repeat buttons make room), the middle play button shrinks.
 - Empty window: "Drop a photo, video or folder here or press Ctrl+O"; no leftover details.
+- Message screens (1.23.0): `message` is a small MessageText object (not a TextBlock); setting message.Text runs
+  ArrangeMessage, which splits it into MessageIcon (picture E8B9, folder E838 for "No ...", warning E7BA for problems),
+  MessageTitle (first line; "Can't open this file" for failures), MessageBody (the rest, at most 520 wide) and the buttons
+  MessageOpenBtn ("Open a file", accent, when nothing is open) / MessageBtn ("Open with another app"). Opening a file at
+  start-up sets no empty message first (it cost about 15 ms of first-open time).
 - Files that can't be opened: a plain explanation (empty file, damaged, incomplete download, path too long,
   in use by another app, HEVC codec missing...) plus an "Open with another app" button.
 
@@ -297,6 +305,42 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Switching between files stays instant. Optional "Transition between files: Crossfade" (off by default)
   fades the old file out over the new one, which shows right away (keeps up with fast clicking).
 
+## Polish release 1.23.0 (no new features)
+- Motion.cs: a value's first step counts as at most one screen frame (Tween.Started, firstStepCap; SimulateFrame uses the
+  simulated frame length), so an animation set up in a busy moment (Settings page built, window resized) starts at its
+  beginning instead of skipping ahead. Measured (--case motion, back to back with 1.22.0): frame times equal; the audit's
+  first run that showed 20+ late frames for the Info pane/full screen/look change did not repeat (busy-PC noise). The
+  "video: play/pause morph" step of that test really measures a video starting; the pause morph itself is clean.
+- Side arrows (NavArrow style): 32x56 (24x44 in a small viewing area), chevrons E76B/E76C at 13, the chevron leans 3 px
+  on hover (PrevGlyph/NextGlyph). Midnight ArrowBg is 85% black/white.
+- Small viewing area (stage under 560 wide or 330 high, e.g. the mini player): FitSmallControls shrinks the arrows and the
+  middle play button (0.7); the control bar is stage width - 112 (80 when small) so it stays clear of the arrows.
+- Settings is its own screen (SettingsChrome): title bar text "Settings", Delete/Copy/Rotate/"..."/Mini/Open with fade out
+  while it's open, and in a see-through look the viewing area and bottom bar under the page are hidden (no ghost of the
+  photo through Liquid Glass pages).
+- Settings text: SecondaryText shows a long explanation's (110+ characters) first sentence with a "More" link; its tip holds
+  the rest and a click opens the full text in the card ("Less" folds it). Nothing was shortened in the source.
+- Look cards: previews clipped with rounded corners, inside a Viewbox; LayoutLookCards gives 5, 3, 2 or 1 per row at equal widths.
+- Keyboard page: empty key box shows "+", key boxes use the look's OutlineEdge.
+- New look colour OutlineEdge (all four look files, Dark and Light; = ControlEdge where that is visible, else SwitchEdge;
+  Liquid Glass repeats its gradient) and button style Outlined (Theme.xaml): Cancel in the delete dialog, the message
+  button (ToastBtn), "Open with another app", key boxes.
+- Messages at the top: ToastIcon by kind (update E72C, resume E768, saving E74E, error E7BA, others E946, none for the
+  short key/wheel notes); text wraps at 520. "Couldn't save" (Save as, Save a frame) is such a message, kind "error".
+- Zoom controls (Fit, zoom %, -, slider, +) are disabled when there's nothing to zoom; the zoom box is empty, not "-".
+- Menu icons are 16 px like the bar icons (14 drew heavier).
+- Grid: length badge bottom right on video and music tiles of 96 px and up (Tile.SetLength; lengths from the same cache as
+  the length sort, read on a background STA thread, newest request first); GridEmpty screen when nothing matches.
+- Skip buttons drawn 1.14x so the seconds inside are about 9.7 pt.
+- Memory while away (Away.cs): minimized for 5 s, or not the active window for 30 s, and not playing, in a slideshow,
+  trimming, cropping or under the pointer: every hidden video slot is closed (file on screen, wanted, revealing and fading
+  slots never). Activated, mouse enter/move or a key reloads the files around the current one (BackFromAway, same order as
+  ShowIndex). Test windows never count as away unless the test says so. Test: --hunt --case away (folder with videos around
+  the start file): measured 565 -> 471 MB private with three 1080p players let go, all ready again 322 ms after coming
+  back, first switch after returning instant, also a switch in the same instant as coming back.
+- Measured against 1.22.0 back to back (6 rounds each): first open median 84 vs 88 ms, switches median 1 / p90 4 vs 1 / 5 ms;
+  torture and wheel equal. Pictures: Desktop\claude\visuals-1.23\before and \after.
+
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -361,6 +405,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
   keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full), share, crop, tracks (1.22.0, see Videos),
+  away (1.23.0, see Polish release),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).

@@ -197,6 +197,14 @@ namespace FastViewer
             string kind = filter == 3 ? (n == 1 ? "video" : "videos") : filter == 2 ? (n == 1 ? "photo" : "photos") : filter == 4 ? (n == 1 ? "song" : "songs") : (n == 1 ? "item" : "items");
             string text = "    " + n + " " + kind;
             if (gridQuery.Length > 0) text = "    " + n + " of " + files.Count + " match “" + gridQuery + "”";
+            // Nothing to show: say so in the middle instead of leaving a blank page.
+            var empty = F<FrameworkElement>("GridEmpty");
+            empty.Visibility = n == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (n == 0)
+            {
+                F<TextBlock>("GridEmptyTitle").Text = gridQuery.Length > 0 ? "No names contain “" + gridQuery + "”" : "Nothing to show here";
+                F<TextBlock>("GridEmptyText").Text = gridQuery.Length > 0 ? "Try fewer letters, or press Esc to clear the search." : "Settings > Viewing > Show decides which files are listed.";
+            }
             if (lengthsReading && gridSort >= 6) text += "  ·  getting lengths...";
             if (shuffled) text += "  ·  shuffle stays on";
             F<System.Windows.Documents.Run>("GridCount").Text = text;

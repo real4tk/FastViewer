@@ -85,6 +85,12 @@
     <GradientStop Color="#0DFFFFFF" Offset="0.66"/>
     <GradientStop Color="#4DFFFFFF" Offset="1"/>
   </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Dark.OutlineEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#80FFFFFF" Offset="0"/>
+    <GradientStop Color="#1FFFFFFF" Offset="0.33"/>
+    <GradientStop Color="#0DFFFFFF" Offset="0.66"/>
+    <GradientStop Color="#4DFFFFFF" Offset="1"/>
+  </LinearGradientBrush>
   <SolidColorBrush x:Key="Dark.ControlText" Color="#F5F5F7"/>
   <SolidColorBrush x:Key="Dark.ControlHoverText" Color="#FFFFFF"/>
   <LinearGradientBrush x:Key="Dark.FloatBg" StartPoint="0,0" EndPoint="0,1">
@@ -184,6 +190,12 @@
   <SolidColorBrush x:Key="Light.HoverFill" Color="#14000000"/>
   <SolidColorBrush x:Key="Light.ControlFill" Color="#B3FFFFFF"/>
   <LinearGradientBrush x:Key="Light.ControlEdge" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+    <GradientStop Color="#66FFFFFF" Offset="0.33"/>
+    <GradientStop Color="#33FFFFFF" Offset="0.66"/>
+    <GradientStop Color="#80FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Light.OutlineEdge" StartPoint="0,0" EndPoint="1,1">
     <GradientStop Color="#FFFFFFFF" Offset="0"/>
     <GradientStop Color="#66FFFFFF" Offset="0.33"/>
     <GradientStop Color="#33FFFFFF" Offset="0.66"/>

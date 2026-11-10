@@ -289,6 +289,7 @@ namespace FastViewer
             Motion.Show(page, 0, 24); // rises into place (Liquid Glass with a spring)
             PlaceBars(); // looks with floating bars dock them while Settings is open
             UpdateControls(); // the file buttons are off while Settings is open
+            SettingsChrome(true);
             Dispatcher.BeginInvoke(new Action(delegate
             {
                 UpdateSettingsLens(false);
@@ -325,6 +326,21 @@ namespace FastViewer
             }
             Motion.Hide(F<FrameworkElement>("SettingsPage"), 0, 8, 1, 120); // fades away, sinking a little
             PlaceBars();
+            SettingsChrome(false);
+        }
+
+        // Settings is a screen of its own: the title bar says "Settings" and the buttons that act on a file
+        // (which isn't on screen) step out instead of sitting there greyed out. In a see-through look the
+        // viewer under the page is hidden too, so the page is frosted glass and not a ghost of the photo.
+        void SettingsChrome(bool open)
+        {
+            titleText.Text = open ? "Settings" : CurrentFile != null ? Path.GetFileName(CurrentFile) : "";
+            double ms = Motion.Ms(Motion.Fast, false);
+            foreach (var name in new[] { "DeleteBtn", "CopyBtn", "RotateBtn", "MoreBtn", "MiniBtn", "OpenWithBtn" })
+                Motion.To(F<FrameworkElement>(name), OpacityProperty, open ? 0 : 1, ms, Motion.Smooth);
+            var view = F<FrameworkElement>("ViewArea");
+            if (open && seeThrough) Motion.To(view, OpacityProperty, 0, Motion.Ms(Motion.Normal, false), Motion.Smooth);
+            else Motion.Set(view, OpacityProperty, 1);
         }
 
         void BuildSettingsPage()
@@ -628,11 +644,50 @@ namespace FastViewer
             return card;
         }
 
+        // A card's explanation. A long one shows its first sentence with "More" behind it: pointing at More shows
+        // the rest as a tip, clicking it (or Enter on it) opens the whole text in the card, "Less" folds it again.
+        // Nothing is left out, the pages are just a lot calmer to look at.
         static TextBlock SecondaryText(string text)
         {
-            var t = new TextBlock { Text = text, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+            var t = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
             t.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+            int cut = SummaryEnd(text);
+            if (cut < 0)
+            {
+                t.Text = text;
+                return t;
+            }
+            string first = text.Substring(0, cut), rest = text.Substring(cut).Trim();
+            Action<bool, bool> fill = null;
+            fill = (open, focus) =>
+            {
+                t.Inlines.Clear();
+                t.Inlines.Add(new System.Windows.Documents.Run(open ? text : first));
+                t.Inlines.Add(new System.Windows.Documents.Run("  "));
+                var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(open ? "Less" : "More")) { Cursor = Cursors.Hand };
+                if (!open) link.ToolTip = new TextBlock { Text = rest, TextWrapping = TextWrapping.Wrap, MaxWidth = 380 };
+                link.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "TextMain");
+                System.Windows.Automation.AutomationProperties.SetName(link, open ? "Show less" : "Show more: " + rest);
+                link.Click += delegate { fill(!open, link.IsKeyboardFocused); };
+                t.Inlines.Add(link);
+                if (focus) link.Focus();
+            };
+            fill(false, false);
             return t;
+        }
+
+        // Where a long explanation's first sentence ends (-1: short enough to show whole).
+        internal static int SummaryEnd(string text)
+        {
+            if (text == null || text.Length < 110) return -1;
+            for (int i = 25; i < text.Length - 1; i++)
+            {
+                if ((text[i] != '.' && text[i] != '?' && text[i] != '!') || text[i + 1] != ' ') continue;
+                string before = text.Substring(i - 3, 3);
+                if (before == "e.g" || before == "i.e") continue;
+                return text.Length - (i + 1) < 40 ? -1 : i + 1;
+            }
+            return -1;
         }
 
         static Border Card(UIElement child, Thickness padding)
@@ -808,7 +863,7 @@ namespace FastViewer
             if (dlg.ShowDialog(this) != true) return;
             if (string.Equals(Path.GetFullPath(dlg.FileName), Path.GetFullPath(f), StringComparison.OrdinalIgnoreCase)) return;
             try { File.Copy(f, dlg.FileName, true); }
-            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Couldn't save", MessageBoxButton.OK); }
+            catch (Exception ex) { ShowToast("Couldn't save: " + ex.Message, null, null, 8, "error"); } // (an in-app message, not a Windows box)
         }
 
         // The video frame on screen at its own size (at most 4K wide), turned the way it's shown.
@@ -868,7 +923,7 @@ namespace FastViewer
                 png.Frames.Add(BitmapFrame.Create(frame));
                 using (var fs = File.Create(dlg.FileName)) png.Save(fs);
             }
-            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Couldn't save", MessageBoxButton.OK); }
+            catch (Exception ex) { ShowToast("Couldn't save: " + ex.Message, null, null, 8, "error"); } // (an in-app message, not a Windows box)
         }
 
         // Windows draws the default app's icon as a small badge on every thumbnail in File Explorer unless the app's

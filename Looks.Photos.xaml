@@ -55,6 +55,7 @@
   <SolidColorBrush x:Key="Dark.HoverFill" Color="#0FFFFFFF"/>
   <SolidColorBrush x:Key="Dark.ControlFill" Color="#0FFFFFFF"/>
   <SolidColorBrush x:Key="Dark.ControlEdge" Color="#12FFFFFF"/>
+  <SolidColorBrush x:Key="Dark.OutlineEdge" Color="#12FFFFFF"/>
   <SolidColorBrush x:Key="Dark.ControlText" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="Dark.ControlHoverText" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="Dark.FloatBg" Color="#F22C2C2C"/>
@@ -114,6 +115,7 @@
   <SolidColorBrush x:Key="Light.HoverFill" Color="#0A000000"/>
   <SolidColorBrush x:Key="Light.ControlFill" Color="#B3FFFFFF"/>
   <SolidColorBrush x:Key="Light.ControlEdge" Color="#14000000"/>
+  <SolidColorBrush x:Key="Light.OutlineEdge" Color="#14000000"/>
   <SolidColorBrush x:Key="Light.ControlText" Color="#1A1A1A"/>
   <SolidColorBrush x:Key="Light.ControlHoverText" Color="#1A1A1A"/>
   <SolidColorBrush x:Key="Light.FloatBg" Color="#F5FBFBFB"/>

@@ -214,6 +214,7 @@ namespace FastViewer
             public double From, To, Ms, Elapsed;
             public IEasingFunction Ease;
             public Action Done;
+            public bool Started;
         }
 
         static readonly Dictionary<DependencyObject, Dictionary<DependencyProperty, Tween>> tweens =
@@ -276,7 +277,11 @@ namespace FastViewer
             foreach (var map in new List<Dictionary<DependencyProperty, Tween>>(tweens.Values))
                 foreach (var t in new List<Tween>(map.Values))
                 {
-                    t.Elapsed += dt * 1000;
+                    // A value's first step is never more than one screen frame: whatever was set up in the same
+                    // moment (a page being built, a window resizing) took time it shouldn't lose from its start.
+                    double step = dt * 1000;
+                    if (!t.Started) { t.Started = true; step = Math.Min(step, firstStepCap * 1000); }
+                    t.Elapsed += step;
                     double k = Math.Min(1, t.Elapsed / t.Ms);
                     double eased = t.Ease == null ? k : t.Ease.Ease(k);
                     t.Target.SetValue(t.Property, k >= 1 ? t.To : t.From + (t.To - t.From) * eased);
@@ -438,6 +443,7 @@ namespace FastViewer
         static readonly Dictionary<object, Func<double, bool>> movers = new Dictionary<object, Func<double, bool>>();
         static bool hooked;
         static TimeSpan lastFrame;
+        static double firstStepCap = 1; // seconds: the most a value's first step may count (one frame of the screen)
 
         // step(seconds since the last frame) returns false once it's at rest. A new mover with the same key replaces the old.
         public static void Run(object key, Func<double, bool> step)
@@ -459,6 +465,7 @@ namespace FastViewer
         // Tests (--hunt --case rates): one frame of the given length, as a screen of any refresh rate would give it.
         public static void SimulateFrame(double dt)
         {
+            firstStepCap = dt; // (a simulated screen: its own frame length)
             foreach (var m in new List<KeyValuePair<object, Func<double, bool>>>(movers))
             {
                 bool more;
@@ -477,6 +484,7 @@ namespace FastViewer
             double dt = lastFrame == TimeSpan.Zero ? 1.0 / ScreenRate : Math.Min(0.05, (now - lastFrame).TotalSeconds);
             if (lastFrame != TimeSpan.Zero && frameTimes.Count < 2000) frameTimes.Add((now - lastFrame).TotalSeconds);
             lastFrame = now;
+            firstStepCap = 1.0 / ScreenRate;
             foreach (var m in new List<KeyValuePair<object, Func<double, bool>>>(movers))
             {
                 bool more;
