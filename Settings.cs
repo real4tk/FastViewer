@@ -82,7 +82,10 @@ namespace FastViewer
                     foreach (var id in v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)) hiddenButtons.Add(id.Trim());
                     break;
                 case "gridNames": gridNames = v == "1"; break;
+                case "topMenu": LoadMenuLine(false, v); break;
+                case "videoMenu": LoadMenuLine(true, v); break;
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
+                case "gridSort": gridSort = Math.Max(0, Math.Min(GridSortNames.Length - 1, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 default:
                     if (LoadCustomOption(key, v)) { } // the custom look (CustomLook.cs)
                     else if (key.StartsWith("key.")) savedKeys[key.Substring(4)] = v;
@@ -134,11 +137,12 @@ namespace FastViewer
                 "hide=" + string.Join(",", hiddenButtons),
                 "gridNames=" + (gridNames ? "1" : "0"),
                 "gridSize=" + gridSize.ToString(CultureInfo.InvariantCulture),
+                "gridSort=" + gridSort.ToString(CultureInfo.InvariantCulture),
                 "lastUpdateCheck=" + lastUpdateCheck.Ticks.ToString(CultureInfo.InvariantCulture),
                 "miniLong=" + miniLong.ToString(CultureInfo.InvariantCulture),
                 "miniLeft=" + miniLeft.ToString(CultureInfo.InvariantCulture),
                 "miniTop=" + miniTop.ToString(CultureInfo.InvariantCulture)
-            }.Concat(CustomLines());
+            }.Concat(new[] { MenuLine(false), MenuLine(true) }.Where(x => x != null)).Concat(CustomLines());
         }
 
         bool PassesFilter(string f)
@@ -356,9 +360,9 @@ namespace FastViewer
                 "Show a confirmation before moving a file to the Recycle Bin.",
                 Toggle(() => confirmDelete, v => confirmDelete = v));
 
-            AddCard("\uE7AD", "When you rotate a photo",
-                "\"Only how it's shown\" leaves the file alone. \"Also save it to the file\" turns the photo for good, like Photos does " +
-                "(JPEGs without any quality loss). Videos are never changed; use \"Make compatible copy\" for an upright copy.",
+            AddCard("\uE7AD", "When you rotate a photo or video",
+                "\"Only how it's shown\" leaves the file alone. \"Also save it to the file\" turns it for good, like Photos does " +
+                "(JPEGs, MP4 and MOV videos without any quality loss). Either way FastViewer remembers the turn.",
                 Dropdown(new[] { "Only how it's shown", "Also save it to the file" },
                     () => saveRotation ? 1 : 0, i => saveRotation = i == 1));
 
@@ -736,6 +740,8 @@ namespace FastViewer
             ResetZoom(s);
             double before = FitScale(s);       // screen pixels per picture pixel, before turning
             rotations[file] = to;
+            // Remembered across restarts and updates, unless it's how the file itself is stored anyway.
+            TurnMemory.Set(file, to == (s.IsVideo ? VideoInfo.Rotation(file) : 0) ? (int?)null : to);
             AfterPhotoRotated(file); // saved into the file a moment later (if that's on), even if you switch away first
             RequestStripUpdate(); // its thumbnail turns too
 

@@ -225,6 +225,9 @@ namespace FastViewer
                 var r = Application.Current.Resources;
                 foreach (var part in parts.Concat(parts.Contains("Accent") ? new[] { "AccentText" } : new string[0]))
                     r[part] = Looks.Custom.Source[(light ? "Light." : "Dark.") + part];
+                object knob = Looks.Custom.Source[(light ? "Light." : "Dark.") + "SwitchKnobOn"];
+                if (knob != null) r["SwitchKnobOn"] = knob;
+                Looks.KeepSwitchKnobVisible(r); // a dark accent with a dark knob: the knob turns light
             }
             CustomChanged(save, false);
         }

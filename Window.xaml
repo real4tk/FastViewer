@@ -347,20 +347,37 @@
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
+        <Grid x:Name="GridSearchBox" Grid.Column="2" Width="220" Height="32" Margin="0,0,8,0">
+          <TextBox x:Name="GridSearch" Style="{StaticResource SettingsTextBox}" Padding="15,0,13,0" AutomationProperties.Name="Search by name" ToolTip="Search by name (Ctrl+F)"/>
+          <fv:Glyph Code="&#xE721;" Size="13" HorizontalAlignment="Left" Margin="10,0,0,0" IsHitTestVisible="False" Foreground="{DynamicResource TextSecondary}"/>
+          <TextBlock x:Name="GridSearchHint" Text="Search by name" Margin="31,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" Foreground="{DynamicResource TextSecondary}" FontSize="13"/>
+          <Button x:Name="GridSearchClear" Style="{StaticResource Subtle}" Width="24" Height="24" Padding="0" HorizontalAlignment="Right" Margin="0,0,4,0" Visibility="Collapsed" ToolTip="Clear the search (Esc)" AutomationProperties.Name="Clear the search">
+            <fv:Glyph Code="&#xE711;" Size="10"/>
+          </Button>
+        </Grid>
+        <Button x:Name="GridSortBtn" Grid.Column="3" Style="{StaticResource Filled}" Height="32" Margin="0,0,8,0" ToolTip="Sort the grid">
+          <StackPanel Orientation="Horizontal">
+            <fv:Glyph Code="&#xE8CB;" Size="14"/>
+            <TextBlock x:Name="GridSortText" Margin="10,0,14,0" VerticalAlignment="Center"/>
+            <fv:Glyph Code="&#xE70D;" Size="10"/>
+          </StackPanel>
+        </Button>
         <Button x:Name="GridBackBtn" Style="{StaticResource Subtle}" ToolTip="Back (Esc)">
           <fv:Glyph Code="&#xE72B;"/>
         </Button>
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="10,0,12,0" TextTrimming="CharacterEllipsis">
           <Run x:Name="GridFolder" FontSize="20" FontFamily="{DynamicResource Font.Title}" FontWeight="{DynamicResource Weight.Title}"/><Run x:Name="GridCount" FontSize="13" Foreground="{DynamicResource TextSecondary}"/>
         </TextBlock>
-        <Button x:Name="GridNamesBtn" Grid.Column="2" Style="{StaticResource Filled}" Height="32" Margin="0,0,8,0">
+        <Button x:Name="GridNamesBtn" Grid.Column="4" Style="{StaticResource Filled}" Height="32" Margin="0,0,8,0">
           <StackPanel Orientation="Horizontal">
             <fv:Glyph x:Name="GridNamesIcon" Code="&#xE73E;" Size="12" Margin="0,0,8,0"/>
             <TextBlock Text="Names" VerticalAlignment="Center"/>
           </StackPanel>
         </Button>
-        <Button x:Name="GridSizeBtn" Grid.Column="3" Style="{StaticResource Filled}" Height="32" ToolTip="Thumbnail size (Ctrl + mouse wheel)">
+        <Button x:Name="GridSizeBtn" Grid.Column="5" Style="{StaticResource Filled}" Height="32" ToolTip="Thumbnail size (Ctrl + mouse wheel)">
           <StackPanel Orientation="Horizontal">
             <fv:Glyph Code="&#xF0E2;" Size="14"/>
             <TextBlock x:Name="GridSizeText" Margin="10,0,14,0" VerticalAlignment="Center"/>

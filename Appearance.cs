@@ -395,6 +395,7 @@ namespace FastViewer
             resetButtons.SetResourceReference(StyleProperty, "Filled");
             resetButtons.Click += delegate { ApplyPreset(0); };
             AddCard("", "Reset to default", "Show all buttons again.", resetButtons);
+            AddMenuSettings();
             foreach (var refresh in settingsRefresh) refresh();
         }
 

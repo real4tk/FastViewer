@@ -1,4 +1,4 @@
-FastViewer 1.20.0 - a fast photo, video and music viewer for Windows 10 and 11
+FastViewer 1.21.0 - a fast photo, video and music viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -33,6 +33,7 @@ Trimming a video
 All files in the folder
   G (or the grid button in the bottom bar) shows every photo and video in the folder as
   thumbnails, in File Explorer's order. Click one to open it; arrows + Enter work too. Names shows file names.
+  Type in the search box (Ctrl + F) to find files by name; Sort orders them by name, date, size or length.
   Ctrl + mouse wheel makes the thumbnails bigger or smaller. Esc goes back.
   Settings > Viewing > Thumbnail strip adds a band of thumbnails under the picture.
 
@@ -54,7 +55,7 @@ Handy keys
 
 Settings are in the "..." menu at the top. Appearance picks a look (Photos, Clean, Liquid Glass,
 Midnight; dark or light) and how much moves (Animations); Custom look lets you make your own (colours,
-font, shapes, motion) and share it as a .fvlook file; Buttons picks which buttons you see. Every option has a short explanation;
+font, shapes, motion) and share it as a .fvlook file; Buttons picks which buttons you see and what the "..." menus list. Every option has a short explanation;
 every action's keys can be changed in Settings > Keyboard (two keys each), and the mouse
 buttons in Settings > Mouse. Esc always goes back. X shuffles the folder.
 Closing FastViewer keeps it ready in the background (icon by the clock) so files open instantly.
@@ -62,6 +63,7 @@ Each file you open from File Explorer while FastViewer is open gets a window of 
 Music (.mp3 .m4a .wav .flac ...) plays too, with its album cover, title and artist.
 Point at FastViewer's taskbar icon for Previous / Play-Pause / Next buttons.
 Right-click an MP3's music view to change its cover. Settings > Viewing > Show picks photos, videos and/or music.
+Rotating a video or photo is remembered; Settings > Viewing can save the turn into the file (JPEG, MP4, MOV: no quality lost).
 Playback speed (0.25x to 5x): video "..." menu; pick which speeds it lists in Settings > Videos.
 Videos that don't play or get no thumbnail elsewhere: video "..." -> "Make compatible copy".
 iPhone videos (HEVC) need "HEVC Video Extensions" from the Microsoft Store, same as the Photos app.

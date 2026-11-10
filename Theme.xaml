@@ -196,7 +196,7 @@
             <Trigger Property="IsChecked" Value="True">
               <Setter TargetName="Label" Property="Text" Value="On"/>
               <Setter TargetName="Track" Property="Background" Value="{DynamicResource Accent}"/>
-              <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+              <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource SwitchOnEdge}"/>
               <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource SwitchKnobOn}"/>
               <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
               <Setter TargetName="Knob" Property="Margin" Value="0,0,4,0"/>

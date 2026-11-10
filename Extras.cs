@@ -162,7 +162,7 @@ namespace FastViewer
 
         void AfterPhotoRotated(string file)
         {
-            if (!saveRotation || file == null || IsVideoFile(file)) return;
+            if (!saveRotation || file == null || IsAudioFile(file)) return;
             rotationsToSave.Add(file);
             rotationSaveTimer.Stop();
             rotationSaveTimer.Tick -= OnRotationSaveTimer;
@@ -190,12 +190,13 @@ namespace FastViewer
         // keeps its place in the folder.
         void SaveRotationToFile()
         {
-            if (shown != null && !shown.IsVideo && !shown.Failed) SaveRotationToFile(shown.File);
+            if (shown != null && !shown.IsAudio && !shown.Failed) SaveRotationToFile(shown.File);
         }
 
         void SaveRotationToFile(string file)
         {
             int turn;
+            if (file != null && IsVideoFile(file) && !IsAudioFile(file)) { rotationsToSave.Remove(file); SaveVideoTurnToFile(file); return; }
             if (file == null || IsVideoFile(file) || !rotations.TryGetValue(file, out turn) || turn == 0) return;
             rotationsToSave.Remove(file);
             string ext = Path.GetExtension(file).ToLowerInvariant(), name = Path.GetFileName(file);
@@ -214,6 +215,7 @@ namespace FastViewer
                 Thumbs.RebuildCachedThumbnails(file, delegate { Dispatcher.BeginInvoke(new Action(delegate { RefreshThumbnail(file); })); });
 
                 rotations.Remove(file);
+                TurnMemory.Set(file, null);
                 // The player holding it (on screen, or ready next to it) shows the saved file, upright.
                 foreach (var s in slots)
                 {
@@ -299,7 +301,8 @@ namespace FastViewer
         bool CanSaveRotation()
         {
             int turn;
-            return shown != null && !shown.IsVideo && !shown.Failed && rotations.TryGetValue(shown.File, out turn) && turn != 0;
+            if (shown == null || shown.IsAudio || shown.Failed || !rotations.TryGetValue(shown.File, out turn)) return false;
+            return shown.IsVideo ? CanTurnInFile(shown.File) && VideoInfo.Rotation(shown.File) != turn : turn != 0;
         }
 
         static System.Windows.Controls.MenuItem Enabled(System.Windows.Controls.MenuItem item, bool on)

@@ -87,7 +87,7 @@ namespace FastViewer
         double PhotoAngle(string file)
         {
             int angle;
-            return !IsVideoFile(file) && rotations.TryGetValue(file, out angle) ? angle : 0;
+            return IsVideoFile(file) ? 0 : rotations.TryGetValue(file, out angle) ? angle : (TurnMemory.Get(file) ?? 0);
         }
 
         // Shows `file` on a tile: from memory right away, otherwise asks the thumbnail thread.
@@ -245,6 +245,7 @@ namespace FastViewer
             StopSlideshow();
             gridOpen = true;
             gridPage.Visibility = Visibility.Visible;
+            if (gridSearch.Text.Length > 0) { gridSearch.Text = ""; gridQuery = ""; gridSearchTimer.Stop(); } // every visit starts with the whole folder
             PlaceBars(); // looks with floating bars dock them while the grid is open
             Motion.Show(gridPage, 0, 0, 1, Motion.Normal);
             gridPage.UpdateLayout(); // so the grid knows its width
@@ -335,13 +336,12 @@ namespace FastViewer
                 gridFiles.AddRange(files.Where(f => !listed.Contains(f)));
             }
             else gridFiles = new List<string>(files);
+            gridFiles = SearchAndSort(gridFiles);
             gridSelected = Math.Max(0, gridFiles.FindIndex(f => string.Equals(f, keep, StringComparison.OrdinalIgnoreCase)));
 
             string folder = CurrentFile == null ? "" : Path.GetDirectoryName(CurrentFile);
             F<Run>("GridFolder").Text = Path.GetFileName(folder.TrimEnd('\\')).Length > 0 ? Path.GetFileName(folder.TrimEnd('\\')) : folder;
-            int n = gridFiles.Count;
-            string kind = filter == 3 ? (n == 1 ? "video" : "videos") : filter == 2 ? (n == 1 ? "photo" : "photos") : filter == 4 ? (n == 1 ? "song" : "songs") : (n == 1 ? "item" : "items");
-            F<Run>("GridCount").Text = "    " + n + " " + kind + (shuffled ? "  ·  shuffle stays on" : "");
+            UpdateGridCount();
 
             foreach (var t in gridShown.Values)
             {

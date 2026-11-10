@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.20.0)
+# FastViewer: complete feature list (version 1.21.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,11 +12,11 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.2 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
-- Settings in %APPDATA%\FastViewer\settings.ini, resume places in positions.txt, crash reasons in
+- Settings in %APPDATA%\FastViewer\settings.ini, resume places in positions.txt, remembered turns in rotations.txt, crash reasons in
   %TEMP%\FastViewer\crash.txt.
 
 ## File types
@@ -89,7 +89,14 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Files that can't be opened: a plain explanation (empty file, damaged, incomplete download, path too long,
   in use by another app, HEVC codec missing...) plus an "Open with another app" button.
 
-## "..." menu (top bar)
+## "..." menus (top bar and video bar)
+- Customizable (1.21.0, Menus.cs): Settings > Buttons > "..." menus lists every item of the top menu and the video menu
+  with up/down buttons and a switch; settings lines topMenu= / videoMenu= (ids in order, "-" = off; written only when
+  different from the usual menus; unknown or repeated ids skipped, items new in a later version added at the end, shown).
+  Not part of look files. A line goes between groups (top: File/View, video: speeds / repeat+frames / steps+loop / cover /
+  trim+copy); the top menu keeps its File/View headings while each group's items sit together. Settings always stays last in
+  the top menu; "Stop A-B loop" follows the last loop item shown; an empty video menu offers "Choose what's here in Settings
+  > Buttons". Reset the menus. Test: --case menus (with --settings).
 - File: Save as, Copy, Copy file path, Show in folder, Delete.
 - View: Rotate, Save rotation to file, Mini player, Keep on top, Slideshow, Shuffle, All files in folder,
   File info; "Hidden buttons" section for buttons switched off in Settings > Buttons; Settings.
@@ -147,7 +154,16 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Copy frame (1.20.0, video "..." menu or Ctrl+Shift+C): the frame on screen (up to 4K wide, turned as shown) goes on the
   clipboard as a picture and as PNG; the video keeps playing.
 - Phone rotation metadata in MP4/MOV is read and applied (videos filmed upright show upright).
-- Rotate videos for viewing (Ctrl+R).
+- Rotate videos for viewing (Ctrl+R). Every turn not saved into the file is remembered in rotations.txt (1.21.0, Rotations.cs
+  TurnMemory: "degrees|size|path", 1000 most recent, shared by windows, re-read at most once a second; the size must match;
+  before 1.21 turns lived only in memory and were lost on an update or quit). Tests keep it in memory unless --rotations <file>.
+- Save a video's turn into the file (1.21.0, "Also save it to the file" or "..." > Save rotation to file; .mp4 .m4v .mov .3gp .3g2):
+  the track header (tkhd) display matrix of every video track is rewritten in place, phone style [cos sin 0 / -sin cos 0 / x y 1]
+  with the move from the track's width/height (VideoInfo.WriteTurn); nothing else changes (streams byte-identical: ffmpeg -c copy
+  md5 equal). Copy to <video>.fvturn.tmp, checked (same length, rotation reads back), swapped in with SwapInFile (shared with
+  Change cover: two renames, rolled back on failure, creation time/attributes kept, date +10 ms), players let go first and
+  reopen at the same place (still playing if they were); Windows' thumbnails rebuilt. A turn made while saving is saved after.
+  The save thread is a foreground thread, so quitting waits for the swap. Test: --case vturn (run twice, --rotations).
 
 ## Navigation and keyboard (all keys can be changed, two per action)
 - Default keys: Next Right/PageDown, Previous Left/PageUp, First Home, Last End, Shuffle X, Grid G,
@@ -171,7 +187,13 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 ## Grid view and thumbnail strip
 - All files in the folder (G or the grid button): thumbnails from Windows' own thumbnail cache, in folder
   order with your Show filter; Small / Medium / Large (or Ctrl+wheel); Names button shows file names;
-  arrow keys + Enter, click to open, Esc or mouse back button to leave. Only visible rows are built, so
+  arrow keys + Enter, click to open, Esc or mouse back button to leave.
+- Search (1.21.0, GridSearch.cs): box in the grid's header (Ctrl+F): file names containing every typed word, any case, 120 ms after
+  the last key; "3 of 5 match ..." in the header; Up/Down/Page/Enter work the grid while typing, Esc clears then leaves the box;
+  cleared each time the grid opens.
+- Sort (1.21.0, settings line gridSort=): Folder order, Name (like File Explorer: 2 before 10), Newest/Oldest first, Largest/Smallest
+  first, Longest/Shortest first (System.Media.Duration from Windows' property system, read once in the background, "getting
+  lengths..."; photos last). Only the grid; the viewer keeps the folder order. Test: --case gridsearch (with --settings). Only visible rows are built, so
   thousands of files are fine. With shuffle on the grid stays in folder order.
 - Thumbnail strip (Settings > Viewing, off by default): small pictures of the files before and after the
   current one under the picture; click to jump; shows the shuffled order when shuffling. Thumbnails load
@@ -204,6 +226,14 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   Liquid Glass (frosted blur-behind window, spring motion, line icons, Inter font),
   Midnight (pure black or pure white, no boxes, thin text, Inter font).
 - Windows accent colour is used for highlights (a grey accent falls back to blue).
+- Switches stay readable with any accent (1.21.0, Looks.KeepSwitchKnobVisible, also on live Custom colour changes): the On knob
+  turns black or white when the look's knob colour is under 2.5:1 on the accent (a dark Custom accent drew a black pill with
+  no knob), and the On track's outline (SwitchOnEdge) becomes the secondary text colour when the accent is under 1.4:1 on the
+  cards. Test: --case switches (with --settings, --motion full): every look and a Custom look on each (plus accents #000000,
+  #2A2A2A, #5A5A5A, #FFFFFF, #F2F2F2) x dark/light x accent palettes grey/blue/orange/Windows', drawn on a card and measured
+  (knob, track, outline), then live in the Settings window with a real switch flipped; switches.png.
+- Menu icons (1.21.0): Copy E8C8, Copy frame EB9F, Make compatible copy E895, Repeat E8EE, Loop A E892, Loop B E893,
+  Change cover E8D6 (line versions in Icons.Lines.xaml).
 - Tips when pointing at a button (Settings > Buttons, on by default): off stops every tooltip; screen-reader
   names and the keys in menus stay.
 - Choose your buttons: switch any top/bottom/video/side button on or off; presets All buttons,
@@ -261,8 +291,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - The page's cards are only built the first time it opens, so starting stays quick.
 
 ## Settings (side menu pages)
-- Appearance (look, dark or light, Animations, Transition between files, mini player volume button), Custom look, Buttons, Viewing (zoom preference, show filter, order, wrap around, thumbnail strip,
-  keep on top, ask before deleting, when you rotate a photo), Videos (continue where you left off,
+- Appearance (look, dark or light, Animations, Transition between files, mini player volume button), Custom look, Buttons (also the "..." menus), Viewing (zoom preference, show filter, order, wrap around, thumbnail strip,
+  keep on top, ask before deleting, when you rotate a photo or video), Videos (continue where you left off,
   autoplay, repeat, when a video ends, dim video, hide controls on paused video, hide controls after,
   skip back/forward, slideshow speed), Keyboard (every action, two keys each, Reset all), Mouse,
   Speed (stay ready in the background, Preload, "Start even faster" = NGen with admin approval),
@@ -300,12 +330,12 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
-  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full),
+  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
 - Options: --preload n, --look <Id>, --strip, --grab-always, --settings <scratch.ini>,
-  --positions <scratch file>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
+  --positions <scratch file>, --rotations <scratch file>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
   --count, --every, --pattern, --front, --motion full|reduced|off (tests run with animations Off unless
   given), --convert <src> <dst> <rotation> [from to].
 - Any run with a "--" option never contacts GitHub.

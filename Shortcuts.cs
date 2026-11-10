@@ -173,13 +173,13 @@ namespace FastViewer
             { "next", "" }, { "previous", "" }, { "first", "" }, { "last", "" }, { "shuffle", "" },
             { "grid", "" }, { "strip", "" }, { "play", "" }, { "skipBack", "" }, { "skipForward", "" },
             { "back5", "" }, { "forward5", "" }, { "frameBack", "" }, { "frameForward", "" },
-            { "loopA", "" }, { "loopB", "" }, { "loopStop", "" }, { "repeat", "" }, { "volumeUp", "" },
+            { "loopA", "\uE892" }, { "loopB", "\uE893" }, { "loopStop", "" }, { "repeat", "" }, { "volumeUp", "" },
             { "volumeDown", "" }, { "mute", "" }, { "speedDown", "" }, { "speedUp", "" }, { "speedNormal", "" },
-            { "trim", "" }, { "saveFrame", "" }, { "compatible", "" }, { "rotate", "" }, { "saveRotation", "" },
+            { "trim", "" }, { "saveFrame", "" }, { "compatible", "\uE895" }, { "rotate", "" }, { "saveRotation", "" },
             { "zoomIn", "" }, { "zoomOut", "" }, { "fit", "" }, { "actualSize", "" }, { "fullscreen", "" },
             { "mini", "" }, { "pin", "" }, { "slideshow", "" }, { "info", "" }, { "open", "" },
             { "saveAs", "" }, { "copy", "" }, { "copyPath", "" }, { "showInFolder", "" }, { "openWith", "" },
-            { "copyFrame", "\uE8C8" }, { "delete", "" }, { "settings", "" }, { "close", "" }
+            { "copyFrame", "\uEB9F" }, { "delete", "" }, { "settings", "" }, { "close", "" }
         };
 
         IEnumerable<string> ShortcutLines()

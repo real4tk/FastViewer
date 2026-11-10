@@ -231,6 +231,48 @@ namespace FastViewer
             return true;
         }
 
+        // Writes a clockwise turn into every video track's header matrix, in place (the matrix has a fixed size,
+        // so no box moves). Same layout phones use: [cos sin 0 / -sin cos 0 / x y 1] with the move that keeps the
+        // turned picture at the origin (x, y from the track's own width and height). False: no video track header.
+        public static bool WriteTurn(Stream fs, int turn)
+        {
+            long moov, moovEnd;
+            if (!FindChild(fs, 0, fs.Length, "moov", out moov, out moovEnd)) return false;
+            long pos = moov, size, header;
+            string type;
+            bool wrote = false;
+            int cos = turn == 0 ? 1 : turn == 180 ? -1 : 0, sin = turn == 90 ? 1 : turn == 270 ? -1 : 0;
+            while (ReadHeader(fs, pos, moovEnd, out size, out type, out header))
+            {
+                long trak = pos + header, trakEnd = pos + size;
+                pos += size;
+                long tkhd, tkhdEnd;
+                if (type != "trak" || !IsVideoTrack(fs, trak, trakEnd) || !FindChild(fs, trak, trakEnd, "tkhd", out tkhd, out tkhdEnd)) continue;
+                fs.Position = tkhd;
+                int version = fs.ReadByte();
+                long matrixAt = tkhd + 4 + (version == 1 ? 32 : 20) + 16;
+                if (matrixAt + 44 > tkhdEnd) continue;
+                var wh = new byte[8];
+                fs.Position = matrixAt + 36;
+                if (fs.Read(wh, 0, 8) != 8) continue;
+                long w = Int(wh, 0), h = Int(wh, 4); // 16.16 fixed point, used as they are
+                long x = turn == 90 ? h : turn == 180 ? w : 0, y = turn == 180 ? h : turn == 270 ? w : 0;
+                var m = new byte[36];
+                PutInt(m, 0, cos << 16); PutInt(m, 4, sin << 16); PutInt(m, 8, 0);
+                PutInt(m, 12, -sin << 16); PutInt(m, 16, cos << 16); PutInt(m, 20, 0);
+                PutInt(m, 24, (int)x); PutInt(m, 28, (int)y); PutInt(m, 32, 1 << 30); // w is 2.30 fixed point
+                fs.Position = matrixAt;
+                fs.Write(m, 0, 36);
+                wrote = true;
+            }
+            return wrote;
+        }
+
+        static void PutInt(byte[] b, int i, int v)
+        {
+            b[i] = (byte)(v >> 24); b[i + 1] = (byte)(v >> 16); b[i + 2] = (byte)(v >> 8); b[i + 3] = (byte)v;
+        }
+
         static bool IsVideoTrack(Stream fs, long start, long end)
         {
             long mdia, mdiaEnd, hdlr, hdlrEnd;

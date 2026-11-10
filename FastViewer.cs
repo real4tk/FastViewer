@@ -1,4 +1,4 @@
-// FastViewer: a fast photo & video viewer for Windows, laid out like the Windows Photos app.
+﻿// FastViewer: a fast photo & video viewer for Windows, laid out like the Windows Photos app.
 //
 // Why switching is instant: the previous and next files are pre-loaded into hidden
 // players, so "next" just swaps which player is visible. The current picture is never
@@ -100,13 +100,14 @@ namespace FastViewer
 
         // The Windows accent colour: its light shade for dark looks (what dark-mode controls use), its dark
         // shade for light looks.
+        public static byte[] TestPalette; // tests: an accent palette instead of Windows' own
         public static Color AccentColor(bool forLight = false)
         {
             try
             {
                 using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent"))
                 {
-                    var p = key == null ? null : key.GetValue("AccentPalette") as byte[];
+                    var p = TestPalette ?? (key == null ? null : key.GetValue("AccentPalette") as byte[]);
                     int i = forLight ? 16 : 4;
                     if (p != null && p.Length >= i + 3)
                     {
@@ -410,6 +411,7 @@ namespace FastViewer
                 else if (args[i] == "--updated") { } // restarted by the updater (see InstallUpdate)
                 else if (args[i] == "--motion" && i + 1 < args.Length) { var m = args[++i].ToLowerInvariant(); motionOverride = m == "full" ? "Full" : m == "reduced" ? "Reduced" : "Off"; }
                 else if (args[i] == "--positions" && i + 1 < args.Length) { PositionsFile = args[++i]; positionsOverride = true; }
+                else if (args[i] == "--rotations" && i + 1 < args.Length) { TurnMemory.Path = args[++i]; TurnMemory.Overridden = true; }
                 else if (args[i] == "--preload" && i + 1 < args.Length) preloadOverride = int.Parse(args[++i]);
                 else if (args[i] == "--features" && i + 1 < args.Length) { snapDir = args[++i]; featureTest = true; }
                 else if (args[i] == "--ui" && i + 1 < args.Length) { snapDir = args[++i]; uiTest = true; }
@@ -444,6 +446,7 @@ namespace FastViewer
             }
             bool testMode = selfTestInterval > 0 || snapDir != null || fadeTestLog != null;
             testRun = args.Any(a => a.StartsWith("--") && a != "--updated"); // any test option: GitHub is never contacted
+            if (testRun && !TurnMemory.Overridden) TurnMemory.Path = null; // tests never touch the real rotations.txt
 
             Title = "FastViewer";
             Width = 1200;
@@ -685,6 +688,7 @@ namespace FastViewer
                 BuildSettingsPage();
                 InitExtras();
                 InitGallery();
+                InitGridSearch();
                 foreach (var name in new[] { "GridScroll", "SettingsScroll", "SettingsNavScroll" }) SmoothWheel(F<ScrollViewer>(name));
                 ApplyButtons();
                 if (!testMode) StartSingleInstance();
@@ -961,10 +965,11 @@ namespace FastViewer
             s.IsVideo = IsVideoFile(file) || s.IsAudio;
             ResetZoom(s);
             // Phones store some videos sideways with a "turn me" note; Windows ignores it, so apply it here.
-            if (s.IsVideo && !s.IsAudio && !rotations.ContainsKey(file))
+            if (!s.IsAudio && !rotations.ContainsKey(file))
             {
-                int stored = VideoInfo.Rotation(file);
-                if (stored != 0) rotations[file] = stored;
+                int? kept = TurnMemory.Get(file); // turned in FastViewer before (also before a restart or update)
+                int stored = kept != null ? kept.Value : s.IsVideo ? VideoInfo.Rotation(file) : 0;
+                if (stored != 0 || kept != null) rotations[file] = stored;
             }
             int angle;
             s.Rotation.BeginAnimation(RotateTransform.AngleProperty, null);
@@ -2292,68 +2297,6 @@ namespace FastViewer
             return new MenuItem { Header = text, Style = (Style)Application.Current.Resources["MenuHeading"] };
         }
 
-        void ShowMoreMenu()
-        {
-            var items = new List<Control>
-            {
-                Heading("File"),
-                Item("Save as", "\uE792", SaveAs, KeyOf("saveAs")),
-                Item("Copy", "\uE8C8", CopyFile, KeyOf("copy")),
-                Item("Copy file path", "\uE71B", CopyPath, KeyOf("copyPath")),
-                Item("Show in folder", "\uE838", ShowInFolder, KeyOf("showInFolder")),
-                Item("Delete", "\uE74D", AskDelete, KeyOf("delete")),
-                new Separator(),
-                Heading("View"),
-                Item("Rotate", "\uE7AD", Rotate, KeyOf("rotate")),
-                Enabled(Item("Save rotation to file", "\uE74E", SaveRotationToFile, KeyOf("saveRotation")), CanSaveRotation()),
-                Item("Mini player", "\uE944", ToggleMini, KeyOf("mini")),
-                Item("Keep on top", pinned ? "\uE73E" : "\uE840", TogglePin, KeyOf("pin")),
-                Item("Slideshow", "\uE786", ToggleSlideshow, KeyOf("slideshow")),
-                Item("Shuffle", shuffled ? "\uE73E" : "\uE8B1", ToggleShuffle, KeyOf("shuffle")),
-                Item("All files in folder", "\uF0E2", OpenGrid, KeyOf("grid")),
-                Item("File info", "\uE946", ToggleInfo, KeyOf("info")),
-            };
-            items.AddRange(HiddenButtonItems(false)); // buttons switched off in Settings > Buttons
-            items.Add(new Separator());
-            items.Add(Item("Settings", "\uE713", OpenSettings, KeyOf("settings")));
-            ShowMenu("MoreBtn", PlacementMode.Bottom, items.ToArray());
-        }
-        void ShowVideoMenu()
-        {
-            var items = new List<Control>();
-            var speedList = Speeds;
-            if (!speedList.Any(x => Math.Abs(x - speed) < 0.01)) speedList = speedList.Concat(new[] { speed }).OrderBy(x => x).ToArray(); // a speed picked before it was hidden stays visible
-            foreach (var s in speedList)
-            {
-                double value = s;
-                items.Add(Item("Speed " + SpeedText(value),
-                               Math.Abs(speed - value) < 0.01 ? "" : null, delegate { SetSpeed(value); }));
-            }
-            items.Add(new Separator());
-            items.Add(Item("Repeat", loop ? "" : null, ToggleLoop, KeyOf("repeat")));
-            bool music = shown != null && shown.IsAudio; // no picture to save, step through or trim
-            if (!music) items.Add(Item("Copy frame", "\uE8C8", CopyFrame, KeyOf("copyFrame")));
-            if (!music) items.Add(Item("Save a frame", "", SaveFrame, KeyOf("saveFrame")));
-            items.Add(new Separator());
-            if (!music) items.Add(Item("Previous frame", "\uE76B", delegate { StepFrame(-1); }, KeyOf("frameBack")));
-            if (!music) items.Add(Item("Next frame", "\uE76C", delegate { StepFrame(1); }, KeyOf("frameForward")));
-            items.Add(Item("Loop from here (A)", "\uE8EE", SetLoopStart, KeyOf("loopA")));
-            items.Add(Item("Loop until here (B)", "\uE8EE", SetLoopEnd, KeyOf("loopB")));
-            if (loopA != null || loopB != null) items.Add(Item("Stop A-B loop", "\uE711", ClearLoop, KeyOf("loopStop")));
-            if (music)
-            {
-                items.Add(new Separator());
-                items.Add(Item("Change cover...", "\uEB9F", ChangeCover));
-            }
-            if (!music)
-            {
-                items.Add(new Separator());
-                items.Add(Item("Trim...", "\uE7A8", StartTrim, KeyOf("trim")));
-                items.Add(Item("Make compatible copy...", "\uE8C8", MakeCompatibleCopy, KeyOf("compatible")));
-            }
-            items.AddRange(HiddenButtonItems(true));
-            ShowMenu("VideoMoreBtn", PlacementMode.Top, items.ToArray());
-        }
 
         void ShowZoomMenu()
         {
@@ -2718,6 +2661,9 @@ namespace FastViewer
             }
             if (gridOpen)
             {
+                var searchKey = HandleGridSearchKey(e); // typing in the search box
+                if (searchKey == true) { e.Handled = true; return; }
+                if (searchKey == false) return;
                 if (HandleGridKey(e)) e.Handled = true;
                 return;
             }
@@ -2849,6 +2795,7 @@ namespace FastViewer
                     hiddenButtons.Clear();
                     custom.Clear();
                     ResetMouseActions();
+                    ResetMenuLayout(); // no menu line = the usual menus
                 }
                 var bad = new List<string>();
                 foreach (var line in File.ReadAllLines(SettingsFile))
@@ -2926,6 +2873,7 @@ namespace FastViewer
             ApplyStretch();
             ApplyStrip();
             F<TextBlock>("GridSizeText").Text = GridSizeNames[gridSize];
+            F<TextBlock>("GridSortText").Text = GridSortShort[gridSort];
             UpdateGridNamesButton();
             ApplyButtons(); // also the video controls and the dimming
             foreach (var refresh in settingsRefresh) refresh();

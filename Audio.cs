@@ -137,7 +137,7 @@ namespace FastViewer
             e.Handled = true;
             if (huntMenuHook != null) { Log("right-click on the cover: Change cover menu"); return; } // tests: never a real menu
             var menu = new ContextMenu { PlacementTarget = stage, Placement = PlacementMode.MousePoint };
-            menu.Items.Add(Item("Change cover...", "\uEB9F", ChangeCover));
+            menu.Items.Add(Item("Change cover...", "\uE8D6", ChangeCover));
             openMenus++;
             menu.Closed += delegate { openMenus--; };
             menu.IsOpen = true;
@@ -319,27 +319,8 @@ namespace FastViewer
                     }
                 }
                 coverSteps += " checked " + sw.ElapsedMilliseconds;
-                // Swap it in with two renames (instant, also while a player is still letting go of the file):
-                // original -> backup name, new copy -> original name. If the second fails, the original goes back.
-                string old = file + ".fvcover.old";
-                var created = File.GetCreationTimeUtc(file);
-                var modified = File.GetLastWriteTimeUtc(file);
-                var attributes = File.GetAttributes(file);
-                if (File.Exists(old)) File.Delete(old);
-                int attempt = 0;
-                for (; ; attempt++)
-                {
-                    try { File.Move(file, old); break; }
-                    catch (IOException) { if (attempt >= 20) throw; Thread.Sleep(100); }
-                    catch (UnauthorizedAccessException) { if (attempt >= 20) throw; Thread.Sleep(100); }
-                }
-                try { File.Move(temp, file); }
-                catch { File.Move(old, file); throw; }
+                int attempt = SwapInFile(file, temp, ".fvcover.old"); // two renames; date + 10 ms (see Rotations.cs)
                 coverSteps += " swapped " + sw.ElapsedMilliseconds;
-                // Same place in the folder as before (by date): the date only moves by 10 ms, so Windows notices the change.
-                try { File.SetCreationTimeUtc(file, created); File.SetLastWriteTimeUtc(file, modified.AddMilliseconds(10)); File.SetAttributes(file, attributes); } catch { }
-                try { File.Delete(old); } // (a player still closing it: it goes as soon as that's done)
-                catch { try { File.SetAttributes(old, FileAttributes.Hidden); } catch { } }
                 return attempt;
             }            finally { try { if (File.Exists(temp)) File.Delete(temp); } catch { } }
         }

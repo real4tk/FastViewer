@@ -114,6 +114,40 @@ namespace FastViewer
                 target["Accent"] = accent;
             }
             target["Look.IsLight"] = light;
+            KeepSwitchKnobVisible(target);
+        }
+
+        // A switch's On knob sits on the accent. Looks pick one knob colour for their usual accent, but the accent can be
+        // anything (Windows' own, or a Custom look's): a dark accent with a black knob drew a black pill with no knob.
+        // So when the knob can't be seen on the accent, it becomes black or white, whichever stands out more.
+        internal static void KeepSwitchKnobVisible(ResourceDictionary target)
+        {
+            var accent = target["Accent"] as SolidColorBrush;
+            var knob = target["SwitchKnobOn"] as SolidColorBrush;
+            if (accent == null || knob == null) return;
+            var a = Flatten(accent.Color);
+            // The On track's outline: the accent itself, unless the accent nearly disappears into the cards behind it (a dark
+            // accent on a dark look): then an outline in the text colour, so an On switch never looks like an empty dark blob.
+            var card = target["CardBg"] as SolidColorBrush;
+            var text = target["TextSecondary"] as SolidColorBrush;
+            target["SwitchOnEdge"] = card != null && text != null && Contrast(a, Flatten(card.Color)) < 1.4 ? (object)text : accent;
+            if (Contrast(knob.Color, a) >= 2.5) return;
+            var better = new SolidColorBrush(Contrast(Colors.Black, a) >= Contrast(Colors.White, a) ? Colors.Black : Colors.White);
+            better.Freeze();
+            target["SwitchKnobOn"] = better;
+        }
+
+        static Color Flatten(Color c) { return c.A == 255 ? c : Color.FromRgb((byte)(c.R * c.A / 255), (byte)(c.G * c.A / 255), (byte)(c.B * c.A / 255)); }
+
+        internal static double Contrast(Color a, Color b)
+        {
+            Func<Color, double> lum = c =>
+            {
+                Func<byte, double> ch = v => { double s = v / 255.0; return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4); };
+                return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B);
+            };
+            double l1 = lum(a), l2 = lum(b);
+            return (Math.Max(l1, l2) + 0.05) / (Math.Min(l1, l2) + 0.05);
         }
 
         public static void Apply(Look look, string mode)

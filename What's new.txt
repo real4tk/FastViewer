@@ -5,6 +5,30 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.21.0  (10 Nov 2026)
+  New
+  - Search the grid: type in the search box at the top of "All files" (or press Ctrl+F there) to see only files
+    whose name contains what you type. Several words: all must be in the name. Esc clears the search.
+  - Sort the grid: Folder order, Name, Newest/Oldest first, Largest/Smallest first, Longest/Shortest first
+    (videos and music by length; photos come after them). Only the grid is sorted: the viewer keeps the folder's order.
+  - Choose your menus: Settings > Buttons > "..." menus. Switch items of the top "..." menu and the video "..."
+    menu on or off and move them up or down. Switched-off items keep their keyboard shortcuts. Your menus are not
+    part of a look, so sharing a look never changes someone else's menus.
+  - Rotating a video with "Also save it to the file" (Settings > Viewing, now "When you rotate a photo or video")
+    turns MP4 and MOV videos for good: the turn is written into the file the way phones do it, so File Explorer's
+    thumbnail turns and it plays upright in other players too. Nothing is re-encoded: the picture and sound stay
+    exactly the same. Like Change cover, a new copy is written and checked first and only then swapped in. The
+    video keeps its place when sorted by date, and keeps playing where it was. Also "..." > Save rotation to file.
+  Changed
+  - Menu items that shared an icon now each have their own: Copy frame (a picture), Make compatible copy
+    (convert arrows), Loop from here (start mark), Loop until here (end mark), Change cover (a music note).
+  Fixed
+  - Switches that are On could show as a black pill with no knob when the accent colour is dark (for example
+    a dark accent in a Custom look): the knob now turns white or black, whichever shows, and the switch gets an
+    outline when it would blend into the card behind it.
+  - Turning a video (or a photo, without saving it to the file) is now remembered for good. Before, the turn was
+    forgotten after an update or when FastViewer fully closed.
+
 1.20.0  (10 Nov 2026)
   New
   - Music: FastViewer now plays .mp3, .m4a, .aac, .wav, .flac and .wma files. You see the album cover (or a

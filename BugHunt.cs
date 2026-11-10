@@ -73,6 +73,10 @@ namespace FastViewer
                 case "tips": HuntTips(); break;
                 case "music": HuntMusic(); break;
                 case "cover": HuntCover(); break;
+                case "vturn": HuntVideoTurn(); break;
+                case "gridsearch": HuntGridSearch(); break;
+                case "menus": HuntMenus(); break;
+                case "switches": HuntSwitches(); break;
                 case "taskbar": HuntTaskbar(); break;
                 case "rotsave": HuntRotSave(); break;
                 case "showmigrate": HuntShowMigrate(); break;
@@ -949,6 +953,306 @@ namespace FastViewer
         }
         // 1.20: Change cover (MP3). Folder: song.mp3 (ID3 2.3 with a cover), v24.mp3 (ID3 2.4, no cover), bare.mp3 (no tag),
         // locked.mp3; pictures in a "pics" subfolder: red.png, blue.jpg. Use a scratch copy: the files are changed!
+        // --case vturn (scratch folder of MP4s with a red square top-left; use --rotations <scratch file>): plain.mp4 is
+        // turned without saving (remembered only), a90/a180/a270.mp4 are turned and saved into the file. Run twice:
+        // the second run's "at start" lines show what was remembered or written.
+        void HuntVideoTurn()
+        {
+            string dir = Path.GetDirectoryName(files[0]);
+            Func<BitmapSource, string> red = b =>
+            {
+                if (b == null) return "none";
+                var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0);
+                int w = c.PixelWidth, h = c.PixelHeight; var px = new byte[w * h * 4];
+                c.CopyPixels(px, w * 4, 0);
+                double sx = 0, sy = 0, n = 0;
+                for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) { int i = (y * w + x) * 4; if (px[i + 2] > 180 && px[i + 1] < 80 && px[i] < 80) { sx += x; sy += y; n++; } }
+                return n == 0 ? w + "x" + h + " no red" : w + "x" + h + " red " + (sy / n < h / 2.0 ? "top" : "bottom") + "-" + (sx / n < w / 2.0 ? "left" : "right");
+            };
+            Action<string> go = name => ShowIndex(files.FindIndex(f => Path.GetFileName(f) == name), 1);
+            var names = new[] { "plain.mp4", "a90.mp4", "a180.mp4", "a270.mp4" };
+            int t = 800;
+            foreach (var name in names)
+            {
+                string n = name;
+                After(t, () => go(n));
+                After(t + 1200, () => { int a; rotations.TryGetValue(shown.File, out a); HuntLog("at start " + n + ": shown turned " + a + ", in file " + VideoInfo.Rotation(shown.File) + ", remembered " + TurnMemory.Get(shown.File) + ", Explorer 256 " + red(Thumbs.FromCache(shown.File, 256))); });
+                t += 1800;
+            }
+            if (File.Exists(Path.Combine(dir, "done.txt"))) { After(t, HuntDone); return; }
+            for (int k = 0; k < names.Length; k++)
+            {
+                int kk = k; string n = names[k], f = Path.Combine(dir, n);
+                int turns = kk == 0 ? 1 : kk;
+                DateTime date = DateTime.MinValue; double pos = 0;
+                After(t, () => { go(n); date = File.GetLastWriteTime(f); });
+                After(t + 1200, () =>
+                {
+                    saveRotation = kk != 0;
+                    if (kk == 2) { playing = true; shown.Video.IsMuted = true; shown.Video.Play(); }
+                    for (int i = 0; i < turns; i++) Rotate();
+                    pos = shown.Video.Position.TotalSeconds;
+                    SaveWaitingRotations();
+                });
+                After(t + 7000, () =>
+                {
+                    int a; rotations.TryGetValue(f, out a);
+                    HuntLog(n + " turned " + (turns * 90) + (saveRotation ? " and saved: " + lastVideoTurnResult : " (not saved)") + "; in file " + VideoInfo.Rotation(f) + ", shown " + a + ", remembered " + TurnMemory.Get(f) +
+                        ", date +" + (File.GetLastWriteTime(f) - date).TotalMilliseconds + " ms, leftovers " + Directory.GetFiles(dir, "*.fvturn.*").Length +
+                        ", on screen " + Path.GetFileName(shown.File) + " ready " + shown.Ready + " at " + shown.Video.Position.TotalSeconds.ToString("0.0") + " s (was " + pos.ToString("0.0") + "), playing " + playing +
+                        ", Explorer 256 " + red(Thumbs.FromCache(f, 256)) + ", Windows thumbnail " + red(Thumbs.Make(f, 200)));
+                    lastVideoTurnResult = null;
+                });
+                t += 7600;
+            }
+            After(t, () => { File.WriteAllText(Path.Combine(dir, "done.txt"), "1"); HuntDone(); });
+        }
+
+        // --case gridsearch (folder with clips of different lengths, photos of different sizes; use --settings):
+        // the grid's search box and every sort, plus the keys while typing.
+        void HuntGridSearch()
+        {
+            Func<string> list = () => string.Join(", ", gridFiles.Select(Path.GetFileName)) + "  [" + F<System.Windows.Documents.Run>("GridCount").Text.Trim() + "]";
+            Action<Key> press = k =>
+            {
+                var e = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(this), 0, k) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+                OnKey(this, e);
+                HuntLog("  key " + k + " handled " + e.Handled + ", box focused " + gridSearch.IsKeyboardFocusWithin + ", grid open " + gridOpen);
+            };
+            After(800, () => { OpenGrid(); HuntLog("open, sort " + GridSortNames[gridSort] + ": " + list()); });
+            After(1300, () => { gridSearch.Focus(); gridSearch.Text = "clip"; });
+            After(1700, () => { HuntLog("search 'clip': " + list()); Snap("grid_search"); });
+            After(1800, () => { gridSearch.Text = "CLIP 1"; ApplyGridSearchNow(); HuntLog("search 'CLIP 1' (two words, any case): " + list()); });
+            After(1900, () => { gridSearch.Text = "nothing like this"; ApplyGridSearchNow(); HuntLog("no match: " + list()); });
+            After(2000, () => { gridSearch.Text = "photo"; ApplyGridSearchNow(); press(Key.Down); press(Key.Left); HuntLog("  selected " + gridSelected); });
+            After(2100, () => { press(Key.Escape); HuntLog("after Esc: '" + gridSearch.Text + "' " + list()); press(Key.Escape); press(Key.Escape); });
+            int t = 2600;
+            for (int i = 0; i < GridSortNames.Length; i++)
+            {
+                int s = i;
+                After(t, () => { if (!gridOpen) OpenGrid(); SetGridSort(s); });
+                After(t + 1500, () => HuntLog("sort " + GridSortNames[s] + ": " + list()));
+                t += 1700;
+            }
+            After(t, () => { gridSearch.Text = "clip"; ApplyGridSearchNow(); HuntLog("search + sort: " + list()); press(Key.Enter); HuntLog("  opened " + Path.GetFileName(CurrentFile)); });
+            After(t + 300, () =>
+            {
+                var hook = huntMenuHook;
+                huntMenuHook = (m, b) => HuntLog("sort menu: " + string.Join(" | ", m.Items.OfType<MenuItem>().Select(x => x.Header + (x.Icon != null ? " (ticked)" : ""))));
+                OpenGrid(); ShowGridSortMenu(); huntMenuHook = hook;
+                HuntLog("reopened grid: search '" + gridSearch.Text + "', " + list());
+                SaveSettings(true);
+                HuntLog("settings line: " + File.ReadAllLines(SettingsFile).FirstOrDefault(l => l.StartsWith("gridSort=")));
+                HuntDone();
+            });
+        }
+
+        // --case menus (a video; use --settings): both "..." menus as usual, rearranged, reset; the settings line and its reading.
+        void HuntMenus()
+        {
+            Func<ContextMenu, string> text = m => string.Join(" | ", m.Items.Cast<object>().Select(o => o is Separator ? "--" : o is MenuItem ? ((((MenuItem)o).Style == (Style)Application.Current.Resources["MenuHeading"]) ? "[" + ((MenuItem)o).Header + "]" : (string)((MenuItem)o).Header) : "?"));
+            Action<string> both = step =>
+            {
+                var hook = huntMenuHook;
+                huntMenuHook = (m, b) => HuntLog(step + " " + b.Name + ": " + text(m));
+                ShowMoreMenu(); ShowVideoMenu();
+                huntMenuHook = hook;
+            };
+            Func<string> lines = () => string.Join(" / ", File.ReadAllLines(SettingsFile).Where(l => l.StartsWith("topMenu=") || l.StartsWith("videoMenu=")));
+            After(1200, () =>
+            {
+                both("usual");
+                SaveSettings(true);
+                HuntLog("  settings lines: '" + lines() + "'");
+                topMenuHidden.Add("copyPath"); topMenuHidden.Add("delete");
+                MoveMenuItem(false, topMenuOrder.IndexOf("info"), -topMenuOrder.IndexOf("info")); // to the top, in steps
+                videoMenuHidden.Add("speeds");
+                MoveMenuItem(true, videoMenuOrder.IndexOf("trim"), -1);
+                both("changed");
+                SaveSettings(true);
+                HuntLog("  settings lines: '" + lines() + "'");
+                SetLoopStart();
+                videoMenuHidden.Add("loopB");
+                both("loop set, B hidden");
+                ClearLoop();
+                LoadMenuLine(false, "-grid,bogus,info,info,saveAs");
+                HuntLog("read 'topMenu=-grid,bogus,info,info,saveAs': " + string.Join(",", topMenuOrder.Select(id => topMenuHidden.Contains(id) ? "-" + id : id)));
+                foreach (var id in topMenuOrder.ToList()) topMenuHidden.Add(id);
+                foreach (var id in videoMenuOrder.ToList()) videoMenuHidden.Add(id);
+                both("all off");
+                ResetMenuLayout();
+                both("reset");
+                OpenSettings();
+            });
+            After(2500, () =>
+            {
+                ShowSettingsPage(settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Buttons").Value);
+                menuRows.BringIntoView(); After(300, () => Snap("menus_settings"));
+                HuntLog("Settings > Buttons: " + (menuRows == null ? "no menu rows" : menuRows.Children.Count + " rows, first: " + string.Join(", ", FindAll<TextBlock>(menuRows).Take(4).Select(t => t.Text))));
+            });
+            After(3000, () =>
+            {
+                var down = FindAll<Button>(menuRows).Where(b => (string)b.ToolTip == "Move Save as down").FirstOrDefault();
+                if (down != null) down.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                var sw = FindAll<CheckBox>(menuRows).FirstOrDefault();
+                if (sw != null) { sw.IsChecked = false; sw.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
+                HuntLog("clicked 'Move Save as down' and the first switch: " + string.Join(",", topMenuOrder.Select(id => topMenuHidden.Contains(id) ? "-" + id : id)) + ", focused " + (Keyboard.FocusedElement is Button ? (string)((Button)Keyboard.FocusedElement).ToolTip : "" + Keyboard.FocusedElement));
+                HuntLog("  settings lines: '" + lines() + "'");
+                var strip = new StackPanel();
+                foreach (var lookName in new[] { "Photos", "Glass" })
+                {
+                    lookId = lookName; ApplyLook();
+                    var row = new StackPanel { Orientation = Orientation.Horizontal, Background = (Brush)Application.Current.Resources["MenuBg"] ?? Brushes.Gray };
+                    foreach (var c in VideoChoices.Concat(TopChoices.Where(x => x.Id == "copy")))
+                    {
+                        var g = new Glyph { Code = c.Glyph, Size = 20, Margin = new Thickness(8) };
+                        g.ToolTip = c.Id;
+                        row.Children.Add(g);
+                    }
+                    var bmp = new RenderTargetBitmap(560, 40, 96, 96, PixelFormats.Pbgra32);
+                    row.Measure(new Size(560, 40)); row.Arrange(new Rect(0, 0, 560, 40)); row.UpdateLayout();
+                    bmp.Render(row);
+                    var e2 = new PngBitmapEncoder(); e2.Frames.Add(BitmapFrame.Create(bmp));
+                    using (var fs = File.Create(Path.Combine(snapDir, "icons_" + lookName + ".png"))) e2.Save(fs);
+                }
+                HuntLog("icons in order: " + string.Join(", ", VideoChoices.Select(c => c.Id)) + ", copy");
+                HuntDone();
+            });
+        }
+
+        // --case switches (use --settings): every look (and a Custom look on each) x dark/light x accent palettes: a switch
+        // On and Off drawn on a settings card. Measures the track, the knob and the card, and flags a knob that can't be
+        // seen on its track or an On track that looks like an Off one. Saves switches.png (one row per case).
+        void HuntSwitches()
+        {
+            var palettes = new[]
+            {
+                Tuple.Create("grey (yours)", Hex("9B9A9900848381006D6B6A004C4A4800363533002625240019191900107C1000")),
+                Tuple.Create("blue", Hex("99EBFF004CC2FF000091F8000078D4000067C0003E92FF001A68DE0000B7C300")),
+                Tuple.Create("orange", Hex("FFD5A400FFB16500F7820000DA6A0000B85400008F4000006A2F00E8112300")),
+                Tuple.Create("Windows now", (byte[])null),
+            };
+            var looks = Looks.All.Select(l => Tuple.Create(l.Id, l)).ToList();
+            string savedBase = customBase, savedLook = lookId;
+            var rows = new List<BitmapSource>();
+            int problems = 0, cases = 0;
+            Func<BitmapSource, int, int, Color> at = (b, x, y) =>
+            {
+                var px = new byte[4];
+                b.CopyPixels(new Int32Rect(x, y, 1, 1), px, 4, 0);
+                return Color.FromRgb(px[2], px[1], px[0]);
+            };
+            foreach (var pal in palettes)
+            {
+                Ui.TestPalette = pal.Item2;
+                var list = looks.Concat(looks.Select(l => Tuple.Create("Custom on " + l.Item1, (Look)null))).Concat(new[] { "#000000", "#2A2A2A", "#5A5A5A", "#FFFFFF", "#F2F2F2" }.SelectMany(c => looks.Select(l => Tuple.Create("Custom on " + l.Item1 + " accent " + c, (Look)null)))).ToList();
+                foreach (var entry in list)
+                {
+                    foreach (var light in new[] { false, true })
+                    {
+                        Look look = entry.Item2;
+                        if (look == null)
+                        {
+                            var bits = entry.Item1.Substring(10).Split(' ');
+                            customBase = bits[0];
+                            custom.Clear();
+                            if (bits.Length > 2) { custom["Dark.Accent"] = bits[2]; custom["Light.Accent"] = bits[2]; }
+                            BuildCustomLook(); look = Looks.Custom;
+                        }
+                        if (light && !look.HasLight) continue;
+                        Looks.Apply(look, light ? "Light" : "Dark");
+                        var on = new CheckBox { Style = (Style)Application.Current.Resources["ToggleSwitch"], IsChecked = true };
+                        var off = new CheckBox { Style = (Style)Application.Current.Resources["ToggleSwitch"], IsChecked = false };
+                        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+                        panel.Children.Add(on); panel.Children.Add(off);
+                        off.Margin = new Thickness(20, 0, 0, 0);
+                        var card = Card(panel, new Thickness(10));
+                        card.Width = 240; card.Height = 44;
+                        card.Measure(new Size(240, 44)); card.Arrange(new Rect(0, 0, 240, 44)); card.UpdateLayout();
+                        var rtb = new RenderTargetBitmap(240, 44, 96, 96, PixelFormats.Pbgra32);
+                        rtb.Render(card);
+                        var conv = new FormatConvertedBitmap(rtb, PixelFormats.Bgra32, null, 0);
+                        // On switch: track from x=10+44=54 to 94, knob on the right (centre 94-4-6=84), track sample at 62.
+                        var onPos = on.TranslatePoint(new Point(0, 0), card);
+                        int ox = (int)onPos.X + 44, oy = (int)onPos.Y + 10;
+                        Color trackOn = at(conv, ox + 8, oy), knobOn = at(conv, ox + 30, oy), cardBg = at(conv, 4, 4);
+                        var offPos = off.TranslatePoint(new Point(0, 0), card);
+                        int fx = (int)offPos.X + 44;
+                        Color trackOff = at(conv, fx + 30, oy), knobOff = at(conv, fx + 10, oy);
+                        double knob = Contrast(knobOn, trackOn), track = Contrast(trackOn, cardBg), offKnob = Contrast(knobOff, trackOff);
+                        double edge = Math.Max(Contrast(at(conv, ox + 20, oy - 10), cardBg), Contrast(at(conv, ox + 20, oy - 9), cardBg));
+                        // See-through looks: their cards are glass (the sample hits the bright rim), judged in the live part instead;
+                        // and the iOS-style white Off knob on a pale track in Liquid Glass light is by design.
+                        bool glass = look.Flag("Look.SeeThrough");
+                        bool bad = knob < 2.5 || (!glass && track < 1.4 && edge < 2) || (offKnob < 2 && !(glass && light));
+                        cases++;
+                        if (bad) problems++;
+                        HuntLog((bad ? "PROBLEM " : "ok      ") + pal.Item1 + " / " + entry.Item1 + " / " + (light ? "light" : "dark") +
+                            ": on track #" + Hx(trackOn) + " knob #" + Hx(knobOn) + " (" + knob.ToString("0.0") + ":1), card #" + Hx(cardBg) + " (" + track.ToString("0.0") + ":1), outline " + edge.ToString("0.0") + ":1; off knob " + offKnob.ToString("0.0") + ":1" +
+                            ", Accent #" + Hx(((SolidColorBrush)Application.Current.Resources["Accent"]).Color));
+                        if (rows.Count < 200) rows.Add(conv);
+                    }
+                }
+            }
+            Ui.TestPalette = null;
+            custom.Clear(); customBase = savedBase; lookId = savedLook; BuildCustomLook(); ApplyLook();
+            HuntLog(cases + " cases, " + problems + " problems (drawn on their own)");
+            // Live: the real Settings page in the window, a real switch flipped off and on (with its slide and squish).
+            OpenSettings();
+            ShowSettingsPage(settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Buttons").Value);
+            int t = 600;
+            foreach (var pal in palettes) foreach (var l in Looks.All) foreach (var light in new[] { false, true })
+            {
+                if (light && !l.HasLight) continue;
+                var p = pal; var look = l; bool lt = light;
+                CheckBox sw = null;
+                After(t, () =>
+                {
+                    Ui.TestPalette = p.Item2; lookId = look.Id; lookMode = lt ? "Light" : "Dark"; ApplyLook();
+                    sw = FindAll<CheckBox>(settingsPage == null ? (DependencyObject)root : root).FirstOrDefault(c => c.IsVisible && c.Style == (Style)Application.Current.Resources["ToggleSwitch"] && c.IsChecked == true);
+                    if (sw == null) return;
+                    sw.IsChecked = false; sw.IsChecked = true; // slides back to On
+                    var press = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent };
+                    sw.RaiseEvent(press); // the press squish (Liquid Glass)
+                    var up = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent };
+                    sw.RaiseEvent(up);
+                });
+                After(t + 900, () =>
+                {
+                    if (sw == null) { HuntLog("live " + p.Item1 + " / " + look.Id + ": no switch found"); return; }
+                    int w = (int)root.ActualWidth, h = (int)root.ActualHeight;
+                    var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+                    rtb.Render(root);
+                    var conv = new FormatConvertedBitmap(rtb, PixelFormats.Bgra32, null, 0);
+                    var o = sw.TranslatePoint(new Point(44, 10), root);
+                    int ox = (int)o.X, oy = (int)o.Y;
+                    Color trackOn = at(conv, ox + 8, oy), knobOn = at(conv, ox + 30, oy), around = at(conv, ox - 50, oy);
+                    double knob = Contrast(knobOn, trackOn), track = Contrast(trackOn, around);
+                    bool bad = knob < 2.5 || track < 1.4;
+                    var mv = sw.Template.FindName("KnobMove", sw) as TranslateTransform;
+                    var kn = sw.Template.FindName("Knob", sw) as FrameworkElement;
+                    HuntLog((bad ? "PROBLEM live " : "ok      live ") + p.Item1 + " / " + look.Id + " / " + (lt ? "light" : "dark") + ": track #" + Hx(trackOn) + " knob #" + Hx(knobOn) + " (" + knob.ToString("0.0") + ":1), card #" + Hx(around) + " (" + track.ToString("0.0") + ":1), knob moved " + (mv == null ? "?" : mv.X.ToString("0.0")) + ", knob size " + (kn == null ? "?" : kn.ActualWidth + "x" + kn.ActualHeight) + ", switch scale " + sw.RenderTransform.Value.M11.ToString("0.00"));
+                    if (look.Id == "Photos" && !lt) { var enc2 = new PngBitmapEncoder(); enc2.Frames.Add(BitmapFrame.Create(rtb)); using (var fs = File.Create(Path.Combine(snapDir, "live_" + p.Item1.Split(' ')[0] + ".png"))) enc2.Save(fs); }
+                });
+                t += 1100;
+            }
+            After(t, () =>
+            {
+                Ui.TestPalette = null; lookId = savedLook; ApplyLook();
+                var sheet = new DrawingVisual();
+                using (var dc = sheet.RenderOpen()) for (int i = 0; i < rows.Count; i++) dc.DrawImage(rows[i], new Rect((i / 40) * 250, (i % 40) * 46, 240, 44));
+                var all = new RenderTargetBitmap(((rows.Count + 39) / 40) * 250, 40 * 46, 96, 96, PixelFormats.Pbgra32);
+                all.Render(sheet);
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(all));
+                using (var fs = File.Create(Path.Combine(snapDir, "switches.png"))) enc.Save(fs);
+                HuntDone();
+            });
+        }
+
+        static byte[] Hex(string s) { var b = new byte[s.Length / 2]; for (int i = 0; i < b.Length; i++) b[i] = Convert.ToByte(s.Substring(i * 2, 2), 16); return b; }
+        static string Hx(Color c) { return c.R.ToString("X2") + c.G.ToString("X2") + c.B.ToString("X2"); }
+
         void HuntCover()
         {
             string dir = Path.GetDirectoryName(files[0]);
