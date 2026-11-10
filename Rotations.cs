@@ -191,7 +191,35 @@ namespace FastViewer
         // Puts temp in file's place with two renames (original -> backup name, temp -> original; rolled back if the
         // second fails). Creation time and attributes are kept; the date moves by 10 ms, so the file keeps its place
         // by date but Windows notices the change (its thumbnails are kept by file and date). Returns the 100 ms waits.
-        internal static int SwapInFile(string file, string temp, string backupSuffix)
+        internal static bool RealBin;   // --real-bin: a test run that does use the real one
+        internal static string TestBin; // test runs: "recycled" files go to this folder, not the real Recycle Bin
+
+        // Sends a file to the Recycle Bin. Where that can't be (a drive without one, a file too big for it) Windows
+        // itself asks before deleting for good; a "No" there leaves the file alone.
+        internal static void Recycle(string file)
+        {
+            if (TestBin != null && !RealBin)
+            {
+                Directory.CreateDirectory(TestBin);
+                string to = Path.Combine(TestBin, Path.GetFileName(file));
+                for (int n = 2; File.Exists(to); n++) to = Path.Combine(TestBin, n + " " + Path.GetFileName(file));
+                File.Move(file, to);
+                return;
+            }
+            var op = new ShFileOp
+            {
+                Func = 3,           // FO_DELETE
+                From = file + "\0", // list must end with a double null
+                Flags = 0x40 | 0x10 | 0x400 | 0x4 | 0x4000 // allow undo (Recycle Bin), no confirm, no error UI, silent, but warn before deleting for good
+            };
+            int result = SHFileOperation(ref op);
+            if (op.Aborted || result == 1223)
+                throw new InvalidOperationException("the original can't go to the Recycle Bin from here, so it was left as it is. Use \"Save a copy\" instead.");
+            if (result != 0 || File.Exists(file)) throw new IOException("the original is in use");
+        }
+
+        // recycle: the original goes to the Recycle Bin (under its own name, so it can be put back) instead of being replaced for good.
+        internal static int SwapInFile(string file, string temp, string backupSuffix, bool recycle = false)
         {
             string old = file + backupSuffix;
             var created = File.GetCreationTimeUtc(file);
@@ -199,6 +227,33 @@ namespace FastViewer
             var attributes = File.GetAttributes(file);
             if (File.Exists(old)) File.Delete(old);
             int attempt = 0;
+            if (recycle)
+            {
+                for (; ; attempt++) // (a player may need a moment to let go of the file)
+                {
+                    try { Recycle(file); break; }
+                    catch (IOException)
+                    {
+                        if (attempt >= 50) throw new IOException("the original is in use and couldn't be moved to the Recycle Bin, so nothing was changed.");
+                        Thread.Sleep(100);
+                    }
+                }
+                for (int n = 0; ; n++)
+                {
+                    try { File.Move(temp, file); break; }
+                    catch (Exception)
+                    {
+                        if (n < 30) { Thread.Sleep(100); continue; }
+                        string kept = Path.Combine(Path.GetDirectoryName(file), Path.GetFileNameWithoutExtension(file) + " (cropped)" + Path.GetExtension(file));
+                        try { if (!File.Exists(kept)) { File.Move(temp, kept); throw new IOException("the original is in the Recycle Bin and the new file is saved as " + Path.GetFileName(kept) + "."); } }
+                        catch (IOException) { throw; }
+                        catch { }
+                        throw new IOException("the new file couldn't take the original's place. The original is in the Recycle Bin: put it back from there.");
+                    }
+                }
+                try { File.SetCreationTimeUtc(file, created); File.SetLastWriteTimeUtc(file, modified.AddMilliseconds(10)); File.SetAttributes(file, attributes); } catch { }
+                return attempt;
+            }
             for (; ; attempt++) // right after Windows read the file (a thumbnail), renaming can wait a few seconds
             {
                 try { File.Move(file, old); break; }

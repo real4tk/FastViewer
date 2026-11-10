@@ -74,6 +74,9 @@ namespace FastViewer
                 case "music": HuntMusic(); break;
                 case "cover": HuntCover(); break;
                 case "vturn": HuntVideoTurn(); break;
+                case "share": HuntShare(); break;
+                case "crop": HuntCrop(); break;
+                case "tracks": HuntTracks(); break;
                 case "gridsearch": HuntGridSearch(); break;
                 case "menus": HuntMenus(); break;
                 case "switches": HuntSwitches(); break;

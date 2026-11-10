@@ -136,10 +136,14 @@ namespace FastViewer
         {
             var bar = F<FrameworkElement>("TrimBar");
             bar.Width = Math.Max(260, Math.Min(900, stage.ActualWidth - 32));
-            bool narrow = bar.Width < 560;
-            F<FrameworkElement>("TrimHint").Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
+            bool narrow = bar.Width < 720;
+            F<FrameworkElement>("TrimHint").Visibility = bar.Width < 880 ? Visibility.Collapsed : Visibility.Visible;
             F<FrameworkElement>("TrimPlayText").Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
             F<FrameworkElement>("TrimPlayIcon").Margin = new Thickness(0, 0, narrow ? 0 : 8, 0);
+            F<TextBlock>("TrimGifText").Text = narrow ? "GIF" : "Make GIF";
+            F<FrameworkElement>("TrimShareText").Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
+            F<FrameworkElement>("TrimShareIcon").Margin = new Thickness(0, 0, narrow ? 0 : 8, 0);
+            F<FrameworkElement>("TrimIcon").Visibility = bar.Width < 440 ? Visibility.Collapsed : Visibility.Visible;
         }
 
         // Puts the handles, the dimmed parts, the playhead and the times where they belong.

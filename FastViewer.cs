@@ -428,7 +428,8 @@ namespace FastViewer
                 else if (args[i] == "--dim" && i + 1 < args.Length) { snapDir = args[++i]; dimTest = true; }
                 else if (args[i] == "--sync" && i + 1 < args.Length) { snapDir = args[++i]; syncTest = true; }
                 else if (args[i] == "--toast" && i + 1 < args.Length) { snapDir = args[++i]; toastTest = true; }
-                else if (args[i] == "--hunt" && i + 1 < args.Length) { snapDir = args[++i]; huntTest = true; }
+                else if (args[i] == "--hunt" && i + 1 < args.Length) { snapDir = args[++i]; huntTest = true; TestBin = Path.Combine(snapDir, "recycled"); }
+                else if (args[i] == "--real-bin") RealBin = true; // a test that really uses the Recycle Bin
                 else if (args[i] == "--case" && i + 1 < args.Length) huntCase = args[++i];
                 else if (args[i] == "--pattern" && i + 1 < args.Length) huntPattern = args[++i];
                 else if (args[i] == "--count" && i + 1 < args.Length) huntCount = int.Parse(args[++i]);
@@ -1713,10 +1714,10 @@ namespace FastViewer
             UpdateTaskbarButtons();
             bool isVideo = shown != null && shown.IsVideo && !shown.Failed;
             // A small mini player has no room for the control bar; play/pause stays in the middle.
-            transport.Visibility = isVideo && !trimming && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
+            transport.Visibility = isVideo && !trimming && !cropping && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
             if (transport.Visibility != Visibility.Visible || settingsOpen || gridOpen) SetVolumeSlider(false); // nothing left to point at
             bool center = centerButton == 0 || (centerButton == 1 && !playing); // Settings > Videos
-            var wantCenter = isVideo && center ? Visibility.Visible : Visibility.Collapsed;
+            var wantCenter = isVideo && center && !cropping ? Visibility.Visible : Visibility.Collapsed;
             if (wantCenter == Visibility.Visible && centerPlayBtn.Visibility != Visibility.Visible && Motion.Animates && overlayVisible && !Switching)
             {
                 // ("Only when paused": it appears as you pause) fades in and grows into place
@@ -1725,7 +1726,7 @@ namespace FastViewer
             }
             centerPlayBtn.Visibility = wantCenter;
             F<FrameworkElement>("PrevBtn").Visibility = F<FrameworkElement>("NextBtn").Visibility =
-                Shown("Arrows") && files.Count > 1 ? Visibility.Visible : Visibility.Collapsed; // Settings > Buttons; nothing to go to: none
+                Shown("Arrows") && files.Count > 1 && !cropping ? Visibility.Visible : Visibility.Collapsed; // Settings > Buttons; nothing to go to: none
             // A narrow control bar keeps its time bar: the skip and repeat buttons go first (they're on keys and in "...").
             double room = transport.Width;
             foreach (var id in new[] { "PlayBtn", "BackBtn", "FwdBtn", "VolBtn", "LoopBtn" })
@@ -2343,7 +2344,7 @@ namespace FastViewer
         void SetZoom(double z, Point p)
         {
             var s = shown;
-            if (s == null || !s.Ready || s.Failed) return;
+            if (s == null || !s.Ready || s.Failed || cropping) return;
             z = Math.Max(1, Math.Min(MaxZoom, z));
             Motion.Stop("pan");
             if (!Motion.Moves)
@@ -2674,6 +2675,11 @@ namespace FastViewer
                 e.Handled = true;
                 return;
             }
+            if (cropping && HandleCropKey(e)) // Crop.cs: Enter saves, Esc leaves; other files wait
+            {
+                e.Handled = true;
+                return;
+            }
             if (trimming && HandleTrimKey(e)) // Trim.cs: arrows move a handle, Enter saves, Esc leaves trimming
             {
                 e.Handled = true;
@@ -2701,6 +2707,7 @@ namespace FastViewer
                 return;
             }
             if (volPopup.IsOpen) return;
+            if (cropping) { e.Handled = true; return; } // the frame stays on this picture, at this size
             if (trimming && F<FrameworkElement>("TrimBar").IsMouseOver) { e.Handled = true; return; } // not another file
             if (transport.IsMouseOver && transport.Visibility == Visibility.Visible)
             {

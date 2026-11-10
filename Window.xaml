@@ -189,6 +189,14 @@
       </Popup>
     </Grid>
 
+    <!-- Crop (Crop.cs): the frame over the picture, with everything outside it dimmed; its handles are added in code -->
+    <Canvas x:Name="CropLayer" Background="Transparent" ClipToBounds="True" Visibility="Collapsed">
+      <Path x:Name="CropDim" Fill="#A6000000" IsHitTestVisible="False"/>
+      <Path x:Name="CropLines" Stroke="#59FFFFFF" StrokeThickness="1" IsHitTestVisible="False"/>
+      <Rectangle x:Name="CropShade" Stroke="#80000000" StrokeThickness="3" IsHitTestVisible="False"/>
+      <Rectangle x:Name="CropFrame" Stroke="White" StrokeThickness="1" IsHitTestVisible="False"/>
+    </Canvas>
+
     <!-- Small message at the top (e.g. "Resumed at 2:31", save progress); doesn't fade with the controls -->
     <Border x:Name="Toast" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0" Visibility="Collapsed"
             Background="{DynamicResource FloatBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
@@ -226,10 +234,20 @@
                 <TextBlock x:Name="TrimPlayText" Text="Play selection" VerticalAlignment="Center"/>
               </StackPanel>
             </Button>
+            <!-- Share.cs: the part between the handles as a GIF, or as a small .mp4 copied for pasting into Discord -->
+            <Button x:Name="TrimGifBtn" Style="{StaticResource Filled}" Height="30" Margin="6,0,0,0">
+              <TextBlock x:Name="TrimGifText" Text="Make GIF" VerticalAlignment="Center"/>
+            </Button>
+            <Button x:Name="TrimShareBtn" Style="{StaticResource Filled}" Height="30" Margin="6,0,0,0">
+              <StackPanel Orientation="Horizontal">
+                <fv:Glyph x:Name="TrimShareIcon" Code="&#xE724;" Size="12" Margin="0,0,8,0"/>
+                <TextBlock x:Name="TrimShareText" Text="Send to Discord" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
             <Button x:Name="TrimCancelBtn" Style="{StaticResource Subtle}" Height="30" Margin="6,0,0,0" Content="Cancel"/>
             <Button x:Name="TrimSaveBtn" Style="{StaticResource AccentButton}" Height="30" Margin="6,0,0,0" Content="Save clip"/>
           </StackPanel>
-          <fv:Glyph Code="&#xE7A8;" Size="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+          <fv:Glyph x:Name="TrimIcon" Code="&#xE8C6;" Size="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
           <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
             <TextBlock x:Name="TrimText" FontSize="14" FontWeight="SemiBold" Text="Trim" TextTrimming="CharacterEllipsis"/>
             <TextBlock x:Name="TrimHint" FontSize="12" Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"
@@ -265,6 +283,32 @@
           <TextBlock x:Name="TrimToText" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
         </Canvas>
       </Grid>
+    </Border>
+
+    <!-- Crop (Crop.cs): the bar with the shape, Save and Save a copy -->
+    <Border x:Name="CropBar" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,16" Width="640" Visibility="Collapsed"
+            Background="{DynamicResource FloatBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
+            CornerRadius="{DynamicResource Radius.Float}" Padding="14,10" AutomationProperties.Name="Crop">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="CropRatioBtn" Style="{StaticResource Filled}" Height="30">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock x:Name="CropRatioText" Text="Any shape" VerticalAlignment="Center"/>
+              <fv:Glyph Code="&#xE70D;" Size="10" Margin="8,1,0,0"/>
+            </StackPanel>
+          </Button>
+          <Button x:Name="CropResetBtn" Style="{StaticResource Subtle}" Height="30" Margin="6,0,0,0" Content="Reset"/>
+          <Button x:Name="CropCancelBtn" Style="{StaticResource Subtle}" Height="30" Margin="6,0,0,0" Content="Cancel"/>
+          <Button x:Name="CropCopyBtn" Style="{StaticResource Filled}" Height="30" Margin="6,0,0,0" Content="Save a copy"/>
+          <Button x:Name="CropSaveBtn" Style="{StaticResource AccentButton}" Height="30" Margin="6,0,0,0" Content="Save"/>
+        </StackPanel>
+        <fv:Glyph x:Name="CropIcon" Code="&#xE7A8;" Size="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+        <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+          <TextBlock x:Name="CropText" FontSize="14" FontWeight="SemiBold" Text="Crop" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="CropHint" FontSize="12" Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"
+                     Text="Drag the corners or sides; drag inside to move it"/>
+        </StackPanel>
+      </DockPanel>
     </Border>
 
     <!-- File info pane -->

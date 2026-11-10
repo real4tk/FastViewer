@@ -65,6 +65,7 @@ namespace FastViewer
                 S("speedUp", "Faster", delegate { StepSpeed(1); }),
                 S("speedNormal", "Normal speed", delegate { StepSpeed(0); }),
                 S("trim", "Trim", StartTrim, "Ctrl+T"),
+                S("crop", "Crop", ToggleCrop, "C"),
                 S("saveFrame", "Save a frame", SaveFrame),
                 S("copyFrame", "Copy frame", CopyFrame, "Ctrl+Shift+C"),
                 S("compatible", "Make compatible copy", MakeCompatibleCopy),
@@ -132,6 +133,9 @@ namespace FastViewer
             { "InfoCloseBtn", "Close file info", "info" }, { "MiniExitBtn", "Back to the full window", "mini" }, { "MiniVolBtn", "Mute (scroll for volume)", "mute" }, { "MiniCloseBtn", "Close", "close" },
             { "SettingsBackBtn", "Back (Esc)", "" }, { "GridBackBtn", "Back (Esc)", "" }, { "ToastClose", "Close message", "" },
             { "TrimPlayBtn", "Play the part between the handles", "play" }, { "TrimSaveBtn", "Save the part between the handles as a new video (Enter)", "" }, { "TrimCancelBtn", "Leave without saving (Esc)", "" },
+            { "TrimGifBtn", "Save the part between the handles as a GIF", "" }, { "TrimShareBtn", "Make a small copy for Discord and copy it, ready to paste", "" },
+            { "CropSaveBtn", "Keep only the part in the frame; the original goes to the Recycle Bin (Enter)", "" }, { "CropCopyBtn", "Save the part in the frame as a new file", "" }, { "CropCancelBtn", "Leave without cropping (Esc)", "" },
+            { "CropRatioBtn", "Hold a shape while dragging", "" }, { "CropResetBtn", "Back to the whole picture", "" },
             { "GridSizeBtn", "Thumbnail size (Ctrl + mouse wheel)", "" }
         };
 
@@ -175,7 +179,7 @@ namespace FastViewer
             { "back5", "" }, { "forward5", "" }, { "frameBack", "" }, { "frameForward", "" },
             { "loopA", "\uE892" }, { "loopB", "\uE893" }, { "loopStop", "" }, { "repeat", "" }, { "volumeUp", "" },
             { "volumeDown", "" }, { "mute", "" }, { "speedDown", "" }, { "speedUp", "" }, { "speedNormal", "" },
-            { "trim", "" }, { "saveFrame", "" }, { "compatible", "\uE895" }, { "rotate", "" }, { "saveRotation", "" },
+            { "trim", "" }, { "crop", "" }, { "saveFrame", "" }, { "compatible", "\uE895" }, { "rotate", "" }, { "saveRotation", "" },
             { "zoomIn", "" }, { "zoomOut", "" }, { "fit", "" }, { "actualSize", "" }, { "fullscreen", "" },
             { "mini", "" }, { "pin", "" }, { "slideshow", "" }, { "info", "" }, { "open", "" },
             { "saveAs", "" }, { "copy", "" }, { "copyPath", "" }, { "showInFolder", "" }, { "openWith", "" },

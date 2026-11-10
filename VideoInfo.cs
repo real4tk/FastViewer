@@ -197,6 +197,134 @@ namespace FastViewer
             return 0;
         }
 
+        // For each sound track of an MP4/MOV, in the file's own order: the size in bytes of every packet of sound.
+        // Null when the file doesn't say (not an MP4/MOV, a track whose packets are all one size, a file made in pieces).
+        public static System.Collections.Generic.List<int[]> SoundPacketSizes(string file)
+        {
+            try
+            {
+                using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    long moov, moovEnd;
+                    if (!FindChild(fs, 0, fs.Length, "moov", out moov, out moovEnd)) return null;
+                    var tracks = new System.Collections.Generic.List<int[]>();
+                    var pieces = new System.Collections.Generic.Dictionary<long, int>(); // track number -> place in tracks
+                    long pos = moov, size, header;
+                    string type;
+                    while (ReadHeader(fs, pos, moovEnd, out size, out type, out header))
+                    {
+                        long trak = pos + header, trakEnd = pos + size;
+                        pos += size;
+                        if (type != "trak" || Handler(fs, trak, trakEnd) != "soun") continue;
+                        long mdia, mdiaEnd, minf, minfEnd, stbl, stblEnd, stsz, stszEnd;
+                        if (!FindChild(fs, trak, trakEnd, "mdia", out mdia, out mdiaEnd)) return null;
+                        if (!FindChild(fs, mdia, mdiaEnd, "minf", out minf, out minfEnd)) return null;
+                        if (!FindChild(fs, minf, minfEnd, "stbl", out stbl, out stblEnd)) return null;
+                        if (!FindChild(fs, stbl, stblEnd, "stsz", out stsz, out stszEnd)) return null;
+                        var head = new byte[12];
+                        fs.Position = stsz;
+                        if (fs.Read(head, 0, 12) != 12) return null;
+                        long count = Int(head, 8);
+                        if (count == 0) // a file made in pieces: the sizes are in the pieces
+                        {
+                            long tkhd, tkhdEnd;
+                            if (!FindChild(fs, trak, trakEnd, "tkhd", out tkhd, out tkhdEnd)) return null;
+                            fs.Position = tkhd;
+                            int version = fs.ReadByte();
+                            fs.Position = tkhd + (version == 1 ? 20 : 12);
+                            if (fs.Read(head, 0, 4) != 4) return null;
+                            pieces[Int(head, 0)] = tracks.Count;
+                            tracks.Add(null);
+                            continue;
+                        }
+                        if (Int(head, 4) != 0 || count < 0 || count > 20000000 || stsz + 12 + count * 4 > stszEnd) return null;
+                        var raw = new byte[count * 4];
+                        if (fs.Read(raw, 0, raw.Length) != raw.Length) return null;
+                        var sizes = new int[count];
+                        for (int i = 0; i < count; i++) sizes[i] = (int)Int(raw, i * 4);
+                        tracks.Add(sizes);
+                    }
+                    if (pieces.Count > 0 && !PieceSizes(fs, moov, moovEnd, pieces, tracks)) return null;
+                    return tracks;
+                }
+            }
+            catch { return null; }
+        }
+
+        // The same for a file made in pieces ("fragmented"): the packet sizes of the wanted tracks, read from the
+        // pieces (moof boxes) until each track has plenty to be told apart by.
+        static bool PieceSizes(Stream fs, long moov, long moovEnd, System.Collections.Generic.Dictionary<long, int> wanted, System.Collections.Generic.List<int[]> tracks)
+        {
+            const int Plenty = 20000;
+            var usual = new System.Collections.Generic.Dictionary<long, long>(); // track number -> its usual packet size
+            var found = new System.Collections.Generic.Dictionary<long, System.Collections.Generic.List<int>>();
+            foreach (long id in wanted.Keys) found[id] = new System.Collections.Generic.List<int>();
+            var b = new byte[24];
+            long mvex, mvexEnd, pos, size, header;
+            string type;
+            if (FindChild(fs, moov, moovEnd, "mvex", out mvex, out mvexEnd))
+                for (pos = mvex; ReadHeader(fs, pos, mvexEnd, out size, out type, out header); pos += size)
+                {
+                    if (type != "trex") continue;
+                    fs.Position = pos + header;
+                    if (fs.Read(b, 0, 24) == 24) usual[Int(b, 4)] = Int(b, 16);
+                }
+            for (pos = 0; ReadHeader(fs, pos, fs.Length, out size, out type, out header); pos += size)
+            {
+                if (type != "moof") continue;
+                long moofEnd = pos + size, at, trafSize, trafHeader;
+                string inner;
+                for (at = pos + header; ReadHeader(fs, at, moofEnd, out trafSize, out inner, out trafHeader); at += trafSize)
+                {
+                    if (inner != "traf") continue;
+                    long traf = at + trafHeader, trafEnd = at + trafSize, tfhd, tfhdEnd;
+                    if (!FindChild(fs, traf, trafEnd, "tfhd", out tfhd, out tfhdEnd)) return false;
+                    fs.Position = tfhd;
+                    if (fs.Read(b, 0, 8) != 8) return false;
+                    long flags = Int(b, 0) & 0xFFFFFF, id = Int(b, 4), packet;
+                    System.Collections.Generic.List<int> sizes;
+                    if (!found.TryGetValue(id, out sizes) || sizes.Count >= Plenty) continue;
+                    usual.TryGetValue(id, out packet);
+                    if ((flags & 0x10) != 0)
+                    {
+                        fs.Position = tfhd + 8 + ((flags & 1) != 0 ? 8 : 0) + ((flags & 2) != 0 ? 4 : 0) + ((flags & 8) != 0 ? 4 : 0);
+                        if (fs.Read(b, 0, 4) != 4) return false;
+                        packet = Int(b, 0);
+                    }
+                    long run, runSize, runHeader;
+                    for (run = traf; ReadHeader(fs, run, trafEnd, out runSize, out inner, out runHeader); run += runSize)
+                    {
+                        if (inner != "trun") continue;
+                        fs.Position = run + runHeader;
+                        if (fs.Read(b, 0, 8) != 8) return false;
+                        long runFlags = Int(b, 0) & 0xFFFFFF, count = Int(b, 4);
+                        int each = ((runFlags & 0x100) != 0 ? 4 : 0) + ((runFlags & 0x200) != 0 ? 4 : 0) + ((runFlags & 0x400) != 0 ? 4 : 0) + ((runFlags & 0x800) != 0 ? 4 : 0);
+                        long table = run + runHeader + 8 + ((runFlags & 1) != 0 ? 4 : 0) + ((runFlags & 4) != 0 ? 4 : 0);
+                        if (count < 0 || count > 1000000 || table + count * each > run + runSize) return false;
+                        if ((runFlags & 0x200) == 0)
+                        {
+                            for (long i = 0; i < count; i++) sizes.Add((int)packet);
+                            continue;
+                        }
+                        var raw = new byte[count * each];
+                        fs.Position = table;
+                        if (fs.Read(raw, 0, raw.Length) != raw.Length) return false;
+                        int skip = (runFlags & 0x100) != 0 ? 4 : 0;
+                        for (int i = 0; i < count; i++) sizes.Add((int)Int(raw, i * each + skip));
+                    }
+                }
+                bool enough = true;
+                foreach (var f in found.Values) if (f.Count < Plenty) enough = false;
+                if (enough) break;
+            }
+            foreach (var w in wanted)
+            {
+                if (found[w.Key].Count == 0) return false;
+                tracks[w.Value] = found[w.Key].ToArray();
+            }
+            return true;
+        }
+
         static string Handler(Stream fs, long trak, long trakEnd)
         {
             long mdia, mdiaEnd, hdlr, hdlrEnd;

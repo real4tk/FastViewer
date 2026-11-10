@@ -5,6 +5,26 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.22.0  (10 Nov 2026)
+  New
+  - Make GIF: in the trim bar (Ctrl+T), choose the part with the handles and press "Make GIF": Small (320 pixels),
+    Medium (480) or Large (640), up to a minute long. FastViewer writes the GIF itself: nothing else to install.
+  - Send to Discord: also in the trim bar. Makes an .mp4 of the part between the handles that fits under 20 MB
+    (Discord without Nitro), 50 MB or 500 MB and copies the file: paste it into a chat with Ctrl+V. The picture
+    only gets smaller or loses frames when it has to; a video that's already small enough is copied as it is.
+    The copies live in a temporary folder and are cleared after a week.
+  - Crop photos and videos: press C (or "..." > Crop). Drag the frame's corners or sides, drag inside it to move
+    it, or drag outside it for a new one; Shape keeps it Original, Square, 16:9, 9:16, 4:3 or 3:4. "Save a copy"
+    leaves the original alone. "Save" keeps only the cropped part and moves the original to the Recycle Bin, so
+    you can always put it back. Photos keep their type; videos are saved as .mp4.
+  Changed
+  - The Trim button is now a pair of scissors.
+  Fixed
+  - Videos with more than one sound track (like Medal clips with the game and your microphone apart): Save clip
+    and Make compatible copy kept only one of them, and not always the first. Every way of saving a video (Save
+    clip, compatible copy, Send to Discord, Crop) now keeps all sound tracks, in the same order as the original.
+
+
 1.21.0  (10 Nov 2026)
   New
   - Search the grid: type in the search box at the top of "All files" (or press Ctrl+F there) to see only files

@@ -86,6 +86,7 @@ namespace FastViewer
                 case "videoMenu": LoadMenuLine(true, v); break;
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "gridSort": gridSort = Math.Max(0, Math.Min(GridSortNames.Length - 1, int.Parse(v, CultureInfo.InvariantCulture))); break;
+                case "discordMb": { int mb = int.Parse(v, CultureInfo.InvariantCulture); discordMb = mb == 50 || mb == 500 ? mb : 20; } break;
                 default:
                     if (LoadCustomOption(key, v)) { } // the custom look (CustomLook.cs)
                     else if (key.StartsWith("key.")) savedKeys[key.Substring(4)] = v;
@@ -138,6 +139,7 @@ namespace FastViewer
                 "gridNames=" + (gridNames ? "1" : "0"),
                 "gridSize=" + gridSize.ToString(CultureInfo.InvariantCulture),
                 "gridSort=" + gridSort.ToString(CultureInfo.InvariantCulture),
+                "discordMb=" + discordMb.ToString(CultureInfo.InvariantCulture),
                 "lastUpdateCheck=" + lastUpdateCheck.Ticks.ToString(CultureInfo.InvariantCulture),
                 "miniLong=" + miniLong.ToString(CultureInfo.InvariantCulture),
                 "miniLeft=" + miniLeft.ToString(CultureInfo.InvariantCulture),
@@ -182,7 +184,7 @@ namespace FastViewer
         {
             if (scrim == null) return;
             var s = shown;
-            bool show = dimVideo && s != null && s.IsVideo && s.Ready && !s.Failed;
+            bool show = dimVideo && s != null && s.IsVideo && s.Ready && !s.Failed && !cropping;
             scrim.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             if (!show) return;
             int w, h;
@@ -732,6 +734,7 @@ namespace FastViewer
         {
             var s = shown;
             if (s == null || s.File == null || s.Failed || !s.Ready || s.IsAudio) return;
+            if (cropping) EndCrop(); // the frame was for the picture as it lay
             string file = s.File;
             int from;
             rotations.TryGetValue(file, out from);

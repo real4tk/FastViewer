@@ -37,6 +37,7 @@ namespace FastViewer
             {
                 if (shown == null || shown.Failed || shown.IsAudio) return;
                 if (trimming) EndTrim(); // the trim bar needs the full window
+                if (cropping) EndCrop();
                 if (fullscreen) ToggleFullscreen();
                 if (settingsOpen) CloseSettings();
                 stateBeforeMini = WindowState;

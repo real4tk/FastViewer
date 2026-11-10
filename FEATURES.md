@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.21.0)
+# FastViewer: complete feature list (version 1.22.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,9 +12,9 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
-- One portable FastViewer.exe (about 1.2 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
+- One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
 - Settings in %APPDATA%\FastViewer\settings.ini, resume places in positions.txt, remembered turns in rotations.txt, crash reasons in
   %TEMP%\FastViewer\crash.txt.
@@ -138,7 +138,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - A-B loop: [ start, ] end, \ stop; the looped part shows as a band on the time bar.
 - Continue where you left off: videos over a minute resume where you stopped (300 most recent, shared
   safely between windows), with a "Start over" button.
-- Trim (Ctrl+T, or "..." > Trim): a trim bar takes the control bar's place, with a filmstrip of the video
+- Trim (Ctrl+T, or "..." > Trim; scissors icon E8C6 since 1.22.0, Crop is E7A8): a trim bar takes the control bar's place, with a filmstrip of the video
   (small pictures made in the background, turned like the video) and a handle at each end of the part to
   keep; the rest is dimmed. Dragging a handle shows that frame in the viewer; clicking the strip shows that
   moment. The start and end times (tenths of a second) sit under the handles and the clip length at the
@@ -150,6 +150,36 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Make compatible copy: re-encodes to a standard H.264/AAC .mp4 that plays everywhere, upright.
   (Trim and compatible copy use Windows' Media Foundation; progress and Cancel in a message;
   closing the window while saving finishes the save first.)
+- Every video save keeps all sound tracks in the file's order (1.22.0; Save clip, compatible copy, Send to Discord, Crop):
+  Convert.cs encodes each sound stream as its own AAC track. Windows hands an MP4/MOV's sound streams out in an order of
+  its own (Windows 10: last track first) and its stream numbers say nothing, so VideoConverter.FileOrder matches streams to
+  tracks: a second reader delivers the undecoded sound packets and their sizes are compared with each track's own size
+  table (VideoInfo.SoundPacketSizes: stsz, or the trun tables of a file made in pieces, first 20000 packets) until every
+  stream fits one track; when that can't be told (MKV etc., tracks alike from start to end) Windows' order stays (right for
+  MKV). Before 1.22 only one track was kept, for MP4 the last. Test: --case tracks (scratch folder with two.mp4, two sound
+  tracks of 440 and 880 Hz; saves it all five ways into the output folder, the original of the in-place crop must be whole in
+  the bin; then check each "out *.mp4" with ffmpeg: track 1 must be 440 Hz, track 2 880 Hz; --real-bin uses the real Recycle Bin).
+- Make GIF (1.22.0, trim bar; Share.cs, Gif.cs): the part between the handles as an animated GIF, long side 320/480/640,
+  about 15 pictures a second, at most a minute. Two passes with ConvertOptions.Frame (first picks 255 colours by median cut,
+  then writes with LZW, storing only what changed); written to <name>.fvgif.tmp first. "Copy to paste" in the message.
+- Send to Discord (1.22.0, trim bar; settings line discordMb= 20/50/500): an .mp4 of the part that fits under the size
+  (megabytes x 990000 bytes, so it fits however Discord counts) and is copied as a file for Ctrl+V. SharePlan picks the
+  bits a second (sound 128 or 96 kbit/s for each sound track), then a smaller picture (down to 240) and 30 instead of 60
+  frames only when needed; up to 4 tries (more bits when a good deal of room is left, fewer when it came out too big). A
+  whole H.264 .mp4 that already fits and is stored the way it's shown is copied as it is. Copies go to
+  %TEMP%\FastViewer\Discord; week-old ones are removed. Test: --case share.
+- Crop (1.22.0, C or "..." > Crop, Crop.cs; photos and videos, not music): a frame over the picture (drag corners/sides,
+  inside to move, outside for a new one; Shape: Any shape, Original, Square, 16:9, 9:16, 4:3, 3:4; Reset; arrows off while
+  cropping; Space still plays; Enter saves, Esc leaves). The crop is of the picture as shown (a remembered turn is saved in).
+  "Save a copy" writes a new file. "Save" (photo types Windows can write back, .mp4/.m4v) writes <file>.fvcrop.tmp, checks it
+  (photo: size; video: Windows reads it, size and length right), lets the players go, then SwapInFile(..., recycle: true):
+  the original goes to the Recycle Bin under its own name (ViewerWindow.Recycle: SHFileOperation with allow-undo and
+  FOF_WANTNUKEWARNING, so where there is no Recycle Bin Windows asks before deleting for good and "No" keeps the original),
+  the new file takes its place with the creation time kept and the date + 10 ms; the message says "The original is in the
+  Recycle Bin". Photos: JPEG quality 95, PNG, BMP, TIFF keep type, details and colour profile where Windows can write them;
+  other types become a JPEG/PNG copy. Videos: H.264/AAC .mp4 with as many bits as the original spent on that part.
+  Test: --case crop (photo.jpg, plain.png, other.webp, clip.mp4, turned.mp4 with a 90 degree tag; scratch copies only;
+  test runs put "recycled" files in <output>\recycled unless --real-bin).
 - Save a frame as PNG (as shown, including rotation).
 - Copy frame (1.20.0, video "..." menu or Ctrl+Shift+C): the frame on screen (up to 4K wide, turned as shown) goes on the
   clipboard as a picture and as PNG; the video keeps playing.
@@ -169,7 +199,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Default keys: Next Right/PageDown, Previous Left/PageUp, First Home, Last End, Shuffle X, Grid G,
   Play/pause Space/K, Skip back J, Skip forward L, Back 5 s Shift+Left, Forward 5 s Shift+Right,
   Previous frame ",", Next frame ".", Loop A "[", Loop B "]", Stop loop "\", Repeat R, Volume up Up,
-  Volume down Down, Mute M, Trim Ctrl+T, Rotate Ctrl+R, Zoom in +/Num+, Zoom out -/Num-, Fit 0/Num0,
+  Volume down Down, Mute M, Trim Ctrl+T, Crop C, Rotate Ctrl+R, Zoom in +/Num+, Zoom out -/Num-, Fit 0/Num0,
   Full screen F/F11, Mini player Ctrl+M, Slideshow F5, File info I, Open Ctrl+O, Save as Ctrl+S,
   Copy Ctrl+C, Copy frame Ctrl+Shift+C, Delete Delete, Settings Ctrl+,
 - Actions without a default key (assignable): thumbnail strip, slower/faster/normal speed, save a frame,
@@ -330,12 +360,12 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
-  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full),
+  keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full), share, crop, tracks (1.22.0, see Videos),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
 - Options: --preload n, --look <Id>, --strip, --grab-always, --settings <scratch.ini>,
-  --positions <scratch file>, --rotations <scratch file>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
+  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --update-feed <local json or "refused">, --update-page <file>, --update-test,
   --count, --every, --pattern, --front, --motion full|reduced|off (tests run with animations Off unless
   given), --convert <src> <dst> <rotation> [from to].
 - Any run with a "--" option never contacts GitHub.

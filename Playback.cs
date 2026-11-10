@@ -38,6 +38,8 @@ namespace FastViewer
             OnClick("ToastBtn", delegate { if (toastAction != null) toastAction(); });
             OnClick("ToastClose", delegate { HideToast(null); });
             InitTrim();
+            InitShare();
+            InitCrop();
             toastTimer.Tick += delegate { HideToast(null); };
             loopTimer.Tick += delegate { KeepInLoop(); };
             transport.SizeChanged += delegate { UpdateLoopUi(); };
@@ -48,6 +50,7 @@ namespace FastViewer
         void OnShownChanged(Slot before)
         {
             if (trimming) EndTrim();
+            if (cropping) EndCrop();
             ClearLoop();
             HideToast("resume");
             var s = shown;

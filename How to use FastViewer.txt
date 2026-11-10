@@ -1,4 +1,4 @@
-FastViewer 1.21.0 - a fast photo, video and music viewer for Windows 10 and 11
+FastViewer 1.22.0 - a fast photo, video and music viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -29,6 +29,13 @@ Trimming a video
   "Play selection" plays just that part; "Save clip" saves it as a new video.
   Keys: Left / Right move a handle one frame (Shift: one second), Tab picks the other handle,
   Space plays, Enter saves, Esc cancels.
+  "Make GIF" saves that part as an animated GIF. "Send to Discord" makes it fit in 20, 50 or 500 MB
+  and copies it: paste it into a chat with Ctrl + V.
+
+Cropping a photo or video
+  C (or "..." -> Crop) puts a frame over the picture. Drag its corners or sides, or drag inside it to
+  move it; Shape keeps it square, 16:9 and so on. "Save a copy" makes a new file; "Save" keeps only
+  the cropped part and moves the original to the Recycle Bin. Esc leaves without cropping.
 
 All files in the folder
   G (or the grid button in the bottom bar) shows every photo and video in the folder as
@@ -43,7 +50,8 @@ Handy keys
   J / L                skip back / forward (length set in Settings)
   , / .                one frame back / forward
   [  ]  \              A-B loop: set start, set end, stop
-  Ctrl + T             trim: save part of a video as a new file
+  Ctrl + T             trim: save part of a video as a new file, a GIF or a Discord-sized copy
+  C                    crop a photo or video
   Ctrl + Shift + C     copy the video frame on screen (paste it in Discord, Paint...)
   Up / Down            volume
   Ctrl + R             rotate 90 degrees (also the rotate button at the top)

@@ -13,13 +13,28 @@ namespace FastViewer
         public volatile bool Cancelled;
     }
 
+    // Extras for Convert (all optional): a size limit, a part of the picture, fewer frames, or the finished
+    // pictures handed over instead of written to a file (for making a GIF).
+    class ConvertOptions
+    {
+        public int VideoBitrate;      // bits a second; 0 = plenty for the picture's size
+        public int AudioBitrate;      // 96000, 128000, 160000 or 192000; 0 = 192000
+        public int MaxShort, MaxLong; // shrink until the short / long side is at most this many pixels; 0 = keep
+        public double MaxFps;         // leave frames out evenly, down to about this many a second; 0 = keep
+        public double[] Crop;         // the part to keep: x, y, width, height, each 0..1 of the picture as shown; null = all
+        public Action<int[], int, int, long> Frame; // instead of a file: each picture (pixels, width, height, time in 100 ns)
+        public int OutWidth, OutHeight; // filled in: the size that was made
+        public double OutFps;
+    }
+
     static class VideoConverter
     {
         public static string LastInfo = "";
         // rotation: clockwise degrees to turn the picture (0/90/180/270). progress: 0..1.
         public static void Convert(string source, string target, TimeSpan? from, TimeSpan? to, int rotation,
-                                   Action<double> progress, CancelFlag cancel)
+                                   Action<double> progress, CancelFlag cancel, ConvertOptions o = null)
         {
+            if (o == null) o = new ConvertOptions();
             Check(MFStartup(0x00020070, 0), "starting Windows' video tools");
             IMFSourceReader reader = null;
             IMFSinkWriter writer = null;
@@ -33,7 +48,6 @@ namespace FastViewer
                 Check(MFCreateSourceReaderFromURL(source, ra, out reader), "opening the video");
                 reader.SetStreamSelection(ALL_STREAMS, false);
                 Check(reader.SetStreamSelection(FIRST_VIDEO, true), "finding the picture in the video");
-                bool hasAudio = reader.SetStreamSelection(FIRST_AUDIO, true) >= 0;
 
                 IMFMediaType want;
                 MFCreateMediaType(out want);
@@ -78,12 +92,12 @@ namespace FastViewer
                 {
                     // The original says which part is visible (the rest is padding at its bottom/right);
                     // turn that area the same way Windows turned the picture.
-                    int x = nativeArea[0], y = nativeArea[1], cw = nativeArea[2], ch = nativeArea[3];
+                    int x = nativeArea[0], y = nativeArea[1], vw = nativeArea[2], vh = nativeArea[3];
                     switch (nativeTurn == 0 ? 0 : nativeTurn)
                     {
-                        case 90: visible = new[] { nh - (y + ch), x, ch, cw }; break;
-                        case 180: visible = new[] { nw - (x + cw), nh - (y + ch), cw, ch }; break;
-                        case 270: visible = new[] { y, nw - (x + cw), ch, cw }; break;
+                        case 90: visible = new[] { nh - (y + vh), x, vh, vw }; break;
+                        case 180: visible = new[] { nw - (x + vw), nh - (y + vh), vw, vh }; break;
+                        case 270: visible = new[] { y, nw - (x + vw), vh, vw }; break;
                         default: visible = nativeArea; break;
                     }
                     if (visible[0] < 0 || visible[1] < 0 || visible[0] + visible[2] > w || visible[1] + visible[3] > h) visible = null;
@@ -91,20 +105,67 @@ namespace FastViewer
                 if (visible != null) { ax = visible[0]; ay = visible[1]; aw = visible[2]; ah = visible[3]; }                LastInfo += ", visible " + aw + "x" + ah;
 
                 bool sideways = rotation == 90 || rotation == 270;
-                int ow = (sideways ? ah : aw) & ~1, oh = (sideways ? aw : ah) & ~1; // H.264 wants even sizes
-
-                IMFMediaType ain = null;
-                int channels = 0, sampleRate = 0;
-                if (hasAudio)
+                int tw = sideways ? ah : aw, th = sideways ? aw : ah; // the picture as it's shown
+                // The part to keep (all of it unless asked), then how big it's saved. H.264 wants even sizes.
+                int cx = 0, cy = 0, cw = tw, ch = th;
+                if (o.Crop != null)
                 {
-                    IMFMediaType a;
+                    cx = Math.Max(0, Math.Min(tw - 2, (int)Math.Round(o.Crop[0] * tw)));
+                    cy = Math.Max(0, Math.Min(th - 2, (int)Math.Round(o.Crop[1] * th)));
+                    cw = Math.Max(2, Math.Min(tw - cx, (int)Math.Round(o.Crop[2] * tw)));
+                    ch = Math.Max(2, Math.Min(th - cy, (int)Math.Round(o.Crop[3] * th)));
+                }
+                cw &= ~1;
+                ch &= ~1;
+                int ow = cw, oh = ch;
+                double shrink = 1;
+                if (o.MaxShort > 0) shrink = Math.Min(shrink, (double)o.MaxShort / Math.Min(cw, ch));
+                if (o.MaxLong > 0) shrink = Math.Min(shrink, (double)o.MaxLong / Math.Max(cw, ch));
+                if (shrink < 1)
+                {
+                    ow = Math.Max(2, (int)Math.Round(cw * shrink) & ~1);
+                    oh = Math.Max(2, (int)Math.Round(ch * shrink) & ~1);
+                }
+                // Fewer frames a second: every 2nd, 3rd... one is kept.
+                int every = o.MaxFps > 0 && fps > o.MaxFps * 1.2 ? Math.Max(1, (int)Math.Round(fps / o.MaxFps)) : 1;
+                long outRate = Pack((int)(rate >> 32), (int)(rate & 0xFFFFFFFF) * every);
+                o.OutWidth = ow;
+                o.OutHeight = oh;
+                o.OutFps = fps / every;
+
+                // The sound: the first track, or all of them. The reader reports samples by the file's own stream number.
+                var audioStreams = new System.Collections.Generic.List<int>();
+                var audioIn = new System.Collections.Generic.List<IMFMediaType>();
+                var audioShape = new System.Collections.Generic.List<int[]>(); // channels, samples a second
+                var audioFound = new System.Collections.Generic.List<int>();
+                int videoIndex = -1;
+                for (int i = 0; i < 64; i++)
+                {
+                    IMFMediaType t;
+                    if (reader.GetNativeMediaType(i, 0, out t) < 0) break;
+                    Guid major;
+                    t.GetGUID(ref G.MF_MT_MAJOR_TYPE, out major);
+                    Marshal.ReleaseComObject(t);
+                    bool selected;
+                    reader.GetStreamSelection(i, out selected);
+                    if (selected && major == G.MFMediaType_Video && videoIndex < 0) videoIndex = i;
+                    if (major == G.MFMediaType_Audio && o.Frame == null) audioFound.Add(i);
+                }
+                // Every sound track is kept, in the file's own order (Windows hands an .mp4's tracks out last one first).
+                var inOrder = FileOrder(source, audioFound, cancel);
+                LastInfo += ", sound streams " + string.Join("/", audioFound) + (inOrder == null ? " (Windows' order)" : " -> the file's order " + string.Join("/", inOrder));
+                if (inOrder != null) audioFound = inOrder;
+                foreach (int i in audioFound)
+                {
+                    if (reader.SetStreamSelection(i, true) < 0) continue;
+                    IMFMediaType a, ain = null;
                     MFCreateMediaType(out a);
                     a.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Audio);
                     a.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFAudioFormat_PCM);
                     a.SetUINT32(ref G.MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-                    hasAudio = reader.SetCurrentMediaType(FIRST_AUDIO, IntPtr.Zero, a) >= 0 &&
-                               reader.GetCurrentMediaType(FIRST_AUDIO, out ain) >= 0;
-                    if (hasAudio)
+                    bool ok = reader.SetCurrentMediaType(i, IntPtr.Zero, a) >= 0 && reader.GetCurrentMediaType(i, out ain) >= 0;
+                    int channels = 0, sampleRate = 0;
+                    if (ok)
                     {
                         ain.GetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, out channels);
                         ain.GetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, out sampleRate);
@@ -117,73 +178,67 @@ namespace FastViewer
                             a.SetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, sampleRate);
                             a.SetUINT32(ref G.MF_MT_AUDIO_BLOCK_ALIGNMENT, channels * 2);
                             a.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, channels * 2 * sampleRate);
-                            hasAudio = reader.SetCurrentMediaType(FIRST_AUDIO, IntPtr.Zero, a) >= 0 &&
-                                       reader.GetCurrentMediaType(FIRST_AUDIO, out ain) >= 0;
+                            ok = reader.SetCurrentMediaType(i, IntPtr.Zero, a) >= 0 && reader.GetCurrentMediaType(i, out ain) >= 0;
                         }
                     }
-                    if (!hasAudio) reader.SetStreamSelection(FIRST_AUDIO, false);
+                    if (!ok) { reader.SetStreamSelection(i, false); continue; }
+                    audioStreams.Add(i);
+                    audioIn.Add(ain);
+                    audioShape.Add(new[] { channels, sampleRate });
                 }
 
-                int videoIndex = -1, audioIndex = -1; // the reader reports samples by the file's own stream number
-                for (int i = 0; i < 64; i++)
+                // Writer: H.264 + AAC in an .mp4 (whatever the file is called while it's being made).
+                int vs = -1;
+                var audioOut = new System.Collections.Generic.Dictionary<int, int>(); // the file's stream number -> the writer's
+                if (o.Frame == null)
                 {
-                    IMFMediaType t;
-                    if (reader.GetCurrentMediaType(i, out t) < 0) break;
-                    bool selected;
-                    reader.GetStreamSelection(i, out selected);
-                    Guid major;
-                    t.GetGUID(ref G.MF_MT_MAJOR_TYPE, out major);
-                    if (selected && major == G.MFMediaType_Video && videoIndex < 0) videoIndex = i;
-                    if (selected && major == G.MFMediaType_Audio && audioIndex < 0) audioIndex = i;
-                    Marshal.ReleaseComObject(t);
+                    IMFAttributes wa;
+                    MFCreateAttributes(out wa, 2);
+                    wa.SetUINT32(ref G.MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, Environment.GetEnvironmentVariable("FASTVIEWER_NOHW") == null ? 1 : 0);
+                    wa.SetGUID(ref G.MF_TRANSCODE_CONTAINERTYPE, ref G.MFTranscodeContainerType_MPEG4);
+                    if (File.Exists(target)) File.Delete(target);
+                    Check(MFCreateSinkWriterFromURL(target, IntPtr.Zero, wa, out writer), "creating the new file");
+
+                    IMFMediaType vo;
+                    MFCreateMediaType(out vo);
+                    vo.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Video);
+                    vo.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFVideoFormat_H264);
+                    vo.SetUINT32(ref G.MF_MT_AVG_BITRATE, o.VideoBitrate > 0 ? o.VideoBitrate : (int)Math.Min(40e6, Math.Max(2e6, ow * (double)oh * fps / every * 0.12)));
+                    vo.SetUINT32(ref G.MF_MT_INTERLACE_MODE, 2); // progressive
+                    vo.SetUINT64(ref G.MF_MT_FRAME_SIZE, Pack(ow, oh));
+                    vo.SetUINT64(ref G.MF_MT_FRAME_RATE, outRate);
+                    vo.SetUINT64(ref G.MF_MT_PIXEL_ASPECT_RATIO, Pack(1, 1));
+                    vo.SetUINT32(ref G.MF_MT_MPEG2_PROFILE, 100); // H.264 High profile
+                    Check(writer.AddStream(vo, out vs), "setting up the H.264 encoder");
+
+                    IMFMediaType vi;
+                    MFCreateMediaType(out vi);
+                    vi.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Video);
+                    vi.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFVideoFormat_RGB32);
+                    vi.SetUINT32(ref G.MF_MT_INTERLACE_MODE, 2);
+                    vi.SetUINT64(ref G.MF_MT_FRAME_SIZE, Pack(ow, oh));
+                    vi.SetUINT64(ref G.MF_MT_FRAME_RATE, outRate);
+                    vi.SetUINT64(ref G.MF_MT_PIXEL_ASPECT_RATIO, Pack(1, 1));
+                    vi.SetUINT32(ref G.MF_MT_DEFAULT_STRIDE, ow * 4); // we hand over pictures top row first
+                    Check(writer.SetInputMediaType(vs, vi, IntPtr.Zero), "setting up the video encoder input");
+
+                    for (int k = 0; k < audioStreams.Count; k++)
+                    {
+                        IMFMediaType ao;
+                        MFCreateMediaType(out ao);
+                        ao.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Audio);
+                        ao.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFAudioFormat_AAC);
+                        ao.SetUINT32(ref G.MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+                        ao.SetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, audioShape[k][1]);
+                        ao.SetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, audioShape[k][0]);
+                        ao.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, (o.AudioBitrate > 0 ? o.AudioBitrate : 192000) / 8);
+                        int aus;
+                        Check(writer.AddStream(ao, out aus), "setting up the AAC sound encoder");
+                        Check(writer.SetInputMediaType(aus, audioIn[k], IntPtr.Zero), "setting up the sound encoder input");
+                        audioOut[audioStreams[k]] = aus;
+                    }
+                    Check(writer.BeginWriting(), "starting to write");
                 }
-
-                // Writer: H.264 + AAC in an .mp4.
-                IMFAttributes wa;
-                MFCreateAttributes(out wa, 1);
-                wa.SetUINT32(ref G.MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, Environment.GetEnvironmentVariable("FASTVIEWER_NOHW") == null ? 1 : 0);
-                if (File.Exists(target)) File.Delete(target);
-                Check(MFCreateSinkWriterFromURL(target, IntPtr.Zero, wa, out writer), "creating the new file");
-
-                IMFMediaType vo;
-                MFCreateMediaType(out vo);
-                vo.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Video);
-                vo.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFVideoFormat_H264);
-                vo.SetUINT32(ref G.MF_MT_AVG_BITRATE, (int)Math.Min(40e6, Math.Max(2e6, ow * (double)oh * fps * 0.12)));
-                vo.SetUINT32(ref G.MF_MT_INTERLACE_MODE, 2); // progressive
-                vo.SetUINT64(ref G.MF_MT_FRAME_SIZE, Pack(ow, oh));
-                vo.SetUINT64(ref G.MF_MT_FRAME_RATE, rate);
-                vo.SetUINT64(ref G.MF_MT_PIXEL_ASPECT_RATIO, Pack(1, 1));
-                vo.SetUINT32(ref G.MF_MT_MPEG2_PROFILE, 100); // H.264 High profile
-                int vs;
-                Check(writer.AddStream(vo, out vs), "setting up the H.264 encoder");
-
-                IMFMediaType vi;
-                MFCreateMediaType(out vi);
-                vi.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Video);
-                vi.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFVideoFormat_RGB32);
-                vi.SetUINT32(ref G.MF_MT_INTERLACE_MODE, 2);
-                vi.SetUINT64(ref G.MF_MT_FRAME_SIZE, Pack(ow, oh));
-                vi.SetUINT64(ref G.MF_MT_FRAME_RATE, rate);
-                vi.SetUINT64(ref G.MF_MT_PIXEL_ASPECT_RATIO, Pack(1, 1));
-                vi.SetUINT32(ref G.MF_MT_DEFAULT_STRIDE, ow * 4); // we hand over pictures top row first
-                Check(writer.SetInputMediaType(vs, vi, IntPtr.Zero), "setting up the video encoder input");
-
-                int aus = -1;
-                if (hasAudio)
-                {
-                    IMFMediaType ao;
-                    MFCreateMediaType(out ao);
-                    ao.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Audio);
-                    ao.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFAudioFormat_AAC);
-                    ao.SetUINT32(ref G.MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-                    ao.SetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, sampleRate);
-                    ao.SetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, channels);
-                    ao.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 24000); // 192 kbit/s
-                    Check(writer.AddStream(ao, out aus), "setting up the AAC sound encoder");
-                    Check(writer.SetInputMediaType(aus, ain, IntPtr.Zero), "setting up the sound encoder input");
-                }
-                Check(writer.BeginWriting(), "starting to write");
 
                 long start = from.HasValue ? from.Value.Ticks : 0; // TimeSpan ticks are Media Foundation's 100 ns units
                 long end = to.HasValue ? to.Value.Ticks : long.MaxValue;
@@ -196,9 +251,12 @@ namespace FastViewer
                 long firstAudio = (long)(2 * VideoInfo.EditStart(source, "soun") * 1e7);
                 LastInfo += ", skip video " + firstVideo / 20000 + " ms / sound " + firstAudio / 20000 + " ms";                if (start > 0) Seek(reader, start);
 
-                bool videoDone = false, audioDone = !hasAudio;
-                int[] inPx = null, outPx = null;
-                while (!(videoDone && audioDone))
+                bool videoDone = false;
+                var audioDone = new System.Collections.Generic.HashSet<int>();
+                int[] inPx = null, cutPx = null, outPx = null;
+                var scaler = new Scaler();
+                long frameNo = 0;
+                while (!(videoDone && audioDone.Count >= audioStreams.Count))
                 {
                     if (cancel.Cancelled) return;
                     int index, flags;
@@ -209,7 +267,7 @@ namespace FastViewer
                     bool isVideo = index == videoIndex;
                     if ((flags & 2) != 0) // end of this stream
                     {
-                        if (isVideo) videoDone = true; else audioDone = true;
+                        if (isVideo) videoDone = true; else audioDone.Add(index);
                     }
                     if (sample == null) continue;
                     try
@@ -217,39 +275,55 @@ namespace FastViewer
                         time -= isVideo ? firstVideo : firstAudio; // both tracks start at 0
                         if (time > end)
                         {
-                            if (isVideo) videoDone = true; else audioDone = true;
+                            if (isVideo) videoDone = true; else audioDone.Add(index);
                             continue;
                         }
                         if (time < start) continue; // before the clip (the reader starts at the keyframe before it)
                         long newTime = time - start;
                         if (isVideo)
                         {
-                            if (rotation == 0 && !bottomUp && ow == w && oh == h && ax == 0 && ay == 0)
+                            if (frameNo++ % every != 0) continue; // left out for a lower frame rate
+                            long d;
+                            bool timed = sample.GetSampleDuration(out d) >= 0;
+                            if (writer != null && rotation == 0 && !bottomUp && ow == w && oh == h && ax == 0 && ay == 0 && cx == 0 && cy == 0)
                             {
                                 sample.SetSampleTime(newTime);
+                                if (timed && every > 1) sample.SetSampleDuration(d * every);
                                 Check(writer.WriteSample(vs, sample), "writing the video");
                             }
                             else
                             {
-                                if (inPx == null) { inPx = new int[w * h]; outPx = new int[ow * oh]; }
-                                var turned = Turn(sample, inPx, outPx, w, h, ax, ay, aw, ah, ow, oh, rotation, bottomUp);
-                                turned.SetSampleTime(newTime);
-                                long d;
-                                if (sample.GetSampleDuration(out d) >= 0) turned.SetSampleDuration(d);
-                                Check(writer.WriteSample(vs, turned), "writing the video");
-                                Marshal.ReleaseComObject(turned);
+                                if (inPx == null)
+                                {
+                                    inPx = new int[w * h];
+                                    cutPx = new int[cw * ch];
+                                    outPx = ow == cw && oh == ch ? cutPx : new int[ow * oh];
+                                }
+                                Turn(sample, inPx, cutPx, w, h, ax, ay, aw, ah, cw, ch, cx, cy, rotation, bottomUp);
+                                if (outPx != cutPx) scaler.Shrink(cutPx, cw, ch, outPx, ow, oh);
+                                if (o.Frame != null) o.Frame(outPx, ow, oh, newTime);
+                                else
+                                {
+                                    var made = MakeSample(outPx, ow, oh);
+                                    made.SetSampleTime(newTime);
+                                    if (timed) made.SetSampleDuration(d * every);
+                                    Check(writer.WriteSample(vs, made), "writing the video");
+                                    Marshal.ReleaseComObject(made);
+                                }
                             }
                             progress(Math.Min(1, Math.Max(0, (double)newTime / span)));
                         }
-                        else if (index == audioIndex)
+                        else
                         {
+                            int aus;
+                            if (writer == null || !audioOut.TryGetValue(index, out aus)) continue;
                             sample.SetSampleTime(newTime);
                             Check(writer.WriteSample(aus, sample), "writing the sound");
                         }
                     }
                     finally { Marshal.ReleaseComObject(sample); }
                 }
-                Check(writer.DoFinalize(), "finishing the file");
+                if (writer != null) Check(writer.DoFinalize(), "finishing the file");
                 progress(1);
             }
             finally
@@ -260,10 +334,11 @@ namespace FastViewer
             }
         }
 
-        // Copies one decoded picture into a new sample, turned clockwise and stored top row first.
-        // (ax, ay, aw, ah) is the visible part of the w x h decoded picture.
-        static IMFSample Turn(IMFSample sample, int[] inPx, int[] outPx, int w, int h, int ax, int ay, int aw, int ah,
-                              int ow, int oh, int rotation, bool bottomUp)
+        // Copies one decoded picture into outPx, turned clockwise and stored top row first.
+        // (ax, ay, aw, ah) is the visible part of the w x h decoded picture; of that picture once turned, the
+        // ow x oh part starting at (cx, cy) is kept.
+        static void Turn(IMFSample sample, int[] inPx, int[] outPx, int w, int h, int ax, int ay, int aw, int ah,
+                         int ow, int oh, int cx, int cy, int rotation, bool bottomUp)
         {
             IMFMediaBuffer buffer;
             Check(sample.ConvertToContiguousBuffer(out buffer), "reading a picture");
@@ -274,26 +349,31 @@ namespace FastViewer
             buffer.Unlock();
             Marshal.ReleaseComObject(buffer);
 
-            for (int oy = 0; oy < oh; oy++)
+            System.Threading.Tasks.Parallel.For(0, oh, delegate(int oy)
             {
-                int o = oy * ow;
+                int o = oy * ow, ty = oy + cy;
                 for (int ox = 0; ox < ow; ox++)
                 {
-                    int sx, sy;
+                    int tx = ox + cx, sx, sy;
                     switch (rotation)
                     {
-                        case 90: sx = oy; sy = ah - 1 - ox; break;
-                        case 180: sx = aw - 1 - ox; sy = ah - 1 - oy; break;
-                        case 270: sx = aw - 1 - oy; sy = ox; break;
-                        default: sx = ox; sy = oy; break;
+                        case 90: sx = ty; sy = ah - 1 - tx; break;
+                        case 180: sx = aw - 1 - tx; sy = ah - 1 - ty; break;
+                        case 270: sx = aw - 1 - ty; sy = tx; break;
+                        default: sx = tx; sy = ty; break;
                     }
                     sx += ax;
                     sy += ay;
                     if (bottomUp) sy = h - 1 - sy;
                     outPx[o + ox] = inPx[sy * w + sx];
                 }
-            }
+            });
+        }
 
+        static IMFSample MakeSample(int[] outPx, int ow, int oh)
+        {
+            IntPtr data;
+            int max, length;
             IMFMediaBuffer outBuffer;
             Check(MFCreateMemoryBuffer(ow * oh * 4, out outBuffer), "making a picture");
             outBuffer.Lock(out data, out max, out length);
@@ -410,6 +490,129 @@ namespace FastViewer
             }
         }
 
+        // What Windows reads from a video file: the picture's stored size and the length in seconds (to check a
+        // file that was just made). False when it can't be read.
+        public static bool Probe(string file, out int width, out int height, out double seconds)
+        {
+            width = height = 0;
+            seconds = 0;
+            if (MFStartup(0x00020070, 0) < 0) return false;
+            IMFSourceReader reader = null;
+            try
+            {
+                if (MFCreateSourceReaderFromURL(file, null, out reader) < 0) return false;
+                IMFMediaType native;
+                if (reader.GetNativeMediaType(FIRST_VIDEO, 0, out native) < 0) return false;
+                long packed;
+                bool ok = native.GetUINT64(ref G.MF_MT_FRAME_SIZE, out packed) >= 0;
+                var area = ok ? ReadArea(native, (int)(packed >> 32), (int)(packed & 0xFFFFFFFF)) : null;
+                Marshal.ReleaseComObject(native);
+                if (!ok) return false;
+                width = area != null ? area[2] : (int)(packed >> 32);
+                height = area != null ? area[3] : (int)(packed & 0xFFFFFFFF);
+                seconds = Duration(reader) / 1e7;
+                return true;
+            }
+            catch { return false; }
+            finally
+            {
+                if (reader != null) Marshal.ReleaseComObject(reader);
+                MFShutdown();
+            }
+        }
+
+        // How many sound tracks Windows finds in a file (0 when it can't be read).
+        public static int SoundTracks(string file)
+        {
+            if (MFStartup(0x00020070, 0) < 0) return 0;
+            IMFSourceReader reader = null;
+            try
+            {
+                if (MFCreateSourceReaderFromURL(file, null, out reader) < 0) return 0;
+                int found = 0;
+                for (int i = 0; i < 64; i++)
+                {
+                    IMFMediaType t;
+                    if (reader.GetNativeMediaType(i, 0, out t) < 0) break;
+                    Guid major;
+                    t.GetGUID(ref G.MF_MT_MAJOR_TYPE, out major);
+                    Marshal.ReleaseComObject(t);
+                    if (major == G.MFMediaType_Audio) found++;
+                }
+                return found;
+            }
+            catch { return 0; }
+            finally
+            {
+                if (reader != null) Marshal.ReleaseComObject(reader);
+                MFShutdown();
+            }
+        }
+
+        // Windows hands out a file's sound tracks in an order of its own (an .mp4's on Windows 10: the last one first)
+        // and doesn't say which is which. So the packets of each stream are compared, by size, with the file's own
+        // tracks until every stream fits exactly one. Returns the streams in the file's order; null when that can't
+        // be told (one track, not an MP4/MOV, tracks alike from start to end): Windows' order is kept then.
+        static System.Collections.Generic.List<int> FileOrder(string source, System.Collections.Generic.List<int> streams, CancelFlag cancel)
+        {
+            if (streams.Count < 2) return null;
+            var tracks = VideoInfo.SoundPacketSizes(source);
+            if (tracks == null || tracks.Count != streams.Count) return null;
+            IMFSourceReader reader = null;
+            try
+            {
+                if (MFCreateSourceReaderFromURL(source, null, out reader) < 0) return null;
+                reader.SetStreamSelection(ALL_STREAMS, false);
+                var fits = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>(); // stream -> the tracks it can still be
+                var seen = new System.Collections.Generic.Dictionary<int, int>();
+                foreach (int i in streams)
+                {
+                    if (reader.SetStreamSelection(i, true) < 0) return null;
+                    fits[i] = new System.Collections.Generic.List<int>();
+                    for (int t = 0; t < tracks.Count; t++) fits[i].Add(t);
+                    seen[i] = 0;
+                }
+                int ended = 0;
+                bool settled = false;
+                while (!settled && ended < streams.Count)
+                {
+                    if (cancel != null && cancel.Cancelled) return null;
+                    int index, flags, length;
+                    long time;
+                    IMFSample sample;
+                    if (reader.ReadSample(ANY_STREAM, 0, out index, out flags, out time, out sample) < 0 || (flags & 1) != 0) return null;
+                    if ((flags & 2) != 0) ended++;
+                    if (sample == null) continue;
+                    int hr = sample.GetTotalLength(out length);
+                    Marshal.ReleaseComObject(sample);
+                    System.Collections.Generic.List<int> mine;
+                    if (hr < 0 || !fits.TryGetValue(index, out mine)) return null;
+                    int at = seen[index]++;
+                    if (mine.RemoveAll(t => at >= tracks[t].Length || tracks[t][at] != length) == 0) continue;
+                    for (bool changed = true; changed; ) // a track that's taken can't be another stream's
+                    {
+                        changed = false;
+                        foreach (var one in fits)
+                            if (one.Value.Count == 1)
+                                foreach (var other in fits)
+                                    if (other.Key != one.Key && other.Value.Remove(one.Value[0])) changed = true;
+                    }
+                    settled = true;
+                    foreach (var one in fits)
+                    {
+                        if (one.Value.Count == 0) return null;
+                        if (one.Value.Count > 1) settled = false;
+                    }
+                }
+                if (!settled) return null;
+                var order = new System.Collections.Generic.List<int>(streams);
+                order.Sort((p, q) => fits[p][0].CompareTo(fits[q][0]));
+                return order;
+            }
+            catch { return null; }
+            finally { if (reader != null) Marshal.ReleaseComObject(reader); }
+        }
+
         static long Duration(IMFSourceReader reader)
         {
             IntPtr pv = Marshal.AllocHGlobal(32);
@@ -474,9 +677,76 @@ namespace FastViewer
         static extern int MFCreateSinkWriterFromURL(string url, IntPtr byteStream, IMFAttributes attributes, out IMFSinkWriter writer);
     }
 
+    // Makes a picture smaller: halved (each pixel the average of four) while it's more than twice too big,
+    // then the rest by blending the four nearest pixels. Rows are shared out over the processor's cores.
+    class Scaler
+    {
+        int[] halfA, halfB, xi;
+        uint[] xw;
+
+        public void Shrink(int[] src, int sw, int sh, int[] dst, int dw, int dh)
+        {
+            int[] cur = src;
+            int n = 0;
+            while (sw >= dw * 2 && sh >= dh * 2 && sw >= 4 && sh >= 4)
+            {
+                int nw = sw / 2, nh = sh / 2;
+                int[] next;
+                if (n++ % 2 == 0) { if (halfA == null || halfA.Length < nw * nh) halfA = new int[nw * nh]; next = halfA; }
+                else { if (halfB == null || halfB.Length < nw * nh) halfB = new int[nw * nh]; next = halfB; }
+                int[] from = cur;
+                int fw = sw;
+                System.Threading.Tasks.Parallel.For(0, nh, delegate(int y)
+                {
+                    int a = 2 * y * fw, b = a + fw, o = y * nw;
+                    for (int x = 0; x < nw; x++, a += 2, b += 2)
+                    {
+                        int p = from[a], q = from[a + 1], r = from[b], s = from[b + 1];
+                        int rb = ((p & 0xFF00FF) + (q & 0xFF00FF) + (r & 0xFF00FF) + (s & 0xFF00FF)) >> 2 & 0xFF00FF;
+                        int g = ((p & 0x00FF00) + (q & 0x00FF00) + (r & 0x00FF00) + (s & 0x00FF00)) >> 2 & 0x00FF00;
+                        next[o + x] = rb | g;
+                    }
+                });
+                cur = next;
+                sw = nw;
+                sh = nh;
+            }
+            if (sw == dw && sh == dh) { Array.Copy(cur, dst, dw * dh); return; }
+            if (xi == null || xi.Length < dw) { xi = new int[dw]; xw = new uint[dw]; }
+            for (int x = 0; x < dw; x++)
+            {
+                double f = Math.Max(0, Math.Min(sw - 1, (x + 0.5) * sw / dw - 0.5));
+                xi[x] = Math.Min(sw - 1, (int)f);
+                xw[x] = (uint)((f - xi[x]) * 256);
+            }
+            int[] source = cur;
+            int width = sw, height = sh;
+            System.Threading.Tasks.Parallel.For(0, dh, delegate(int y)
+            {
+                double f = Math.Max(0, Math.Min(height - 1, (y + 0.5) * height / dh - 0.5));
+                int y0 = Math.Min(height - 1, (int)f), y1 = Math.Min(height - 1, y0 + 1);
+                uint wy = (uint)((f - y0) * 256), iy = 256 - wy;
+                int r0 = y0 * width, r1 = y1 * width, o = y * dw;
+                for (int x = 0; x < dw; x++)
+                {
+                    int x0 = xi[x], x1 = Math.Min(width - 1, x0 + 1);
+                    uint wx = xw[x], ix = 256 - wx;
+                    uint a = (uint)source[r0 + x0], b = (uint)source[r0 + x1], c = (uint)source[r1 + x0], d = (uint)source[r1 + x1];
+                    uint topRB = (((a & 0xFF00FF) * ix + (b & 0xFF00FF) * wx) >> 8) & 0xFF00FF;
+                    uint topG = (((a & 0x00FF00) * ix + (b & 0x00FF00) * wx) >> 8) & 0x00FF00;
+                    uint lowRB = (((c & 0xFF00FF) * ix + (d & 0xFF00FF) * wx) >> 8) & 0xFF00FF;
+                    uint lowG = (((c & 0x00FF00) * ix + (d & 0x00FF00) * wx) >> 8) & 0x00FF00;
+                    dst[o + x] = (int)((((topRB * iy + lowRB * wy) >> 8) & 0xFF00FF) | (((topG * iy + lowG * wy) >> 8) & 0x00FF00));
+                }
+            });
+        }
+    }
+
     // Media Foundation identifiers.
     static class G
     {
+        public static Guid MF_TRANSCODE_CONTAINERTYPE = new Guid("150ff23f-4abc-478b-ac4f-e1916fba1cca");
+        public static Guid MFTranscodeContainerType_MPEG4 = new Guid("dc6cd05d-b9d0-40ef-bd35-fa622c1ab28a");
         public static Guid MF_MT_MAJOR_TYPE = new Guid("48eba18e-f8c9-4687-bf11-0a74c9f96a8f");
         public static Guid MF_MT_SUBTYPE = new Guid("f7e34c9a-42e8-4714-b74b-cb29d72c35e5");
         public static Guid MFMediaType_Video = new Guid("73646976-0000-0010-8000-00AA00389B71");

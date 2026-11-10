@@ -30,6 +30,7 @@ namespace FastViewer
             new MenuChoice("delete", "Delete", "", 0),
             new MenuChoice("rotate", "Rotate", "", 1),
             new MenuChoice("saveRotation", "Save rotation to file", "", 1),
+            new MenuChoice("crop", "Crop", "", 1),
             new MenuChoice("mini", "Mini player", "", 1),
             new MenuChoice("pin", "Keep on top", "", 1),
             new MenuChoice("slideshow", "Slideshow", "", 1),
@@ -48,7 +49,8 @@ namespace FastViewer
             new MenuChoice("loopA", "Loop from here (A)", "", 2),
             new MenuChoice("loopB", "Loop until here (B)", "", 2),
             new MenuChoice("changeCover", "Change cover (music)", "", 3),
-            new MenuChoice("trim", "Trim", "", 4),
+            new MenuChoice("trim", "Trim", "", 4),
+            new MenuChoice("crop", "Crop", "", 4),
             new MenuChoice("compatible", "Make compatible copy", "", 4),
         };
 
@@ -136,6 +138,7 @@ namespace FastViewer
                 case "delete": return One(Item("Delete", "", AskDelete, KeyOf("delete")));
                 case "rotate": return One(Item("Rotate", "", Rotate, KeyOf("rotate")));
                 case "saveRotation": return One(Enabled(Item("Save rotation to file", "", SaveRotationToFile, KeyOf("saveRotation")), CanSaveRotation()));
+                case "crop": return shown != null && shown.IsAudio ? new Control[0] : One(Item("Crop...", "", StartCrop, KeyOf("crop")));
                 case "mini": return One(Item("Mini player", "", ToggleMini, KeyOf("mini")));
                 case "pin": return One(Item("Keep on top", pinned ? "" : "", TogglePin, KeyOf("pin")));
                 case "slideshow": return One(Item("Slideshow", "", ToggleSlideshow, KeyOf("slideshow")));
@@ -164,7 +167,8 @@ namespace FastViewer
                 case "loopA": return WithLoopStop("loopA", Item("Loop from here (A)", "", SetLoopStart, KeyOf("loopA")));
                 case "loopB": return WithLoopStop("loopB", Item("Loop until here (B)", "", SetLoopEnd, KeyOf("loopB")));
                 case "changeCover": return music ? One(Item("Change cover...", "", ChangeCover)) : none;
-                case "trim": return music ? none : One(Item("Trim...", "", StartTrim, KeyOf("trim")));
+                case "trim": return music ? none : One(Item("Trim...", "", StartTrim, KeyOf("trim")));
+                case "crop": return music ? none : One(Item("Crop...", "", StartCrop, KeyOf("crop")));
                 case "compatible": return music ? none : One(Item("Make compatible copy...", "", MakeCompatibleCopy, KeyOf("compatible")));
             }
             return none;
