@@ -33,6 +33,7 @@ namespace FastViewer
         [STAThread]
         static void Main(string[] args)
         {
+            if (args.Length >= 4 && args[0] == "--isolate") { Environment.ExitCode = Vocals.Child(args); return; } // the hidden helper of voice isolation (Vocals.cs)
             if (SingleInstance.TryForward(args)) return; // a FastViewer waiting in the background shows the file
             Run(args);
         }
@@ -53,7 +54,7 @@ namespace FastViewer
             // Test hook: FastViewer.exe --convert <source> <target> <rotation> [from-seconds to-seconds]
             if (args.Length >= 3 && args[0] == "--speechwav") // test: the sound of <video> as the .wav captions are made from
             {
-                try { File.WriteAllText(args[2] + ".log", "OK " + VideoConverter.SpeechWav(args[1], args[2], 0, null, null).ToString(CultureInfo.InvariantCulture) + " s"); }
+                try { File.WriteAllText(args[2] + ".log", "OK " + (args.Length >= 5 ? VideoConverter.SpeechWav(args[1], args[2], 0, null, null, int.Parse(args[3]), int.Parse(args[4])) : VideoConverter.SpeechWav(args[1], args[2], 0, null, null)).ToString(CultureInfo.InvariantCulture) + " s"); }
                 catch (Exception ex) { File.WriteAllText(args[2] + ".log", "ERROR " + ex); }
                 return;
             }
@@ -426,6 +427,7 @@ namespace FastViewer
                 else if (args[i] == "--positions" && i + 1 < args.Length) { PositionsFile = args[++i]; positionsOverride = true; }
                 else if (args[i] == "--rotations" && i + 1 < args.Length) { TurnMemory.Path = args[++i]; TurnMemory.Overridden = true; }
                 else if (args[i] == "--addons" && i + 1 < args.Length) Addon.RootOverride = args[++i];
+                else if (args[i] == "--vocals") Vocals.Offered = true;
                 else if (args[i] == "--addon-source" && i + 1 < args.Length) Addon.SourceOverride = args[++i];
                 else if (args[i] == "--gpu" && i + 1 < args.Length) GpuVerdict.Override = args[++i];
                 else if (args[i] == "--frameboost" && i + 1 < args.Length) Smooth.OwnOverride = args[++i];

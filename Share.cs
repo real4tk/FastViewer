@@ -94,7 +94,23 @@ namespace FastViewer
         {
             Func<int, string, Control> size = (mb, who) =>
                 Item("Fit in " + mb + " MB (" + who + ")", discordMb == mb ? "" : null, delegate { SendToDiscord(mb); });
-            ShowMenu("TrimShareBtn", PlacementMode.Top, size(20, "Discord without Nitro"), size(50, "Nitro Basic"), size(500, "Nitro"));
+            var items = new List<Control> { size(20, "Discord without Nitro"), size(50, "Nitro Basic"), size(500, "Nitro") };
+            if (HasSubs && shown != null && !shown.IsAudio)
+            {
+                // Discord shows no subtitle files: ticked, the lines are drawn into the picture. Ticking keeps the menu
+                // there (it opens again), so the size can be picked next.
+                items.Add(new Separator());
+                var burn = Item("Burn in captions", discordBurn ? "\uE73E" : null, delegate
+                {
+                    discordBurn = !discordBurn;
+                    SaveSettings();
+                    Dispatcher.BeginInvoke(new Action(delegate { if (trimming) { ClosingOwnMenu(F<Button>("TrimShareBtn")); ShowDiscordMenu(); } }), System.Windows.Threading.DispatcherPriority.Background);
+                });
+                burn.ToolTip = "Discord doesn't show subtitle files. This draws the captions into the video itself.";
+                System.Windows.Automation.AutomationProperties.SetName(burn, "Burn in captions, " + (discordBurn ? "on" : "off"));
+                items.Add(burn);
+            }
+            ShowMenu("TrimShareBtn", PlacementMode.Top, items.ToArray());
         }
 
         static string SizeText(long bytes)
@@ -277,7 +293,8 @@ namespace FastViewer
             shareLog.Clear();
 
             // The whole video, already small enough, an ordinary .mp4 that's shown the way it's stored: nothing to do.
-            if (from == null && sourceSize <= ceiling && Path.GetExtension(source).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+            var painter = discordBurn ? MakePainter(source, from) : null; // captions drawn into the picture
+            if (painter == null && from == null && sourceSize <= ceiling && Path.GetExtension(source).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
                 && turn == VideoInfo.Rotation(source) && VideoInfo.VideoCodec(source) == "avc1")
             {
                 lastShareResult = "as is, " + sourceSize + " bytes";
@@ -317,6 +334,7 @@ namespace FastViewer
                 for (int attempt = 1; attempt <= 4; attempt++)
                 {
                     var o = new ConvertOptions { VideoBitrate = (int)video, AudioBitrate = plan.AudioBitrate, MaxShort = plan.MaxShort, MaxFps = plan.MaxFps };
+                    if (painter != null) { painter.Painted = painter.Lines = 0; o.Paint = painter.Paint; }
                     string label = attempt == 1 ? null : "Fitting it once more (try " + attempt + ")";
                     VideoConverter.Convert(source, temp, from, to, turn, p => progress(label, p), cancel, o);
                     if (cancel.Cancelled) return;
@@ -354,9 +372,9 @@ namespace FastViewer
                     ShowToast(cancelled ? "Cancelled." : "Couldn't make the copy for Discord: " + error, null, null, 6, null);
                     return;
                 }
-                lastShareResult = "made " + made + ", " + bytes + " bytes, " + target;
+                lastShareResult = "made " + made + ", " + bytes + " bytes" + (painter != null ? ", captions on " + painter.Painted + " pictures (" + painter.Lines + " lines)" : "") + ", " + target;
                 bool copied = CopyForPasting(target);
-                ShowToast((copied ? "Copied (" : "Made, but the clipboard is in use (") + SizeText(bytes) + ", " + made + ")" +
+                ShowToast((copied ? "Copied (" : "Made, but the clipboard is in use (") + SizeText(bytes) + ", " + made + (painter != null && painter.Lines > 0 ? ", with captions" : "") + ")" +
                           (copied ? ": paste it in Discord with Ctrl+V" : ": use Show in folder"), "Show in folder", delegate
                 {
                     Process.Start("explorer.exe", "/select,\"" + target + "\"");

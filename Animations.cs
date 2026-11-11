@@ -140,7 +140,16 @@ namespace FastViewer
             ghostMenu = null;
         }
 
-        static void OnMenuClick(object sender, MouseButtonEventArgs e) { PutGhost((ContextMenu)sender); }
+        static void OnMenuClick(object sender, MouseButtonEventArgs e)
+        {
+            // A click that leaves the menu open (the speed row, an item that opens a smaller menu) is no closing.
+            for (var d = e.OriginalSource as DependencyObject; d != null && d != sender; d = d is Visual ? VisualTreeHelper.GetParent(d) ?? LogicalTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            {
+                var item = d as MenuItem;
+                if (item != null && (item.StaysOpenOnClick || item.HasItems)) return;
+            }
+            PutGhost((ContextMenu)sender);
+        }
 
         // The menu holds the mouse while open, so a click anywhere (also outside it) comes here first.
         static void OnMenuMouseDown(object sender, MouseButtonEventArgs e)

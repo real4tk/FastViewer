@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.24.0)
+# FastViewer: complete feature list (version 1.25.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -139,9 +139,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Short notes when a key or the wheel changes something while the controls are hidden ("Volume 45%",
   "+30 s 1:42 / 5:00").
 - Autoplay (optional), Repeat (R), "When a video ends": stop or play the next file.
-- Speed 0.25x to 5x (0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5; 1.20.0): Settings > Videos > "Speeds in the menu"
-  picks which ones the video "..." menu shows (default 0.5/1/1.5/2; 1x always; settings line speeds=); the Slower/Faster keys
-  step through the same ones. A speed picked before it was hidden still shows in the menu while it's in use.
+- Speed 0.25x to 5x (0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5): since 1.25.0 a slider row at the top of the video "..." menu (see the 1.25.0 section); the Slower/Faster keys step through all of them. The 1.20-1.24 setting "Speeds in the menu" (speeds=) is gone.
 - Frame by frame: , and . step one frame (uses the real frame length read from the file).
 - A-B loop: [ start, ] end, \ stop; the looped part shows as a band on the time bar.
 - Continue where you left off: videos over a minute resume where you stopped (300 most recent, shared
@@ -211,7 +209,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   Full screen F/F11, Mini player Ctrl+M, Slideshow F5, File info I, Open Ctrl+O, Save as Ctrl+S,
   Copy Ctrl+C, Copy frame Ctrl+Shift+C, Subtitles S, Delete Delete, Settings Ctrl+,
 - Actions without a default key (assignable): thumbnail strip, slower/faster/normal speed, save a frame,
-  make compatible copy, make captions automatically, convert to JPG, convert to PNG, save rotation to file, actual size, keep on top, copy file path, show in folder,
+  make compatible copy, make captions automatically, save a copy with captions, convert to JPG, convert to PNG, save rotation to file, actual size, keep on top, copy file path, show in folder,
   open with, close window.
 - Esc always goes back: leaves full screen, mini player, slideshow, grid or Settings. A key pressed again
   undoes itself: G closes the grid, I File info, Ctrl+T leaves trimming, Ctrl+, closes Settings, Ctrl+M/F/F5
@@ -400,6 +398,72 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   Test: --case rotleft (scratch folder with photo.jpg and clip.mp4, --motion full).
 - Top messages have a "done" kind (tick icon E73E). New line icons: Ic.E7F0, Ic.E720, Ic.E8AB, Ic.EC4A.
 
+## Captions on songs, burned-in captions, tidier video menu (1.25.0)
+- Whisper options (Captions.cs Transcribe): "-ml 84 -sow -np -sns -mc 0". -sns forbids the non-speech answers ("[MUSIC]",
+  a note sign) that Whisper gave for whole half minutes of singing; -mc 0 writes each half minute without the text before
+  it (with it, small looped one line through most of a 3.5 minute song: 16 different lines out of 46, 48 of 50 without).
+  Lines Whisper makes up when it hears no words are dropped by the Made pattern (subtitle credits such as "Субтитры сделал
+  DimaTorzok", "Редактор субтитров ...", "Subtitles by", "Thanks for watching", a bare "music" in a few languages); the
+  repeated-line filter now only leaves out a line after four identical ones in a row (a chorus repeats).
+- Large model (Whisper.Large, add-on "WhisperLarge" = ggml-large-v3-turbo-q5_0.bin, 547 MB, same Hugging Face commit as the
+  small one): Settings > Videos > "Better quality captions"; when installed it is the model used (Whisper.UsesLarge).
+- Measured (word error rate, 9 Creative Commons songs from the JamendoLyrics set, github.com/f90/jamendolyrics: 4 English,
+  2 German, 1 French, 2 Spanish; the first 60 s of singing of each, 1088 words; language found by itself; Ryzen 5 5600X,
+  6 threads, whisper-cli on the processor):
+    small as in 1.24.0            42.1%   18 s per minute of sound
+    small -sns                    30.1%   17 s
+    small -sns -mc 0 (shipped)    33.5%   16 s   (through the app itself: 30%)
+    large-v3-turbo -sns           22.5%   58 s
+    large-v3-turbo -sns -mc 0     22.6%   57 s   (shipped; through the app itself: 25%)
+    small, voice isolated first   42.3% with -sns (40.7% without); large, voice isolated first 22.8%
+  ggml-large-v3-q5_0 (1.08 GB) was not measured to the end: over two minutes per minute of sound on the processor.
+  Whisper is erratic on songs: the same clip scored 16% or 52% wrong after a tiny change in the sound, so only totals
+  over several songs mean anything.
+- Voice isolation (Vocals.cs) is built but NOT offered (Vocals.Offered = false; tests switch it on with --vocals): add-on
+  "Vocals" = sherpa-onnx-c-api.dll + onnxruntime.dll (two entries out of the NuGet package org.k2fsa.sherpa.onnx.runtime.win-x64
+  2.0.1) + UVR_MDXNET_9482.onnx (k2-fsa/sherpa-onnx release "source-separation-models"), 36 MB. A hidden second FastViewer
+  ("FastViewer.exe --isolate <44.1 kHz stereo wav> <target wav> <add-on folder>", Vocals.Child, first thing in Main) separates
+  the voice in 20 s pieces (1 s crossfade), mixes 16% of the original back under it and writes 16 kHz mono (own windowed-sinc
+  resampler); VideoConverter.SpeechWav takes a rate and channel count for it. On the processor: 18 s per minute of sound.
+  It made some songs better (rap, pop: 20% -> 10%, 28% -> 21%) and others worse, no gain in total, and with it the large
+  model lost its place in a long song. Heavier UVR models (Voc_FT) need minutes per minute on a processor (a graphics card
+  path, e.g. ONNX Runtime DirectML, would be needed); Spleeter was fast but clearly worse (59%); UVR_MDXNET_KARA_2 returns
+  no voice as used here.
+- The user's own TikTok clips (10-15 s, loud edited music): still mostly nothing usable; before the Made filter they got
+  invented credits. Song recognition + lyrics (see the project notes) remains the idea for those.
+- Burned-in captions (Burn.cs): ConvertOptions.Paint gets every finished picture before it is encoded (this also switches
+  off the pass-the-sample-through shortcut). CaptionPainter finds the line for the picture's time (start of the part +
+  time, same rule as SubTick), draws it once per line on an STA thread (FormattedText in the look's Font.Ui, SemiBold,
+  white on #C0000000 with the look's corner radius, at most 4 lines and 88% wide; size = the Subtitle size setting x
+  min(height, 1.1 x width), so an upright phone video gets text sized for its width) and blends it 4.5% above the bottom.
+  "Save a copy with captions..." (video "..." > Subtitles; action burnCaptions, no default key; AskSaveVideo " (captions)",
+  RunConversion with the options). Send to Discord: when the video has subtitles the size menu gets a line and a ticked
+  item "Burn in captions" (discordBurn=; ticking opens the menu again so a size can be picked); with it the "already small
+  enough, copied as it is" shortcut is skipped and the message says "with captions". Test: --case burn (two.mp4 with two
+  sound tracks + two.srt, tall.mp4 + tall.srt): text on the right number of pictures, both tracks still 440 / 880 Hz.
+- Video "..." menu: "speeds" is one row (Menus.cs SpeedRow: a MenuItem with StaysOpenOnClick whose header holds "Speed", a
+  FluentSlider with a stop per AllSpeeds entry and a Filled button showing the speed that goes back to 1x; wheel and
+  Left/Right step it; icon EC49, line icon Ic.EC49). "subtitles" is one item "Subtitles" (key shown) with a submenu: Show
+  subtitles (tick), Choose (other) subtitles..., Make captions automatically / Make the captions again, Save captions as a
+  file..., Save a copy with captions... "smooth" is one row "Make smoother" with two Filled buttons 2x / 4x (Tools.cs
+  SmoothMenuItems; StaysOpenOnClick row, the buttons close the menu themselves; keys 2 / Enter and 4), no submenu, since
+  those are its only two choices. The submenu parent is a SideMenuItem (SideMenu.cs, made by Menus.cs SubItem): plain WPF
+  closed the submenu when the pointer crossed other rows on the way to it. MenuAim decides from the pointer (polled
+  every 15 ms): over the item, the submenu or the gap between them it never closes; over another row while moving
+  toward the submenu (inside the triangle from the last pointer position to the submenu's two near corners, 12 px slop)
+  the other rows are made deaf (IsHitTestVisible) and the submenu is held; 350 ms without heading there closes it and
+  hands over to the row under the pointer; a pointer that never headed there leaves WPF's own behaviour. Holding is a
+  coerce on IsSubmenuOpen (so WPF's own close timer can't win), switched off for 400 ms after any click or key and when
+  the menu closes. Works with the submenu on either side (flipped at the screen edge). Submenus are new in
+  the MenuItem template (Theme.xaml: chevron when HasItems, PART_Popup with the menu's own border). A click that leaves
+  the menu open (speed row, submenu parent) gets no closing picture (Animations.cs OnMenuClick). Menu ids subFile and
+  autoCaptions are gone (old videoMenu= lines just skip them). "Speeds in the menu" and the speeds= line are gone;
+  Speeds = AllSpeeds, also for the Slower / Faster keys. Test: --case videomenu (run per --look; picture videomenu_<look>.png
+  with the submenu drawn beside the menu; it also walks a made-up pointer through MenuAim for both sides and through the
+  real item with its real popup). The real pointer on a real menu can only be checked by hand.
+- More tests: --case captionsall (captions for every file in the folder through the app, text to <out>\<name>.txt, for
+  scoring), --case addons --pattern real also fetches Vocals and WhisperLarge; --speechwav <video> <wav> [rate channels].
+
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -464,12 +528,12 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
   keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full), share, crop, tracks (1.22.0, see Videos),
-  away (1.23.0, see Polish release), convert, subs, addons, captions, smooth (1.24.0, see their section),
+  away (1.23.0, see Polish release), convert, subs, addons, captions, smooth (1.24.0, see their section), burn, videomenu, captionsall (1.25.0),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
 - Options: --preload n, --look <Id>, --strip, --grab-always, --settings <scratch.ini>,
-  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --addons, --addon-source, --gpu, --frameboost, --speechwav <video> <wav>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
+  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --addons, --addon-source, --vocals, --gpu, --frameboost, --speechwav <video> <wav>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
   --count, --every, --pattern, --front, --motion full|reduced|off (tests run with animations Off unless
   given), --convert <src> <dst> <rotation> [from to].
 - Any run with a "--" option never contacts GitHub.

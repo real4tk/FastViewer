@@ -320,7 +320,7 @@ namespace FastViewer
         }
 
         // Converts in the background with Windows' own video tools; progress shows in the pop-up.
-        void RunConversion(string source, string target, TimeSpan? from, TimeSpan? to, string what)
+        void RunConversion(string source, string target, TimeSpan? from, TimeSpan? to, string what, ConvertOptions options = null)
         {
             if (converting)
             {
@@ -354,7 +354,7 @@ namespace FastViewer
                             var fill = (ScaleTransform)bar.RenderTransform;
                             Motion.To(fill, ScaleTransform.ScaleXProperty, percent / 100.0, Motion.Ms(200, false), Motion.Smooth);
                         }));
-                    }, cancel);
+                    }, cancel, options);
                 }
                 catch (Exception ex) { error = ex.Message; }
                 Dispatcher.BeginInvoke(new Action(delegate

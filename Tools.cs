@@ -338,12 +338,38 @@ namespace FastViewer
         {
             var s = shown;
             if (s == null || !s.IsVideo || s.IsAudio || s.Failed) return new Control[0];
-            string dots = Smooth.Ready ? "" : "...";
-            return new Control[]
+            // One row like the speed row: the name, and a small button for each choice (2x or 4x the frames).
+            var label = new TextBlock { Text = "Make smoother" + (Smooth.Ready ? "" : "..."), VerticalAlignment = System.Windows.VerticalAlignment.Center };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.Children.Add(label);
+            var row = new MenuItem { Header = grid, StaysOpenOnClick = true, Icon = new Glyph { Code = "", Size = 16 } };
+            System.Windows.Automation.AutomationProperties.SetName(row, "Make smoother");
+            Action<int> go = times =>
             {
-                Item("Make smoother (2x the frames)" + dots, "", delegate { SmoothVideo(2); }),
-                Item("Make smoother (4x the frames)" + dots, "", delegate { SmoothVideo(4); }),
+                var menu = ItemsControl.ItemsControlFromItemContainer(row) as ContextMenu;
+                if (menu != null) { PutGhost(menu); menu.IsOpen = false; }
+                SmoothVideo(times);
             };
+            foreach (int times in new[] { 2, 4 })
+            {
+                int t = times;
+                var b = new Button { Content = t + "x", MinWidth = 44, Height = 26, Padding = new System.Windows.Thickness(8, 0, 8, 0), FontSize = 12, Focusable = false,
+                    Margin = new System.Windows.Thickness(t == 2 ? 24 : 6, 0, 0, 0) };
+                b.SetResourceReference(StyleProperty, "Filled");
+                System.Windows.Automation.AutomationProperties.SetName(b, t == 2 ? "Twice the frames" : "Four times the frames");
+                if (showTips) b.ToolTip = t == 2 ? "Twice the frames (30 a second becomes 60)" : "Four times the frames (30 a second becomes 120)";
+                b.Click += delegate { go(t); };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = System.Windows.GridLength.Auto });
+                Grid.SetColumn(b, grid.ColumnDefinitions.Count - 1);
+                grid.Children.Add(b);
+            }
+            row.PreviewKeyDown += delegate(object o, System.Windows.Input.KeyEventArgs e)
+            {
+                if (e.Key == System.Windows.Input.Key.D2 || e.Key == System.Windows.Input.Key.Enter || e.Key == System.Windows.Input.Key.Space) { go(2); e.Handled = true; }
+                else if (e.Key == System.Windows.Input.Key.D4) { go(4); e.Handled = true; }
+            };
+            return One(row);
         }
 
         void AddSmoothSettings()

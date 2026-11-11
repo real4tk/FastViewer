@@ -71,6 +71,7 @@ namespace FastViewer
                 S("compatible", "Make compatible copy", MakeCompatibleCopy),
                 S("subtitles", "Subtitles on/off", ToggleSubtitles, "S"),
                 S("autoCaptions", "Make captions automatically", MakeCaptions),
+                S("burnCaptions", "Save a copy with captions", SaveCopyWithCaptions),
                 S("toJpg", "Convert to JPG", delegate { ConvertPhoto(".jpg"); }),
                 S("toPng", "Convert to PNG", delegate { ConvertPhoto(".png"); }),
                 S("rotate", "Rotate right", Rotate, "Ctrl+R"),
@@ -190,7 +191,7 @@ namespace FastViewer
             { "zoomIn", "" }, { "zoomOut", "" }, { "fit", "" }, { "actualSize", "" }, { "fullscreen", "" },
             { "mini", "" }, { "pin", "" }, { "slideshow", "" }, { "info", "" }, { "open", "" },
             { "saveAs", "" }, { "copy", "" }, { "copyPath", "" }, { "showInFolder", "" }, { "openWith", "" },
-            { "subtitles", "\uE7F0" }, { "autoCaptions", "\uE720" }, { "toJpg", "\uE8AB" }, { "toPng", "\uE8AB" },
+            { "subtitles", "\uE7F0" }, { "burnCaptions", "\uE792" }, { "autoCaptions", "\uE720" }, { "toJpg", "\uE8AB" }, { "toPng", "\uE8AB" },
             { "rotateLeft", "\uE7AD" },
             { "copyFrame", "\uEB9F" }, { "delete", "" }, { "settings", "" }, { "close", "" }
         };
@@ -436,27 +437,11 @@ namespace FastViewer
             ShowToast(showStrip ? "Thumbnail strip on." : "Thumbnail strip off.", null, null, 2, "strip");
         }
 
-        // Every speed FastViewer offers; Settings > Videos > "Speeds in the menu" picks which ones are shown (1x always is).
+        // Every speed FastViewer offers: the stops of the video menu's speed slider and of the Slower / Faster keys.
         static readonly double[] AllSpeeds = { 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5 };
-        static readonly double[] DefaultSpeeds = { 0.5, 1, 1.5, 2 };
-        readonly HashSet<double> shownSpeeds = new HashSet<double>(DefaultSpeeds);
-
-        double[] Speeds { get { return AllSpeeds.Where(x => x == 1 || shownSpeeds.Contains(x)).ToArray(); } }
+        double[] Speeds { get { return AllSpeeds; } } // (until 1.24 a setting picked which ones the menu listed; the menu's slider has them all)
 
         static string SpeedText(double s) { return s.ToString(CultureInfo.InvariantCulture) + "x"; }
-
-        void LoadSpeeds(string v)
-        {
-            shownSpeeds.Clear();
-            foreach (var part in v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                double d;
-                if (double.TryParse(part.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out d) && AllSpeeds.Contains(d)) shownSpeeds.Add(d);
-            }
-            shownSpeeds.Add(1);
-        }
-
-        string SpeedsLine() { return "speeds=" + string.Join(",", Speeds.Select(x => x.ToString(CultureInfo.InvariantCulture))); }
 
         // -1 slower, 1 faster, 0 back to normal (the same steps as the video "..." menu).
         void StepSpeed(int direction)

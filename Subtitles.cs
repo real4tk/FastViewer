@@ -329,16 +329,17 @@ namespace FastViewer
             var s = shown;
             var none = new Control[0];
             if (s == null || !s.IsVideo || s.Failed) return none;
-            switch (id)
-            {
-                case "subtitles": return HasSubs ? One(Item("Subtitles", subsOn ? "" : null, ToggleSubtitles, KeyOf("subtitles"))) : none;
-                case "subFile": return One(Item(HasSubs ? "Choose other subtitles..." : "Choose subtitles...", "", ChooseSubtitles));
-                case "autoCaptions":
-                    var list = new List<Control> { Item(HasSubs && cuesFrom == "auto" ? "Make the captions again" : "Make captions automatically", "", MakeCaptions, KeyOf("autoCaptions")) };
-                    if (HasSubs && cuesFrom == "auto") list.Add(Item("Save captions as a file...", "", SaveCaptionsAs));
-                    return list;
-            }
-            return none;
+            if (id != "subtitles") return none;
+            // One item with everything about subtitles beside it (1.25.0; five separate items before). The S key
+            // (shown on it) still switches them on and off without opening anything.
+            bool auto = HasSubs && cuesFrom == "auto";
+            var list = new List<Control>();
+            if (HasSubs) list.Add(Item("Show subtitles", subsOn ? "" : null, ToggleSubtitles, KeyOf("subtitles")));
+            list.Add(Item(HasSubs ? "Choose other subtitles..." : "Choose subtitles...", "", ChooseSubtitles));
+            list.Add(Item(auto ? "Make the captions again" : "Make captions automatically", "", MakeCaptions, KeyOf("autoCaptions")));
+            if (auto) list.Add(Item("Save captions as a file...", "", SaveCaptionsAs));
+            if (HasSubs && !s.IsAudio) list.Add(Item("Save a copy with captions...", "", SaveCopyWithCaptions, KeyOf("burnCaptions")));
+            return One(WithSub(SubItem("Subtitles", "", delegate { }, HasSubs ? KeyOf("subtitles") : null), list));
         }
 
         void AddSubtitleSettings()

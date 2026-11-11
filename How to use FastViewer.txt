@@ -39,10 +39,16 @@ Cropping a photo or video
 
 Subtitles and automatic captions
   A subtitle file (.srt or .vtt) with the same name as the video, in the same folder, shows by itself.
-  The CC button on the video bar (or the S key) switches subtitles off and on; video "..." -> Choose
-  subtitles picks another file. No subtitle file? Video "..." -> Make captions automatically lets
+  The CC button on the video bar (or the S key) switches subtitles off and on; video "..." -> Subtitles ->
+  Choose subtitles picks another file. No subtitle file? "Make captions automatically" there lets
   FastViewer write them by listening, on your own PC. The first time it asks to download 190 MB once
   (also in Settings -> Videos -> Automatic captions); after that it works without internet.
+  Songs and videos with music: captions understand singing better than before. For the best result,
+  "Better quality captions" in the same place downloads a much larger (slower) Whisper model once
+  (547 MB). Made captions before? Video "..." -> Subtitles -> Make the captions again.
+  Captions in Discord: Discord doesn't show subtitle files, so the text has to be part of the video.
+  In "Send to Discord" tick "Burn in captions" (shown when the video has captions or subtitles), or
+  use video "..." -> Subtitles -> Save a copy with captions for a normal copy with the text drawn in.
 
 Smoother video
   Video "..." -> Make smoother (2x or 4x the frames) saves a smoother copy next to the original, made
@@ -93,6 +99,6 @@ Music (.mp3 .m4a .wav .flac ...) plays too, with its album cover, title and arti
 Point at FastViewer's taskbar icon for Previous / Play-Pause / Next buttons.
 Right-click an MP3's music view to change its cover. Settings > Viewing > Show picks photos, videos and/or music.
 Rotating a video or photo is remembered; Settings > Viewing can save the turn into the file (JPEG, MP4, MOV: no quality lost).
-Playback speed (0.25x to 5x): video "..." menu; pick which speeds it lists in Settings > Videos.
+Playback speed (0.25x to 5x): the slider at the top of the video "..." menu; click the speed next to it for 1x.
 Videos that don't play or get no thumbnail elsewhere: video "..." -> "Make compatible copy".
 iPhone videos (HEVC) need "HEVC Video Extensions" from the Microsoft Store, same as the Photos app.

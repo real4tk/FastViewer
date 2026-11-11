@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Controls.Primitives;
 
 namespace FastViewer
@@ -42,7 +43,7 @@ namespace FastViewer
         };
         static readonly MenuChoice[] VideoChoices =
         {
-            new MenuChoice("speeds", "Speeds", "", 0),
+            new MenuChoice("speeds", "Speed", "\uEC49", 0),
             new MenuChoice("repeat", "Repeat", "", 1),
             new MenuChoice("copyFrame", "Copy frame", "", 1),
             new MenuChoice("saveFrame", "Save a frame", "", 1),
@@ -51,13 +52,11 @@ namespace FastViewer
             new MenuChoice("loopA", "Loop from here (A)", "", 2),
             new MenuChoice("loopB", "Loop until here (B)", "", 2),
             new MenuChoice("changeCover", "Change cover (music)", "", 3),
-            new MenuChoice("subtitles", "Subtitles on/off", "\uE7F0", 3),
-            new MenuChoice("subFile", "Choose subtitles", "\uE8E5", 3),
-            new MenuChoice("autoCaptions", "Make captions automatically", "\uE720", 3),
+            new MenuChoice("subtitles", "Subtitles and captions", "\uE7F0", 3),
             new MenuChoice("trim", "Trim", "", 4),
             new MenuChoice("crop", "Crop", "", 4),
             new MenuChoice("compatible", "Make compatible copy", "", 4),
-            new MenuChoice("smooth", "Make smoother (2x / 4x)", "\uEC4A", 4),
+            new MenuChoice("smooth", "Make smoother", "\uEC4A", 4),
         };
 
         // Every item in the chosen order; hidden ones are kept in their place so switching them back on puts them there.
@@ -163,10 +162,7 @@ namespace FastViewer
             var none = new Control[0];
             switch (id)
             {
-                case "speeds":
-                    var speedList = Speeds;
-                    if (!speedList.Any(x => Math.Abs(x - speed) < 0.01)) speedList = speedList.Concat(new[] { speed }).OrderBy(x => x).ToArray(); // a speed picked before it was hidden stays visible
-                    return speedList.Select(s => { double value = s; return (Control)Item("Speed " + SpeedText(value), Math.Abs(speed - value) < 0.01 ? "" : null, delegate { SetSpeed(value); }); }).ToList();
+                case "speeds": return shown == null || !shown.IsVideo ? none : One(SpeedRow());
                 case "repeat": return One(Item("Repeat", loop ? "" : null, ToggleLoop, KeyOf("repeat")));
                 case "copyFrame": return music ? none : One(Item("Copy frame", "", CopyFrame, KeyOf("copyFrame")));
                 case "saveFrame": return music ? none : One(Item("Save a frame", "", SaveFrame, KeyOf("saveFrame")));
@@ -179,7 +175,7 @@ namespace FastViewer
                 case "crop": return music ? none : One(Item("Crop...", "", StartCrop, KeyOf("crop")));
                 case "compatible": return music ? none : One(Item("Make compatible copy...", "", MakeCompatibleCopy, KeyOf("compatible")));
                 case "smooth": return SmoothMenuItems();
-                case "subtitles": case "subFile": case "autoCaptions": return SubtitleMenuItem(id);
+                case "subtitles": return SubtitleMenuItem(id);
             }
             return none;
         }
@@ -195,6 +191,66 @@ namespace FastViewer
         }
 
         static IEnumerable<Control> One(Control c) { return new[] { c }; }
+
+        // An item that opens a smaller menu beside it (SideMenu.cs keeps that menu open while you reach for it).
+        static MenuItem SubItem(string header, string glyph, Action unused, string shortcut = null)
+        {
+            var mi = new SideMenuItem { Header = header, InputGestureText = shortcut ?? "" };
+            if (glyph != null) mi.Icon = new Glyph { Code = glyph, Size = 16 };
+            return mi;
+        }
+
+        static MenuItem WithSub(MenuItem parent, IEnumerable<Control> children)
+        {
+            foreach (var c in children) if (c != null) parent.Items.Add(c);
+            return parent;
+        }
+
+        // The video menu's speed row (1.25.0): a slider that stops at each speed from 0.25x to 5x, and the speed
+        // itself on a small button that goes back to 1x. The menu stays open while it's used.
+        Control SpeedRow()
+        {
+            int normal = Array.IndexOf(AllSpeeds, 1.0), at = 0;
+            for (int i = 1; i < AllSpeeds.Length; i++) if (Math.Abs(AllSpeeds[i] - speed) < Math.Abs(AllSpeeds[at] - speed)) at = i;
+            var label = new TextBlock { Text = "Speed", VerticalAlignment = VerticalAlignment.Center };
+            var slider = new Slider
+            {
+                Minimum = 0, Maximum = AllSpeeds.Length - 1, Value = at, IsSnapToTickEnabled = true, TickFrequency = 1, SmallChange = 1, LargeChange = 1,
+                MinWidth = 150, Margin = new Thickness(14, 0, 10, 0)
+            };
+            slider.SetResourceReference(StyleProperty, "FluentSlider");
+            System.Windows.Automation.AutomationProperties.SetName(slider, "Playback speed");
+            var value = new Button { Content = SpeedText(AllSpeeds[at]), MinWidth = 54, Height = 26, Padding = new Thickness(8, 0, 8, 0), FontSize = 12, Focusable = false };
+            value.SetResourceReference(StyleProperty, "Filled");
+            System.Windows.Automation.AutomationProperties.SetName(value, "Back to normal speed");
+            if (showTips) value.ToolTip = "Back to normal speed (1x)";
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(slider, 1);
+            Grid.SetColumn(value, 2);
+            grid.Children.Add(label);
+            grid.Children.Add(slider);
+            grid.Children.Add(value);
+            var row = new MenuItem { Header = grid, StaysOpenOnClick = true, Icon = new Glyph { Code = "", Size = 16 } };
+            System.Windows.Automation.AutomationProperties.SetName(row, "Speed");
+            Action<double> move = by => slider.Value = Math.Max(0, Math.Min(AllSpeeds.Length - 1, Math.Round(slider.Value) + by));
+            slider.ValueChanged += delegate
+            {
+                double s = AllSpeeds[(int)Math.Round(slider.Value)];
+                if (Math.Abs(s - speed) > 0.001) SetSpeed(s);
+                value.Content = SpeedText(s);
+            };
+            value.Click += delegate { slider.Value = normal; };
+            row.PreviewMouseWheel += delegate(object o, MouseWheelEventArgs e) { move(e.Delta > 0 ? 1 : -1); e.Handled = true; };
+            row.PreviewKeyDown += delegate(object o, KeyEventArgs e)
+            {
+                if (e.Key == Key.Left || e.Key == Key.Right) { move(e.Key == Key.Right ? 1 : -1); e.Handled = true; }
+                else if (e.Key == Key.Enter || e.Key == Key.Space) { slider.Value = normal; e.Handled = true; }
+            };
+            return row;
+        }
 
         void ShowMoreMenu()
         {

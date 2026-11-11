@@ -5,6 +5,34 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.25.0  (11 Nov 2026)
+  New
+  - Captions burned into the video, for Discord (which doesn't show subtitle files). In Send to Discord (trim
+    bar) tick "Burn in captions": it appears whenever the video has captions or subtitles. Or use video "..." >
+    Subtitles > Save a copy with captions for a normal copy. The text looks like FastViewer's own subtitles
+    (white on a dark box, your subtitle size, any language), every sound track is kept, and nothing extra has
+    to be installed.
+  - Better quality captions: an optional larger Whisper model (547 MB, one button in Settings > Videos, size
+    and progress shown, works offline). Once it's there it is used instead of the small one; Remove goes back.
+    On nine test songs with known words it got 25% of the words wrong where the small model gets 30%. It is
+    slower: about a minute for each minute of video on a mid-range processor (the small one: a quarter of that).
+  Changed
+  - Automatic captions understand songs much better, with the small model too: 30% of the words wrong on the
+    test songs instead of 42%. Whisper used to answer "[music]" for half a minute of singing at a time; now it
+    writes the words it hears. A sung line that repeats is no longer dropped, a line can no longer get stuck
+    repeating to the end of a song, and made-up lines (credits like "subtitles by ...", which Whisper invents
+    when it can't make out any words) are left out. Captions made before stay as they were: video "..." >
+    Subtitles > Make the captions again.
+  - A tidier video "..." menu (13 rows instead of up to 19). Speed is one row with a slider that stops at
+    0.25x to 5x and shows the speed; click the speed to go back to 1x (the mouse wheel over the row works too).
+    Everything about subtitles sits under one "Subtitles" item that opens a small menu beside it; that menu
+    stays open while you move the pointer to it, also across other rows. "Make smoother" is one row with a
+    2x and a 4x button. The S key and all other keys work as before.
+  - "Speeds in the menu" (Settings > Videos) is gone: the slider has every speed. The Slower and Faster keys
+    now step through all of them.
+  - Settings > Buttons > "..." menus lists the same, shorter video menu.
+
+
 1.24.0  (11 Nov 2026)
   New
   - Subtitles. A subtitle file (.srt or .vtt) with the same name as the video, next to it, shows by itself (also

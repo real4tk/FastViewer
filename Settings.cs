@@ -68,7 +68,7 @@ namespace FastViewer
                 case "backgroundTold": toldAboutBackground = v == "1"; break;
                 case "miniVolume": miniVolume = v == "1"; break;
                 case "tips": showTips = v != "0"; break;
-                case "speeds": LoadSpeeds(v); break;
+                case "speeds": break; // (until 1.24: which speeds the menu listed)
                 case "music": if (v == "0" && filter == 0) filter = 1; break; // (1.20 test builds; comes after filter=)
                 case "animations": animations = AnimationChoices.Contains(v) ? v : "Auto"; break;
                 case "fileTransition": crossfadeFiles = v == "Crossfade"; break;
@@ -90,6 +90,7 @@ namespace FastViewer
                 case "subs": subsOn = v == "1"; break;
                 case "subSize": subSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "captionLang": captionLanguage = Array.IndexOf(Whisper.LanguageCodes, v) >= 0 ? v : "auto"; break;
+                case "discordBurn": discordBurn = v == "1"; break;
                 case "discordMb": { int mb = int.Parse(v, CultureInfo.InvariantCulture); discordMb = mb == 50 || mb == 500 ? mb : 20; } break;
                 default:
                     if (LoadCustomOption(key, v)) { } // the custom look (CustomLook.cs)
@@ -132,7 +133,6 @@ namespace FastViewer
                 "backgroundTold=" + (toldAboutBackground ? "1" : "0"),
                 "miniVolume=" + (miniVolume ? "1" : "0"),
                 "tips=" + (showTips ? "1" : "0"),
-                SpeedsLine(),
                 "animations=" + animations,
                 "fileTransition=" + (crossfadeFiles ? "Crossfade" : "None"),
                 "strip=" + (showStrip ? "1" : "0"),
@@ -145,6 +145,7 @@ namespace FastViewer
                 "gridSize=" + gridSize.ToString(CultureInfo.InvariantCulture),
                 "gridSort=" + gridSort.ToString(CultureInfo.InvariantCulture),
                 "discordMb=" + discordMb.ToString(CultureInfo.InvariantCulture),
+                "discordBurn=" + (discordBurn ? "1" : "0"),
                 "subs=" + (subsOn ? "1" : "0"),
                 "subSize=" + subSize.ToString(CultureInfo.InvariantCulture),
                 "captionLang=" + captionLanguage,
@@ -435,9 +436,6 @@ namespace FastViewer
                 "How far the skip forward button and the L key jump.",
                 Dropdown(skipLabels, () => Math.Max(0, Array.IndexOf(SkipChoices, skipForward)),
                     i => { skipForward = SkipChoices[i]; UpdateSkipButtons(); }));
-            AddWideCard("", "Speeds in the menu",
-                "Pick the playback speeds the video \"...\" menu shows. The Slower and Faster keys step through the same ones. " +
-                "Normal (1x) is always there.", SpeedChips());
             AddCard("", "Slideshow speed",
                 "How long each photo shows in a slideshow. Videos play to the end.",
                 Dropdown(new[] { "2 seconds", "4 seconds", "8 seconds" },
@@ -714,35 +712,6 @@ namespace FastViewer
         }
 
         readonly List<Action> settingsRefresh = new List<Action>();
-
-        // One button per speed: highlighted ones are shown in the menu. Click to add or remove.
-        FrameworkElement SpeedChips()
-        {
-            var row = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
-            foreach (var value in AllSpeeds)
-            {
-                double sp = value;
-                var b = new Button { Content = SpeedText(sp), MinWidth = 56, Height = 32, Margin = new Thickness(0, 0, 6, 6) };
-                System.Windows.Automation.AutomationProperties.SetName(b, "Speed " + SpeedText(sp));
-                Action paint = delegate
-                {
-                    bool on = sp == 1 || shownSpeeds.Contains(sp);
-                    b.Style = (Style)Application.Current.Resources[on ? "AccentButton" : "Filled"];
-                    b.ToolTip = sp == 1 ? "Always shown" : on ? "Shown in the menu: click to hide" : "Hidden: click to show it in the menu";
-                };
-                paint();
-                settingsRefresh.Add(paint);
-                b.Click += delegate
-                {
-                    if (sp == 1) return;
-                    if (!shownSpeeds.Remove(sp)) shownSpeeds.Add(sp);
-                    paint();
-                    SaveSettings();
-                };
-                row.Children.Add(b);
-            }
-            return row;
-        }
 
         CheckBox Toggle(Func<bool> get, Action<bool> set)
         {

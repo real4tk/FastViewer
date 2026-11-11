@@ -23,6 +23,7 @@ namespace FastViewer
         public double MaxFps;         // leave frames out evenly, down to about this many a second; 0 = keep
         public double[] Crop;         // the part to keep: x, y, width, height, each 0..1 of the picture as shown; null = all
         public Action<int[], int, int, long> Frame; // instead of a file: each picture (pixels, width, height, time in 100 ns)
+        public Action<int[], int, int, long> Paint; // draws on each finished picture before it's saved (burned-in captions): pixels, width, height, time in 100 ns
         public int OutWidth, OutHeight; // filled in: the size that was made
         public double OutFps;
     }
@@ -285,7 +286,7 @@ namespace FastViewer
                             if (frameNo++ % every != 0) continue; // left out for a lower frame rate
                             long d;
                             bool timed = sample.GetSampleDuration(out d) >= 0;
-                            if (writer != null && rotation == 0 && !bottomUp && ow == w && oh == h && ax == 0 && ay == 0 && cx == 0 && cy == 0)
+                            if (writer != null && o.Paint == null && rotation == 0 && !bottomUp && ow == w && oh == h && ax == 0 && ay == 0 && cx == 0 && cy == 0)
                             {
                                 sample.SetSampleTime(newTime);
                                 if (timed && every > 1) sample.SetSampleDuration(d * every);
@@ -301,6 +302,7 @@ namespace FastViewer
                                 }
                                 Turn(sample, inPx, cutPx, w, h, ax, ay, aw, ah, cw, ch, cx, cy, rotation, bottomUp);
                                 if (outPx != cutPx) scaler.Shrink(cutPx, cw, ch, outPx, ow, oh);
+                                if (o.Paint != null) o.Paint(outPx, ow, oh, newTime);
                                 if (o.Frame != null) o.Frame(outPx, ow, oh, newTime);
                                 else
                                 {

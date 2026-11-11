@@ -41,6 +41,24 @@ namespace FastViewer
             }
         };
 
+        // Better quality (1.25.0): the large model, an extra download next to the small one. Whichever is there is used.
+        public static readonly Addon Large = new Addon
+        {
+            Id = "WhisperLarge", Name = "Better quality captions (large Whisper model)",
+            Needs = new[] { "model.bin" },
+            Parts = new[]
+            {
+                new AddonPart
+                {
+                    Url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin", Save = "model.bin",
+                    Sha256 = "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", Size = 574041195
+                },
+            }
+        };
+
+        public static bool UsesLarge { get { return Large.Installed; } }
+        static string ModelFile { get { return UsesLarge ? Large.File("model.bin") : Addon.File("model.bin"); } }
+
         public static readonly string[] LanguageNames = { "Find out by itself", "English", "Dutch", "German", "Russian", "Slovak", "Chinese", "French", "Spanish", "Polish", "Ukrainian", "Italian", "Portuguese", "Turkish", "Japanese", "Korean" };
         public static readonly string[] LanguageCodes = { "auto", "en", "nl", "de", "ru", "sk", "zh", "fr", "es", "pl", "uk", "it", "pt", "tr", "ja", "ko" };
 
@@ -76,6 +94,15 @@ namespace FastViewer
         static readonly Regex Line = new Regex(@"^\[(\d+):(\d+):(\d+)[.,](\d+)\s*-->\s*(\d+):(\d+):(\d+)[.,](\d+)\]\s*(.*)$", RegexOptions.Compiled);
         static readonly Regex Noise = new Regex(@"^[\[\(\*].*[\]\)\*]$|^[\s♪♫\-\.]*$", RegexOptions.Compiled); // [Music], (applause), *sighs*, a lone note
 
+        // With nothing it can make out, Whisper tends to answer with what such sound had under it in the videos it
+        // learned from: the credits of whoever made the subtitles, or a description of the music. Never said in the video.
+        static readonly Regex Made = new Regex(
+            @"DimaTorzok|^\W*Субтитры\b|Субтитры\s+(с?делал|создавал|подогнал)|Редактор субтитров|Корректор\s+\p{Lu}\.|Продолжение следует|Amara\.org|" +
+            @"subtitles\s+(made\s+)?by\b|(thanks|thank you) for watching|Untertitel\s+(der|von|im Auftrag)|Sous-titres\s+(réalisés|par)\b|" +
+            @"Ondertitel\w*\s+(door|gemaakt)|Subtítulos\s+(por|realizados)|Napisy stworzone|Titulky vytvořil|字幕\s*(由|by|志愿者|制作)|" +
+            @"^\W*((спокойная|весёлая|веселая|грустная|динамичная|торжественная|тревожная|лирическая|звучит)\s+)?музыка\W*$|^\W*(music|muziek|musik|musique|música|hudba)\W*$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
         public static readonly List<string> Log = new List<string>();
 
         // Writes out the speech of a 16 kHz mono .wav. onCue gets each line as it's made (on another thread).
@@ -84,7 +111,11 @@ namespace FastViewer
             var cues = new List<Cue>();
             var said = new List<string>();
             int threads = Math.Max(1, Math.Min(8, Environment.ProcessorCount / 2)); // the cores themselves; the rest stays for the video and you
-            string arguments = "-m \"" + Addon.File("model.bin") + "\" -f \"" + wav + "\" -l " + language + " -t " + threads + " -ml 84 -sow -np";
+            string arguments = "-m \"" + ModelFile + "\" -f \"" + wav + "\" -l " + language + " -t " + threads + " -ml 84 -sow -np -sns -mc 0";
+            // (1.25.0, for songs. -sns: Whisper may not answer "[MUSIC]" or a note sign for a stretch of sound; with singing it
+            // did that for half a minute at a time, at the toss of a coin. -mc 0: each half minute is written without looking
+            // at the text before it, or one sung line gets repeated to the end of a song. Measured on nine songs with known
+            // words: 42% of the words wrong before, 34% with both; the large model 23%.)
             // Whisper works through the sound half a minute at a time and only then prints that part: in between,
             // the progress moves on at the speed measured so far, so the line never sits still.
             double real = 0, speed = 3; // of the sound done; seconds of sound per second of work (a first guess)
@@ -102,9 +133,10 @@ namespace FastViewer
                     sinceReal.Restart();
                     progress(real);
                 }
-                if (c.To <= c.From || Noise.IsMatch(c.Text)) return;
+                if (c.To <= c.From || Noise.IsMatch(c.Text) || Made.IsMatch(c.Text)) return;
                 // The same words over and over is what Whisper does with silence or music: not speech.
-                if (cues.Count >= 2 && cues[cues.Count - 1].Text == c.Text && cues[cues.Count - 2].Text == c.Text) return;
+                // (A chorus does repeat a line, so it takes four in a row before a fifth is left out.)
+                if (cues.Count >= 4 && cues.Skip(cues.Count - 4).All(x => x.Text == c.Text)) return;
                 cues.Add(c);
                 if (onCue != null) onCue(c);
             }, cancel, true, delegate
@@ -133,9 +165,9 @@ namespace FastViewer
     {
         // The sound of a video or song as a 16 kHz, mono, 16-bit .wav (what speech recognition wants): every sound
         // track mixed together (a game clip can have the voices on their own track). Returns its length in seconds.
-        public static double SpeechWav(string source, string target, double seconds, Action<double> progress, CancelFlag cancel)
+        public static double SpeechWav(string source, string target, double seconds, Action<double> progress, CancelFlag cancel, int Rate = 16000, int outChannels = 1)
         {
-            const int Rate = 16000, Block = 1 << 20;
+            const int Block = 1 << 20; // (Rate 44100 with 2 channels is what the voice isolation wants: Vocals.cs)
             Check(MFStartup(0x00020070, 0), "starting Windows' video tools");
             IMFSourceReader reader = null;
             try
@@ -166,10 +198,10 @@ namespace FastViewer
                         exact.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Audio);
                         exact.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFAudioFormat_PCM);
                         exact.SetUINT32(ref G.MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-                        exact.SetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, 1);
+                        exact.SetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, outChannels);
                         exact.SetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, Rate);
-                        exact.SetUINT32(ref G.MF_MT_AUDIO_BLOCK_ALIGNMENT, 2);
-                        exact.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, Rate * 2);
+                        exact.SetUINT32(ref G.MF_MT_AUDIO_BLOCK_ALIGNMENT, 2 * outChannels);
+                        exact.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, Rate * 2 * outChannels);
                         if (reader.SetCurrentMediaType(i, IntPtr.Zero, exact) >= 0 && reader.GetCurrentMediaType(i, out gotExact) >= 0) got = gotExact;
                         else if (reader.SetCurrentMediaType(i, IntPtr.Zero, want) < 0 || reader.GetCurrentMediaType(i, out got) < 0) { reader.SetStreamSelection(i, false); continue; }
                         got.GetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, out channels);
@@ -233,14 +265,21 @@ namespace FastViewer
                         while (pos < frames - 1e-9)
                         {
                             int a = (int)pos, b = Math.Min(frames, Math.Max(a + 1, (int)(pos + step)));
-                            long sum = 0;
-                            for (int f = a; f < b; f++)
-                                for (int c = 0; c < channels; c++) sum += (short)(bytes[(f * channels + c) * 2] | (bytes[(f * channels + c) * 2 + 1] << 8));
-                            int value = (int)(sum / ((b - a) * channels));
-                            if (at >= 0)
+                            for (int oc = 0; oc < outChannels && at >= 0; oc++)
                             {
-                                int blockIndex = (int)(at / Block), offset = (int)(at % Block);
-                                while (mix.Count <= blockIndex) mix.Add(new short[Block]);
+                                // Mono out: every channel; stereo out: left ones left, right ones right (mono sound on both).
+                                long sum = 0;
+                                int count = 0;
+                                for (int f = a; f < b; f++)
+                                    for (int c = 0; c < channels; c++)
+                                    {
+                                        if (outChannels > 1 && channels > 1 && c % 2 != oc) continue;
+                                        sum += (short)(bytes[(f * channels + c) * 2] | (bytes[(f * channels + c) * 2 + 1] << 8));
+                                        count++;
+                                    }
+                                int value = count == 0 ? 0 : (int)(sum / count);
+                                int blockIndex = (int)(at / Block), offset = (int)(at % Block) * outChannels + oc;
+                                while (mix.Count <= blockIndex) mix.Add(new short[Block * outChannels]);
                                 int mixed = mix[blockIndex][offset] + value;
                                 mix[blockIndex][offset] = (short)Math.Max(short.MinValue, Math.Min(short.MaxValue, mixed));
                                 if (at + 1 > length) length = at + 1;
@@ -258,15 +297,15 @@ namespace FastViewer
 
                 using (var output = new BinaryWriter(File.Create(target)))
                 {
-                    int dataBytes = (int)Math.Min(int.MaxValue - 100, length * 2);
+                    int dataBytes = (int)Math.Min(int.MaxValue - 100, length * 2 * outChannels) & ~3;
                     output.Write(Encoding.ASCII.GetBytes("RIFF")); output.Write(36 + dataBytes); output.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
-                    output.Write(16); output.Write((short)1); output.Write((short)1); output.Write(Rate); output.Write(Rate * 2); output.Write((short)2); output.Write((short)16);
+                    output.Write(16); output.Write((short)1); output.Write((short)outChannels); output.Write(Rate); output.Write(Rate * 2 * outChannels); output.Write((short)(2 * outChannels)); output.Write((short)16);
                     output.Write(Encoding.ASCII.GetBytes("data")); output.Write(dataBytes);
-                    var raw = new byte[Block * 2];
+                    var raw = new byte[Block * 2 * outChannels];
                     long left = dataBytes / 2;
                     foreach (var block in mix)
                     {
-                        int n = (int)Math.Min(Block, left);
+                        int n = (int)Math.Min(Block * outChannels, left);
                         if (n <= 0) break;
                         Buffer.BlockCopy(block, 0, raw, 0, n * 2);
                         output.Write(raw, 0, n * 2);
@@ -287,6 +326,7 @@ namespace FastViewer
     {
         string captionLanguage = "auto"; // settings line captionLang=
         internal string lastCaptionResult; // tests
+        volatile string captionSteps = ""; // what the last run used (tests)
 
         void MakeCaptions()
         {
@@ -305,15 +345,15 @@ namespace FastViewer
             var live = new List<Cue>();
             List<Cue> all = null;
             string wav = Path.Combine(Path.GetTempPath(), "FastViewer", "speech_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".wav");
+            string stereo = wav.Replace(".wav", "_all.wav");
+            bool isolate = Vocals.Offered && Vocals.Addon.Installed;
             RunJob("Making captions", delegate(Action<string, double> progress, CancelFlag cancel)
             {
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(wav));
                     progress("Making captions: listening", 0);
-                    double length = VideoConverter.SpeechWav(video, wav, seconds, p => progress("Making captions: listening", p * 0.05), cancel);
-                    progress("Making captions: writing", 0.05);
-                    all = Whisper.Transcribe(wav, length, language, p => progress("Making captions: writing", 0.05 + 0.95 * p), delegate(Cue c)
+                    Action<Cue> onCue = delegate(Cue c)
                     {
                         // Each line shows as soon as it exists, while the rest is still being written.
                         Dispatcher.BeginInvoke(new Action(delegate
@@ -323,14 +363,39 @@ namespace FastViewer
                             if (cues != live) { subsLookup++; if (!subsOn) { subsOn = true; SaveSettings(); } SetCues(video, live, "auto"); }
                             else { UpdateSubButton(); SubTick(); }
                         }));
-                    }, cancel);
+                    };
+                    double length = 0, done = 0.05;
+                    captionSteps = Whisper.UsesLarge ? "large model" : "small model";
+                    if (isolate)
+                    {
+                        // The voice without the music first (Vocals.cs). Whatever goes wrong there, the plain
+                        // sound still gets its turn below.
+                        try
+                        {
+                            length = VideoConverter.SpeechWav(video, stereo, seconds, p => progress("Making captions: listening", p * 0.05), cancel, Vocals.Rate, 2);
+                            progress("Making captions: finding the voice", 0.05);
+                            Vocals.Isolate(stereo, wav, p => progress("Making captions: finding the voice", 0.05 + 0.25 * p), cancel);
+                            done = 0.3;
+                            progress("Making captions: writing", done);
+                            all = Whisper.Transcribe(wav, length, language, p => progress("Making captions: writing", done + (1 - done) * p), onCue, cancel);
+                            captionSteps += ", voice isolated";
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex) { captionSteps += ", voice isolation failed (" + ex.Message + ")"; all = null; }
+                        if (all != null && all.Count > 0) return;
+                        captionSteps += ", plain sound after all";
+                    }
+                    length = VideoConverter.SpeechWav(video, wav, seconds, p => progress("Making captions: listening", done + p * 0.05), cancel);
+                    done += 0.05;
+                    progress("Making captions: writing", done);
+                    all = Whisper.Transcribe(wav, length, language, p => progress("Making captions: writing", done + (1 - done) * p), onCue, cancel);
                 }
                 catch (OperationCanceledException) { }
-                finally { try { File.Delete(wav); } catch { } }
+                finally { try { File.Delete(wav); } catch { } try { File.Delete(stereo); } catch { } }
             },
             delegate(string error, bool cancelled)
             {
-                lastCaptionResult = cancelled ? "cancelled" : error ?? (all == null ? "nothing" : all.Count + " lines");
+                lastCaptionResult = cancelled ? "cancelled" : error ?? (all == null ? "nothing" : all.Count + " lines") + " (" + captionSteps + ")";
                 if (snapDir != null) Log("captions: " + lastCaptionResult);
                 if (cancelled || (error == null && all == null))
                 {
@@ -384,6 +449,16 @@ namespace FastViewer
                 "automatically. This needs a one-time download: Whisper (the program from github.com/ggml-org/whisper.cpp and its speech model " +
                 "from huggingface.co). Afterwards it works without internet. A minute of video takes roughly 5 to 20 seconds.",
                 () => Environment.Is64BitOperatingSystem ? null : "This needs 64-bit Windows.", null);
+            if (Vocals.Offered) AddAddonCard(Vocals.Addon, "", "Captions on songs: voice isolation",
+                "For videos with music under the voice (songs, TikTok edits). Before the captions are written, the voice is separated from the music, " +
+                "so many more of the words are understood. An extra one-time download (the programs from github.com/k2-fsa/sherpa-onnx and a UVR voice model); " +
+                "once it's there it is used for every video. It adds roughly 15 seconds for each minute of video and works on any PC: it uses the processor, not the graphics card.",
+                () => !Environment.Is64BitOperatingSystem ? "This needs 64-bit Windows." : Whisper.Addon.Installed ? null : "Used together with Automatic captions above.", null);
+            AddAddonCard(Whisper.Large, "", "Better quality captions",
+                "A much larger Whisper model that gets more words right, most of all in songs, mumbled speech and languages other than English. " +
+                "An extra one-time download; once it's there it is used instead of the small one (Remove goes back to the small one). " +
+                "It is slower: a minute of video takes roughly a minute on an average PC.",
+                () => !Environment.Is64BitOperatingSystem ? "This needs 64-bit Windows." : Whisper.Addon.Installed ? null : "Used together with Automatic captions above.", null);
             AddCard("", "Language spoken in your videos",
                 "For automatic captions. Pick the language when it guesses wrong.",
                 Dropdown(Whisper.LanguageNames, () => Math.Max(0, Array.IndexOf(Whisper.LanguageCodes, captionLanguage)), i => captionLanguage = Whisper.LanguageCodes[i]));

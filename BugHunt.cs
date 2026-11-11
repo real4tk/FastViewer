@@ -87,6 +87,9 @@ namespace FastViewer
                 case "subs": HuntSubs(); break;
                 case "addons": HuntAddons(); break;
                 case "captions": HuntCaptions(); break;
+                case "captionsall": HuntCaptionsAll(); break;
+                case "burn": HuntBurn(); break;
+                case "videomenu": HuntVideoMenu(); break;
                 case "smooth": HuntSmooth(); break;
                 case "rotsave": HuntRotSave(); break;
                 case "showmigrate": HuntShowMigrate(); break;
@@ -1060,7 +1063,7 @@ namespace FastViewer
         // --case menus (a video; use --settings): both "..." menus as usual, rearranged, reset; the settings line and its reading.
         void HuntMenus()
         {
-            Func<ContextMenu, string> text = m => string.Join(" | ", m.Items.Cast<object>().Select(o => o is Separator ? "--" : o is MenuItem ? ((((MenuItem)o).Style == (Style)Application.Current.Resources["MenuHeading"]) ? "[" + ((MenuItem)o).Header + "]" : (string)((MenuItem)o).Header) : "?"));
+            Func<ContextMenu, string> text = m => string.Join(" | ", m.Items.Cast<object>().Select(o => o is Separator ? "--" : o is MenuItem ? ((((MenuItem)o).Style == (Style)Application.Current.Resources["MenuHeading"]) ? "[" + ((MenuItem)o).Header + "]" : (((MenuItem)o).Header as string ?? "[" + System.Windows.Automation.AutomationProperties.GetName((MenuItem)o) + " row]")) : "?"));
             Action<string> both = step =>
             {
                 var hook = huntMenuHook;
@@ -1365,14 +1368,11 @@ namespace FastViewer
             After(7000, () => { HuntLog("wav 1 s: " + state()); Snap("music_nocover"); go("clip.mp4"); });
             After(8000, () => { HuntLog("video: " + state()); CopyFrame(); SetSpeed(4); });
             After(9000, () => { HuntLog("video 1 s at 4x: " + state()); SetSpeed(1);
-                shownSpeeds.Clear(); shownSpeeds.Add(1);
                 var seen = new List<string>(); speed = 1;
-                foreach (var x in AllSpeeds) shownSpeeds.Add(x);
                 for (int i = 0; i < 14; i++) { StepSpeed(1); seen.Add(SpeedText(speed)); }
                 StepSpeed(0); seen.Add("normal " + SpeedText(speed));
                 for (int i = 0; i < 6; i++) { StepSpeed(-1); seen.Add(SpeedText(speed)); }
                 HuntLog("all speeds, stepping: " + string.Join(" ", seen));
-                LoadSpeeds("0.25,3,7,abc"); HuntLog("loaded '0.25,3,7,abc' -> " + SpeedsLine());
                 OpenSettings();
                 ShowSettingsPage(settingsPages.First(p => ((TextBlock)p.Value.Children[0]).Text == "Videos").Value);
             });

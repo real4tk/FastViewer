@@ -209,7 +209,7 @@ namespace FastViewer
                             HuntLog("switched off: " + state() + (!subsOn && cueShown == -1 ? " ok" : " FAIL"));
                             ToggleSubtitles();
                             HuntLog("switched on: " + state() + (subsOn && cueShown >= 0 ? " ok" : " FAIL"));
-                            HuntLog("video menu: " + Headers(new[] { "subtitles", "subFile", "autoCaptions", "smooth" }.SelectMany(id => VideoMenuItem(id))));
+                            HuntLog("video menu: " + string.Join(" | ", new[] { "subtitles", "smooth" }.SelectMany(id => VideoMenuItem(id)).OfType<MenuItem>().Select(m => m.Header + " > " + string.Join(", ", m.Items.OfType<MenuItem>().Select(k => k.Header)))));
                             subSize = 2; SizeSubs(); double large = subText.FontSize; subSize = 0; SizeSubs(); double small = subText.FontSize; subSize = 1; SizeSubs();
                             HuntLog("sizes small " + small.ToString("0.0") + " medium " + subText.FontSize.ToString("0.0") + " large " + large.ToString("0.0") + (small < subText.FontSize && subText.FontSize < large ? " ok" : " FAIL"));
                             HuntOpen("plain.mp4", delegate
@@ -309,6 +309,7 @@ namespace FastViewer
                 HuntLog("captions card, nothing installed: " + card(Whisper.Addon));
                 F<ScrollViewer>("SettingsScroll").ScrollToEnd(); Settle(); Snap("addons_before");
                 var queue = new List<Addon> { Smooth.Addon, Whisper.Addon }.Where(x => !x.Installed).ToList();
+                if (real) queue.AddRange(new[] { Vocals.Addon, Whisper.Large }.Where(x => !x.Installed)); // (1.25.0; no stand-ins for these)
                 Action run = null;
                 run = delegate
                 {
@@ -409,7 +410,7 @@ namespace FastViewer
                             After(1500, delegate
                             {
                                 Go(-1);
-                                After(1500, delegate { HuntLog("after leaving and coming back: has " + HasSubs + " from " + cuesFrom + (HasSubs && cuesFrom == "auto" ? " ok" : " FAIL") + "; menu: " + Headers(VideoMenuItem("autoCaptions"))); HuntDone(); });
+                                After(1500, delegate { HuntLog("after leaving and coming back: has " + HasSubs + " from " + cuesFrom + (HasSubs && cuesFrom == "auto" ? " ok" : " FAIL") + "; menu: " + string.Join(" | ", VideoMenuItem("subtitles").OfType<MenuItem>().SelectMany(m => m.Items.OfType<MenuItem>()).Select(m => m.Header))); HuntDone(); });
                             });
                         });
                     });
@@ -452,5 +453,240 @@ namespace FastViewer
                 });
             });
         }
+        // --case captionsall (1.25.0): captions for every video and song in the folder, one after the other, the way
+        // the menu item makes them (whatever add-ons are in --addons: small or large model, voice isolation or not).
+        // Each file's text goes to <out>\<name>.txt, for counting word mistakes against the real words.
+        void HuntCaptionsAll()
+        {
+            HuntLog("whisper " + Whisper.Addon.Installed + ", large model " + Whisper.UsesLarge + ", voice isolation " + Vocals.Addon.Installed);
+            var names = files.Where(f => IsVideoFile(f) || IsAudioFile(f)).Select(f => Path.GetFileName(f)).ToList();
+            Action<int> one = null;
+            one = delegate(int i)
+            {
+                if (i >= names.Count) { HuntDone(); return; }
+                HuntOpen(names[i], delegate
+                {
+                    if (playing) TogglePlay();
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    lastCaptionResult = null;
+                    MakeCaptions();
+                    Until(() => !converting && lastCaptionResult != null, 3600000, delegate
+                    {
+                        double seconds = shown.Video.NaturalDuration.HasTimeSpan ? shown.Video.NaturalDuration.TimeSpan.TotalSeconds : 0;
+                        HuntLog(names[i] + ": " + lastCaptionResult + " in " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s for " + seconds.ToString("0.0") + " s");
+                        File.WriteAllText(Path.Combine(snapDir, Path.GetFileNameWithoutExtension(names[i]) + ".txt"), HasSubs ? string.Join("\r\n", cues.Select(c => c.Text)) : "");
+                        After(300, delegate { one(i + 1); });
+                    });
+                });
+            };
+            one(0);
+        }
+
+        // --case burn (1.25.0): scratch folder with two.mp4 (two sound tracks) + two.srt, and tall.mp4 + tall.srt (an
+        // upright video). Saves a copy with captions of each and a Send to Discord copy with "Burn in captions"
+        // into the output folder; check the text and the sound tracks of each "out *.mp4" with ffmpeg.
+        void HuntBurn()
+        {
+            After(1500, () => HuntOpen("two.mp4", () => Until(() => HasSubs, 5000, () =>
+            {
+                if (playing) TogglePlay();
+                string file = shown.File;
+                int w = shown.Video.NaturalVideoWidth, h = shown.Video.NaturalVideoHeight, tracks = VideoConverter.SoundTracks(file);
+                double fps = 1 / shown.FrameSeconds, length = shown.Video.NaturalDuration.TimeSpan.TotalSeconds;
+                Func<string, string> facts = name =>
+                {
+                    int pw, ph, found = VideoConverter.SoundTracks(name);
+                    double sec;
+                    VideoConverter.Probe(name, out pw, out ph, out sec);
+                    return pw + "x" + ph + " " + sec.ToString("0.00") + " s, " + found + " sound tracks" + (found == tracks ? "" : " FAIL");
+                };
+                HuntLog("two.mp4: " + facts(file) + ", " + cues.Count + " lines from " + Path.GetFileName(cuesFrom) + "; video menu: " + string.Join(" | ", VideoMenuItem("subtitles").OfType<MenuItem>().SelectMany(m => m.Items.OfType<MenuItem>()).Select(m => m.Header)));
+                string copy = Path.Combine(snapDir, "out captions.mp4"), discord = Path.Combine(snapDir, "out discord.mp4"), tall = Path.Combine(snapDir, "out tall.mp4");
+                var painter = MakePainter(file, null);
+                RunConversion(file, copy, null, null, "Saving a copy with captions", new ConvertOptions { Paint = painter.Paint });
+                Until(() => !converting, 300000, () =>
+                {
+                    HuntLog("copy with captions: " + facts(copy) + ", text on " + painter.Painted + " pictures, " + painter.Lines + " lines" + (painter.Lines == cues.Count ? "" : " FAIL"));
+                    discordBurn = true;
+                    lastShareResult = null;
+                    ShareToDiscord(file, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), 1, w, h, fps, true, length);
+                    Until(() => !converting && lastShareResult != null, 300000, () =>
+                    {
+                        string made = lastShareResult.StartsWith("made ") ? lastShareResult.Substring(lastShareResult.LastIndexOf(", ") + 2) : null;
+                        if (made != null && File.Exists(made)) File.Copy(made, discord, true);
+                        HuntLog("Send to Discord 1-3 s with Burn in captions: " + lastShareResult + "; " + (File.Exists(discord) ? facts(discord) : "no copy FAIL") + "; message '" + F<TextBlock>("ToastText").Text + "'");
+                        // Without captions the small whole file is copied as it is; with the tick it must be made anew.
+                        discordBurn = false;
+                        HuntOpen("tall.mp4", () => Until(() => HasSubs, 5000, () =>
+                        {
+                            if (playing) TogglePlay();
+                            var p2 = MakePainter(shown.File, null);
+                            RunConversion(shown.File, tall, null, null, "Saving a copy with captions", new ConvertOptions { Paint = p2.Paint });
+                            Until(() => !converting, 300000, () =>
+                            {
+                                HuntLog("upright copy with captions: text on " + p2.Painted + " pictures, " + p2.Lines + " lines");
+                                HuntOpen("two.mp4", () => { HuntLog("a video without subtitles offers: " + (HasSubs ? "(has subtitles)" : "")); HuntDone(); });
+                            });
+                        }));
+                    });
+                });
+            })));
+        }
+
+        // --case videomenu (1.25.0): scratch folder with two.mp4 + two.srt. Lists the video "..." menu, works its speed
+        // slider, and saves a picture of the menu with its two smaller menus drawn beside it (run once per --look).
+        void HuntVideoMenu()
+        {
+            After(1500, () => HuntOpen("two.mp4", () => Until(() => HasSubs, 5000, () =>
+            {
+                if (playing) TogglePlay();
+                ShowOverlay();
+                var template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+                    "<ControlTemplate TargetType='Menu' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>" +
+                    "<Border Background='{DynamicResource MenuBg}' BorderBrush='{DynamicResource MenuEdge}' BorderThickness='1' " +
+                    "CornerRadius='{DynamicResource Radius.Float}' Padding='4' MinWidth='200'><StackPanel IsItemsHost='True'/></Border></ControlTemplate>");
+                Func<IEnumerable<object>, double, double, Border> draw = (list, x, y) =>
+                {
+                    var copy = new Menu { Template = template, FontSize = 14 };
+                    copy.SetResourceReference(Control.ForegroundProperty, "TextMain");
+                    copy.SetResourceReference(Control.FontFamilyProperty, "Font.Ui");
+                    foreach (var it in list) copy.Items.Add(it);
+                    var host = new Border { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Child = copy, Margin = new Thickness(x, y, 0, 0) };
+                    Grid.SetRowSpan(host, 3);
+                    Panel.SetZIndex(host, 100);
+                    root.Children.Add(host);
+                    host.UpdateLayout();
+                    return host;
+                };
+                Func<MenuItem, string> name = m => (m.Header is string ? (string)m.Header : "[" + System.Windows.Automation.AutomationProperties.GetName(m) + " row]")
+                    + (m.InputGestureText.Length > 0 ? " (" + m.InputGestureText + ")" : "") + (m.HasItems ? " >" : "");
+                var items = ChosenItems(true, VideoMenuItem);
+                HuntLog("video menu, " + items.OfType<MenuItem>().Count() + " items: " + string.Join(" | ", items.OfType<MenuItem>().Select(name)));
+                HuntLog("Settings > Buttons list: " + string.Join(" | ", VideoChoices.Select(c => c.Name)));
+                var main = draw(items.Cast<object>(), 16, 48);
+                double beside = 16 + main.ActualWidth + 8, down = 48;
+                foreach (var id in new[] { "subtitles" })
+                {
+                    var parent = VideoMenuItem(id).OfType<MenuItem>().FirstOrDefault();
+                    if (parent == null) { HuntLog("  " + id + ": not offered"); continue; }
+                    var kids = parent.Items.Cast<object>().ToList();
+                    parent.Items.Clear();
+                    HuntLog("  " + parent.Header + " > " + string.Join(" | ", kids.OfType<MenuItem>().Select(name)));
+                    var side = draw(kids, beside, down);
+                    down += side.ActualHeight + 8;
+                }
+                var row = items.OfType<MenuItem>().First(m => m.Header is Grid);
+                var slider = ((Grid)row.Header).Children.OfType<Slider>().First();
+                var button = ((Grid)row.Header).Children.OfType<Button>().First();
+                var seen = new List<string>();
+                for (int i = 0; i <= (int)slider.Maximum; i++) { slider.Value = i; seen.Add(SpeedText(speed) + "=" + button.Content); }
+                HuntLog("slider stops: " + string.Join(" ", seen) + (seen.Count == AllSpeeds.Length && speed == 5 ? " ok" : " FAIL"));
+                slider.Value = 4.4; // let go between two stops
+                HuntLog("let go at 4.4: stop " + slider.Value + ", speed " + SpeedText(speed) + (speed == 1.25 ? " ok" : " FAIL"));
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                HuntLog("click on the speed: " + SpeedText(speed) + ", slider at " + slider.Value + (speed == 1 && slider.Value == 3 ? " ok" : " FAIL"));
+                StepSpeed(1); StepSpeed(1);
+                HuntLog("Faster key twice: " + SpeedText(speed) + (speed == 1.5 ? " ok" : " FAIL"));
+                StepSpeed(0);
+                slider.Value = 5;
+                HuntLog("row " + row.ActualWidth.ToString("0") + " wide, slider " + slider.ActualWidth.ToString("0") + ", menu " + main.ActualWidth.ToString("0") + " x " + main.ActualHeight.ToString("0"));
+                Settle(); Snap("videomenu_" + Looks.Current.Id);
+                SetSpeed(1);
+                var smoothRow = items.OfType<MenuItem>().FirstOrDefault(m => System.Windows.Automation.AutomationProperties.GetName(m) == "Make smoother");
+                if (smoothRow == null) HuntLog("smoother row: not offered");
+                else
+                {
+                    var sb = ((Grid)smoothRow.Header).Children.OfType<Button>().ToList();
+                    HuntLog("smoother row: '" + ((Grid)smoothRow.Header).Children.OfType<TextBlock>().First().Text + "' buttons " + string.Join(" ", sb.Select(b => b.Content + " (" + b.ActualWidth.ToString("0") + "x" + b.ActualHeight.ToString("0") + ")"))
+                        + ", side menu " + smoothRow.HasItems + (sb.Count == 2 && !smoothRow.HasItems ? " ok" : " FAIL"));
+                }
+                // Reaching for a side menu, on made-up rectangles: menu 300x500, its item a row in the middle, side menu right or left of it.
+                foreach (bool onRight in new[] { true, false })
+                {
+                    Func<MenuAim> fresh = () => new MenuAim { Menu = new Rect(600, 100, 300, 500), Row = new Rect(604, 300, 292, 38),
+                        Side = onRight ? new Rect(903, 295, 220, 200) : new Rect(377, 295, 220, 200) };
+                    double dir = onRight ? 1 : -1, x0 = 750, endX = onRight ? 910 : 590;
+                    var aim = fresh();
+                    long ms = 0; bool closed = false, held = true, shield = true;
+                    aim.Step(new Point(x0, 319), ms);
+                    for (int i = 1; i <= 20; i++) // down across three other rows, toward the side menu's far end
+                    {
+                        var c = new Point(x0 + (endX - x0) * i / 20, 319 + (470 - 319) * i / 20.0);
+                        ms += 15; closed |= aim.Step(c, ms); held &= aim.Hold;
+                        if (aim.Menu.Contains(c) && !aim.Row.Contains(c) && c.Y > 340 && Math.Abs(c.X - endX) > 12) shield &= aim.Shield;
+                    }
+                    HuntLog("aim, side menu " + (onRight ? "right" : "left") + ", diagonal to it: held " + held + ", other rows quiet " + shield + ", closed " + closed + (held && shield && !closed ? " ok" : " FAIL"));
+                    aim = fresh(); ms = 0; closed = false;
+                    aim.Step(new Point(x0, 319), ms);
+                    for (int i = 1; i <= 6; i++) { ms += 15; aim.Step(new Point(x0 + dir * 8 * i, 319 + 8 * i), ms); }
+                    bool quiet = aim.Shield; long stopped = ms, at = -1;
+                    for (int i = 0; i < 40 && at < 0; i++) { ms += 15; if (aim.Step(new Point(x0 + dir * 48, 367), ms)) at = ms - stopped; }
+                    HuntLog("  stops on another row on the way: quiet " + quiet + ", then switches after " + at + " ms" + (quiet && at >= 300 && at <= 400 && !aim.Hold ? " ok" : " FAIL"));
+                    aim = fresh(); ms = 0;
+                    aim.Step(new Point(x0, 319), ms);
+                    for (int i = 1; i <= 6; i++) { ms += 15; aim.Step(new Point(x0, 319 + 12 * i), ms); }
+                    bool goesDown = !aim.Shield && !aim.Hold;
+                    for (int i = 1; i <= 6; i++) { ms += 15; aim.Step(new Point(x0 - dir * 10 * i, 391), ms); }
+                    HuntLog("  straight down, and away from it: rows react at once " + (goesDown && !aim.Shield && !aim.Hold) + (goesDown && !aim.Shield && !aim.Hold ? " ok" : " FAIL"));
+                    aim = fresh();
+                    bool safe = true;
+                    foreach (var c in new[] { new Point(onRight ? 901 : 598, 400), new Point(onRight ? 1000 : 480, 480), new Point(onRight ? 899 : 600, 330) })
+                    { safe &= !aim.Step(c, 5000) && aim.Hold && !aim.Shield; }
+                    HuntLog("  over the gap, the side menu, the item: never closes " + safe + (safe ? " ok" : " FAIL"));
+                }
+                // The real item with its real side menu (drawn in the window's menu above), the pointer played by the test.
+                var real = items.OfType<SideMenuItem>().FirstOrDefault();
+                if (real == null) { HuntLog("real side menu: none in the menu FAIL"); HuntDone(); return; }
+                var others = items.OfType<MenuItem>().Where(m => m != real && m.IsHitTestVisible).ToList();
+                Point cursor = real.PointToScreen(new Point(real.ActualWidth / 2, real.ActualHeight / 2));
+                SideMenuItem.TestCursor = () => cursor;
+                real.IsSubmenuOpen = true;
+                After(500, () =>
+                {
+                    var popup = (System.Windows.Controls.Primitives.Popup)real.Template.FindName("PART_Popup", real);
+                    var sideEl = (FrameworkElement)popup.Child;
+                    Point s0 = sideEl.PointToScreen(new Point(0, 0)), s1 = sideEl.PointToScreen(new Point(sideEl.ActualWidth, sideEl.ActualHeight));
+                    bool isRight = s0.X > cursor.X;
+                    HuntLog("real side menu: open " + real.IsSubmenuOpen + ", " + sideEl.ActualWidth.ToString("0") + " x " + sideEl.ActualHeight.ToString("0") + ", on the " + (isRight ? "right" : "left")
+                        + ", " + (isRight ? s0.X - real.PointToScreen(new Point(real.ActualWidth, 0)).X : real.PointToScreen(new Point(0, 0)).X - s1.X).ToString("0") + " px from the item");
+                    real.Tick();
+                    real.SetCurrentValue(MenuItem.IsSubmenuOpenProperty, false);
+                    HuntLog("  pointer on the item, WPF asks to close: open " + real.IsSubmenuOpen + (real.IsSubmenuOpen ? " ok" : " FAIL"));
+                    // toward the side menu's bottom corner, across the rows below the item
+                    Point start = cursor, goal = new Point(isRight ? s0.X + 6 : s1.X - 6, s1.Y - 6);
+                    bool allQuiet = true, stayed = true; int n = 0;
+                    Action step = null;
+                    step = () =>
+                    {
+                        n++;
+                        cursor = new Point(start.X + (goal.X - start.X) * n / 12, start.Y + (goal.Y - start.Y) * n / 12);
+                        real.Tick();
+                        real.SetCurrentValue(MenuItem.IsSubmenuOpenProperty, false); // what WPF's own timer does
+                        stayed &= real.IsSubmenuOpen;
+                        bool overOther = real.Aim != null && real.Aim.Menu.Contains(cursor) && !real.Aim.Row.Contains(cursor) && n > 2 && n < 10;
+                        if (overOther) allQuiet &= others.All(m => !m.IsHitTestVisible);
+                        if (n < 12) { After(20, step); return; }
+                        HuntLog("  12 steps to its far corner, WPF asking to close each time: stayed open " + stayed + ", other rows quiet on the way " + allQuiet
+                            + ", rows back once there " + others.All(m => m.IsHitTestVisible) + (stayed && allQuiet && others.All(m => m.IsHitTestVisible) ? " ok" : " FAIL"));
+                        // back to the item, then head for it again but stop on a row halfway
+                        cursor = start; real.Tick();
+                        cursor = new Point(start.X + (goal.X - start.X) * 0.25, start.Y + (goal.Y - start.Y) * 0.25); real.Tick();
+                        cursor = new Point(start.X + (goal.X - start.X) * 0.4, start.Y + (goal.Y - start.Y) * 0.4); real.Tick();
+                        bool q = others.All(m => !m.IsHitTestVisible);
+                        var watch = System.Diagnostics.Stopwatch.StartNew();
+                        Until(() => !real.IsSubmenuOpen, 2000, () =>
+                        {
+                            long took = watch.ElapsedMilliseconds;
+                            HuntLog("  stopped on a row halfway: rows quiet " + q + ", side menu closed " + !real.IsSubmenuOpen + " after " + took + " ms, rows back " + others.All(m => m.IsHitTestVisible)
+                                + (q && !real.IsSubmenuOpen && took >= 300 && took <= 600 && others.All(m => m.IsHitTestVisible) ? " ok" : " FAIL"));
+                            SideMenuItem.TestCursor = null;
+                            HuntDone();
+                        });
+                    };
+                    After(20, step);
+                });
+            })));
+        }
+
     }
 }
