@@ -27,7 +27,7 @@ namespace FastViewer
         public double OutFps;
     }
 
-    static class VideoConverter
+    static partial class VideoConverter
     {
         public static string LastInfo = "";
         // rotation: clockwise degrees to turn the picture (0/90/180/270). progress: 0..1.

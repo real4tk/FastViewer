@@ -5,6 +5,41 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.24.0  (11 Nov 2026)
+  New
+  - Subtitles. A subtitle file (.srt or .vtt) with the same name as the video, next to it, shows by itself (also
+    "video.en.srt"). A CC button appears on the video bar for such videos: click it, or press S, to switch the
+    subtitles off and on. Video "..." > Choose subtitles picks any other file. The text sits over the bottom of
+    the video and glides up out of the way when the control bar shows. Size: Settings > Videos > Subtitle size.
+  - Automatic captions: FastViewer writes the subtitles itself by listening to the video (video "..." > Make
+    captions automatically). It happens on your own PC, nothing is uploaded, and it works without internet. Each
+    line appears as soon as it's written, and the captions are remembered for the next time. "Save captions as
+    a file" makes a normal .srt. This needs a one-time download of 190 MB (Whisper): one button in Settings >
+    Videos > Automatic captions, with the size on the button and a progress line. Many languages; if it guesses
+    the language wrong, pick it under "Language spoken in your videos".
+  - Make smoother: doubles or quadruples a video's frames (30 becomes 60 or 120 a second) on your graphics card
+    and saves the result as a new video next to the original (video "..." > Make smoother). A one-time download
+    of 47 MB (Settings > Videos > Make videos smoother). FastViewer looks at your graphics card first and says
+    plainly whether it's fine, will be slow, or is too weak. Phone videos filmed in HDR come out in normal
+    colours. Needs a few GB of free disk space while it works; FastViewer checks that before it starts.
+  - Convert to JPG / Convert to PNG in the top "..." menu, for any photo FastViewer can open (WebP, HEIC, AVIF,
+    JFIF, BMP...). The copy appears next to the original, upright as shown; the original is never touched and no
+    file is ever replaced. See-through parts become white in a JPG and stay see-through in a PNG.
+  - Both downloads come straight from their makers' pages (GitHub and Hugging Face), only the files needed are
+    fetched, and each one is checked against a fingerprint built into FastViewer before it's used. "Remove" in
+    the same place takes them off your PC again.
+  - Rotate left: Ctrl+Shift+R, "..." > Rotate left, or right-click the rotate button, turns a photo or video
+    counter-clockwise, with the same animation and the same saving into the file as the normal rotate. Settings >
+    Viewing > "The rotate button turns" picks which way a normal click goes (right-click is always the other way;
+    the arrow on the button shows it).
+  Changed
+  - "Rotate" is now called "Rotate right" in the menu and on the Keyboard page.
+  - All new menu items can be switched off or moved in Settings > Buttons > "..." menus, the CC button in
+    Settings > Buttons, and S is a key like any other in Settings > Keyboard.
+  Fixed
+  - Cropping a see-through WebP picture no longer turns its see-through parts black.
+
+
 1.23.0  (10 Nov 2026)
   A polish release: no new features, everything that was there looks and moves better.
   Changed

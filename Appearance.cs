@@ -203,6 +203,7 @@ namespace FastViewer
             new ButtonInfo("FwdBtn", "Skip forward", "", "Video controls"),
             new ButtonInfo("VolBtn", "Volume", "", "Video controls"),
             new ButtonInfo("LoopBtn", "Repeat", "", "Video controls"),
+            new ButtonInfo("SubBtn", "Subtitles (CC, when a video has them)", "\uE7F0", "Video controls"),
             new ButtonInfo("Arrows", "Arrows on the sides", "", "On the picture"),
         };
         static readonly string[] BottomControls = { "SlideshowBtn", "GridBtn", "FileFacts", "InfoBtn", "FitBtn", "ZoomBtn", "ZoomGroup", "FullBtn" };

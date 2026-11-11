@@ -51,6 +51,12 @@ namespace FastViewer
             }
             catch { }
             // Test hook: FastViewer.exe --convert <source> <target> <rotation> [from-seconds to-seconds]
+            if (args.Length >= 3 && args[0] == "--speechwav") // test: the sound of <video> as the .wav captions are made from
+            {
+                try { File.WriteAllText(args[2] + ".log", "OK " + VideoConverter.SpeechWav(args[1], args[2], 0, null, null).ToString(CultureInfo.InvariantCulture) + " s"); }
+                catch (Exception ex) { File.WriteAllText(args[2] + ".log", "ERROR " + ex); }
+                return;
+            }
             if (args.Length >= 4 && args[0] == "--convert")
             {
                 string log = args[2] + ".log";
@@ -419,6 +425,10 @@ namespace FastViewer
                 else if (args[i] == "--motion" && i + 1 < args.Length) { var m = args[++i].ToLowerInvariant(); motionOverride = m == "full" ? "Full" : m == "reduced" ? "Reduced" : "Off"; }
                 else if (args[i] == "--positions" && i + 1 < args.Length) { PositionsFile = args[++i]; positionsOverride = true; }
                 else if (args[i] == "--rotations" && i + 1 < args.Length) { TurnMemory.Path = args[++i]; TurnMemory.Overridden = true; }
+                else if (args[i] == "--addons" && i + 1 < args.Length) Addon.RootOverride = args[++i];
+                else if (args[i] == "--addon-source" && i + 1 < args.Length) Addon.SourceOverride = args[++i];
+                else if (args[i] == "--gpu" && i + 1 < args.Length) GpuVerdict.Override = args[++i];
+                else if (args[i] == "--frameboost" && i + 1 < args.Length) Smooth.OwnOverride = args[++i];
                 else if (args[i] == "--preload" && i + 1 < args.Length) preloadOverride = int.Parse(args[++i]);
                 else if (args[i] == "--features" && i + 1 < args.Length) { snapDir = args[++i]; featureTest = true; }
                 else if (args[i] == "--ui" && i + 1 < args.Length) { snapDir = args[++i]; uiTest = true; }
@@ -454,6 +464,7 @@ namespace FastViewer
             }
             bool testMode = selfTestInterval > 0 || snapDir != null || fadeTestLog != null;
             testRun = args.Any(a => a.StartsWith("--") && a != "--updated"); // any test option: GitHub is never contacted
+            Addon.TestRun = Smooth.TestRun = testRun; // tests never see (or download) the real add-ons
             if (testRun && !TurnMemory.Overridden) TurnMemory.Path = null; // tests never touch the real rotations.txt
 
             Title = "FastViewer";
@@ -546,7 +557,9 @@ namespace FastViewer
             OnClick("MessageOpenBtn", OpenDialog);
             OnClick("DeleteBtn", AskDelete);
             OnClick("CopyBtn", CopyFile);
-            OnClick("RotateBtn", Rotate);
+            OnClick("RotateBtn", delegate { RotateButton(false); });
+            F<Button>("RotateBtn").PreviewMouseRightButtonUp += delegate(object sender, MouseButtonEventArgs e) { e.Handled = true; RotateButton(true); };
+            F<Button>("RotateBtn").PreviewMouseRightButtonDown += delegate(object sender, MouseButtonEventArgs e) { e.Handled = true; }; // (nothing else acts on that press)
             OnClick("MiniBtn", ToggleMiniSmoothly);
             OnClick("MiniExitBtn", ToggleMiniSmoothly);
             OnClick("MiniCloseBtn", Close);
@@ -1785,6 +1798,7 @@ namespace FastViewer
                 F<FrameworkElement>(id).Visibility = Shown(id) && fits ? Visibility.Visible : Visibility.Collapsed;
             }
             SetPlayGlyphs(playing);
+            UpdateSubButton();
             UpdateScrim();
             centerPlayBtn.ToolTip = WithKey(playing ? "Pause" : "Play", KeyOf("play"));
             string playCode = playing ? "\uE769" : "\uE768";
@@ -1861,6 +1875,7 @@ namespace FastViewer
             }
             posText.Text = Fmt(scrubbing ? TimeSpan.FromSeconds(seek.Value) : pos);
             durText.Text = Fmt(dur);
+            if (cues != null) SubTick(); // (also while paused or dragging the time bar)
         }
 
         // The time bar's dot moves every screen frame while a video plays: between the position updates (10 a
@@ -2870,6 +2885,7 @@ namespace FastViewer
                 Glide(transport, 0, 8);
                 Glide(F<FrameworkElement>("PrevBtn"), -6, 0);
                 Glide(F<FrameworkElement>("NextBtn"), 6, 0);
+                PlaceSubs(true);
             }
             if (!panning) Cursor = null;
             idleTimer.Stop();
@@ -2904,6 +2920,7 @@ namespace FastViewer
             overlayVisible = false;
             Motion.To(overlay, OpacityProperty, 0, Motion.Ms(fadeOutMs, false), Motion.Smooth);
             FadeBars(false);
+            PlaceSubs(true);
             // The pointer goes too: always in full screen, and over a video in the window.
             if (fullscreen || (stage.IsMouseOver && shown != null && shown.IsVideo)) Cursor = Cursors.None;
         }
@@ -3004,6 +3021,8 @@ namespace FastViewer
             F<TextBlock>("GridSortText").Text = GridSortShort[gridSort];
             UpdateGridNamesButton();
             ApplyButtons(); // also the video controls and the dimming
+            cueShown = -2; SizeSubs(); UpdateSubButton(); SubTick(); // subtitles on/off or their size
+            UpdateRotateButton();
             foreach (var refresh in settingsRefresh) refresh();
             if (filter != oldFilter || order != oldOrder) ReloadFolder();
         }

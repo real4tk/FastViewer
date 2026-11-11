@@ -31,7 +31,7 @@
         <fv:Glyph Code="&#xE8C8;"/>
       </Button>
       <Button x:Name="RotateBtn" Style="{StaticResource Subtle}" Margin="0,0,4,0" ToolTip="Rotate (Ctrl+R)">
-        <fv:Glyph Code="&#xE7AD;"/>
+        <fv:Glyph x:Name="RotateGlyph" Code="&#xE7AD;"/>
       </Button>
       <Button x:Name="MoreBtn" Style="{StaticResource Subtle}" ToolTip="See more">
         <fv:Glyph Code="&#xE712;"/>
@@ -140,6 +140,7 @@
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <Button x:Name="PlayBtn" Style="{StaticResource Transport}" ToolTip="Play / Pause (Space)">
             <fv:Glyph x:Name="PlayIcon" Code="&#xE769;"/>
@@ -175,7 +176,11 @@
           <Button x:Name="LoopBtn" Grid.Column="7" Style="{StaticResource Transport}" ToolTip="Repeat (R)">
             <fv:Glyph x:Name="LoopIcon" Code="&#xE8EE;"/>
           </Button>
-          <Button x:Name="VideoMoreBtn" Grid.Column="8" Style="{StaticResource Transport}" ToolTip="More options">
+          <!-- Subtitles on/off (Subtitles.cs): only there while the video on screen has subtitles -->
+          <Button x:Name="SubBtn" Grid.Column="8" Style="{StaticResource Transport}" ToolTip="Subtitles" Visibility="Collapsed">
+            <fv:Glyph x:Name="SubIcon" Code="&#xE7F0;"/>
+          </Button>
+          <Button x:Name="VideoMoreBtn" Grid.Column="9" Style="{StaticResource Transport}" ToolTip="More options">
             <fv:Glyph Code="&#xE712;"/>
           </Button>
         </Grid>
@@ -196,6 +201,15 @@
           </StackPanel>
         </Border>
       </Popup>
+    </Grid>
+
+    <!-- Subtitles (Subtitles.cs): white on a dark plate in every look, so they read over any video. The holder
+         glides up and down to stay clear of the control bar; the plate itself only fades. -->
+    <Grid x:Name="SubHolder" VerticalAlignment="Bottom" HorizontalAlignment="Center" IsHitTestVisible="False">
+      <Grid.RenderTransform><TranslateTransform/></Grid.RenderTransform>
+      <Border x:Name="SubBox" Background="#C0000000" CornerRadius="{DynamicResource Radius.Control}" Padding="12,4,12,6" Visibility="Collapsed" Opacity="0">
+        <TextBlock x:Name="SubText" Foreground="White" TextAlignment="Center" TextWrapping="Wrap" FontFamily="{DynamicResource Font.Ui}" FontWeight="SemiBold"/>
+      </Border>
     </Grid>
 
     <!-- Crop (Crop.cs): the frame over the picture, with everything outside it dimmed; its handles are added in code -->

@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.23.0)
+# FastViewer: complete feature list (version 1.24.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -207,11 +207,11 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Default keys: Next Right/PageDown, Previous Left/PageUp, First Home, Last End, Shuffle X, Grid G,
   Play/pause Space/K, Skip back J, Skip forward L, Back 5 s Shift+Left, Forward 5 s Shift+Right,
   Previous frame ",", Next frame ".", Loop A "[", Loop B "]", Stop loop "\", Repeat R, Volume up Up,
-  Volume down Down, Mute M, Trim Ctrl+T, Crop C, Rotate Ctrl+R, Zoom in +/Num+, Zoom out -/Num-, Fit 0/Num0,
+  Volume down Down, Mute M, Trim Ctrl+T, Crop C, Rotate right Ctrl+R, Rotate left Ctrl+Shift+R, Zoom in +/Num+, Zoom out -/Num-, Fit 0/Num0,
   Full screen F/F11, Mini player Ctrl+M, Slideshow F5, File info I, Open Ctrl+O, Save as Ctrl+S,
-  Copy Ctrl+C, Copy frame Ctrl+Shift+C, Delete Delete, Settings Ctrl+,
+  Copy Ctrl+C, Copy frame Ctrl+Shift+C, Subtitles S, Delete Delete, Settings Ctrl+,
 - Actions without a default key (assignable): thumbnail strip, slower/faster/normal speed, save a frame,
-  make compatible copy, save rotation to file, actual size, keep on top, copy file path, show in folder,
+  make compatible copy, make captions automatically, convert to JPG, convert to PNG, save rotation to file, actual size, keep on top, copy file path, show in folder,
   open with, close window.
 - Esc always goes back: leaves full screen, mini player, slideshow, grid or Settings. A key pressed again
   undoes itself: G closes the grid, I File info, Ctrl+T leaves trimming, Ctrl+, closes Settings, Ctrl+M/F/F5
@@ -341,6 +341,65 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Measured against 1.22.0 back to back (6 rounds each): first open median 84 vs 88 ms, switches median 1 / p90 4 vs 1 / 5 ms;
   torture and wheel equal. Pictures: Desktop\claude\visuals-1.23\before and \after.
 
+## Subtitles, automatic captions, smoother video, convert (1.24.0)
+- Subtitles (Subtitles.cs): .srt and .vtt (SubtitleFile.Parse: "start --> end" blocks, hours optional, "," or "." before the
+  milliseconds, tags like <i> and {\an8} dropped, &amp; decoded, broken blocks skipped; UTF-8 with or without mark, UTF-16, else
+  the PC's code page). Found by FindSubtitles on a thread-pool thread each time a video (or song) appears: a file picked by hand
+  this session, else "name.srt"/"name.vtt" next to the video, else "name.*.srt" (a language), else remembered automatic captions.
+  Nothing runs on the window's thread for it; measured first open and switching equal to 1.23.0 (5 rounds alternating, folder
+  of videos with .srt files: 54 vs 60 ms, median 1 ms both).
+  Shown in SubBox/SubText (white on #C0000000, every look; inside SubHolder, whose TranslateTransform glides it clear of the
+  control bar: PlaceSubs from ShowOverlay/HideOverlay), font 2.7/3.5/4.6% of the viewing area's height (subSize= 0/1/2), at
+  most 82% wide; a 33 ms timer only while playing with subtitles on, plus UpdateTime (paused, dragging the time bar); hidden
+  while trimming, cropping, in the grid and Settings. CC button SubBtn (E7F0) on the video bar only while the video has
+  subtitles, accent-coloured when on; S key (action "subtitles"); settings line subs=. Video menu items: Subtitles, Choose
+  (other) subtitles..., Make captions automatically / Make the captions again + Save captions as a file...
+  Test: --case subs (folder: clip.mp4 + clip.srt, lang.mp4 + lang.en.srt, plain.mp4, web.mp4 + web.vtt, extra.srt).
+- Add-ons (Addons.cs): class Addon = optional download kept in %LOCALAPPDATA%\FastViewer\<Id> (installed.txt marks it whole).
+  A part is a plain file, a whole zip of which named files are unpacked, or ONE ENTRY of a remote zip: the zip's list of
+  contents is read from its end with HTTP range requests and only that entry's bytes are fetched and inflated (the 431 MB RIFE
+  release costs 12 MB). Every part has a SHA-256 built in; a mismatch is refused and nothing of it is kept; 3 tries per part;
+  Cancel; Remove deletes the add-on's folder. Settings card AddAddonCard (size on the button, "x of y MB", a filling line on
+  the card, tick + "Ready, works offline", Remove; it looks at the disk only once it's on screen) and GetAddon (a message
+  offers the download when a feature is used first, shows progress, then carries on). Tests: --addons <scratch root>,
+  --addon-source <folder with stand-in downloads> (fingerprints not compared unless the test turns that on), --case addons
+  (--pattern real downloads the real ones into --addons: the only test that uses the internet). Test runs otherwise see no
+  add-ons and never download.
+- Automatic captions (Captions.cs): add-on "Whisper" = whisper.cpp release b5454 whisper-bin-x64.zip (whisper-cli.exe + dlls,
+  github.com/ggml-org/whisper.cpp) + ggml-small-q5_1.bin (huggingface.co/ggerganov/whisper.cpp at commit 5359861c), 190 MB.
+  The fingerprint of a Hugging Face file is its X-Linked-ETag header (the plain ETag after the redirect is something else).
+  VideoConverter.SpeechWav: every sound track decoded by Windows straight to 16 kHz mono 16-bit (own simple conversion as a
+  fallback) and mixed by time into one .wav in %TEMP%\FastViewer; when the decoder reports a changed format (flag 0x20: some
+  AAC has twice the samples its header says) the new one is used, or the sound comes out garbled. whisper-cli runs hidden at
+  below-normal priority with half the logical processors, "-ml 84 -sow -np"; its "[from --> to] text" lines become cues as they
+  are printed (shown live), [Music]-like lines and a line repeated three times are dropped; progress moves at the measured
+  speed between its half-minute steps. Kept in %LOCALAPPDATA%\FastViewer\Captions\<hash of path, size, date>.srt. Settings >
+  Videos: Automatic captions card, "Language spoken in your videos" (captionLang=, auto or one of 15). 64-bit Windows only.
+  Measured (Ryzen 5 5600X): an 18 s clip in 7.5 s. Test: --case captions (--addons with the real add-on, speech.mp4).
+- Smoother video (Tools.cs, class Smooth): add-on "Smooth" = rife-ncnn-vulkan 20221029 (exe, vcomp140.dll, rife-v4.6 model;
+  github.com/nihui) + ffmpeg.exe from Gyan's 9.0.2 essentials build (github.com/GyanD/codexffmpeg), 47 MB. If the user's own
+  FrameBoost tools folder exists (%USERPROFILE%\Tools\FrameBoost\tools or FrameBoost\tools next to FastViewer.exe) its
+  programs are used and the card says "Using your FrameBoost". Steps (as FrameBoost.ps1 did): read size/rate/length from
+  "ffmpeg -i"; every frame as JPG at a constant usual rate (HDR HLG/PQ tonemapped with zscale); RIFE makes frames x 2 or 4
+  (progress = pictures counted, with time left); encode H.264 with the card's encoder (nvenc / amf / qsv) then libx264,
+  sound copied when AAC; saved as <name>_<fps>fps.mp4 via a temporary name. Free disk space is checked first; the work
+  folder %TEMP%\FastViewer\Smooth_* always goes. GpuVerdict (registry: display adapters' names and memory, vulkan-1.dll):
+  level 2 fine, 1 slow (built-in graphics, 2-3.5 GB), 0 too weak/none/no Vulkan ("Try anyway"); the text shows on the card
+  and before downloading. Tests: --gpu "name|MB", --frameboost <tools folder|none>, --case smooth (--pattern 4 for 4x).
+  Measured (RTX 3060 Ti): 6 s 640x360 clip 2x in 3.8 s, 4x in 4.7 s.
+- Convert to JPG / PNG (Tools.cs ConvertPhotoFile; top "..." menu, actions toJpg/toPng): any photo; uses Crop.cs CropPhoto
+  with the whole picture (upright, remembered turn included; JPEG 95). Written as <name>.fvconvert.tmp, read back, then
+  moved to <name>.jpg or "<name> (2).jpg"...: nothing is ever replaced, the original untouched, the copy gets the original's
+  date. .jfif/.jpe to JPG is a plain copy. See-through parts: white in a JPG (CropPhoto onWhite), kept in a PNG. Windows'
+  WebP decoder reports its pixel format as "Default": CropPhoto asks for Bgra32 then, or see-through came out black (also
+  fixes cropping such a WebP). Test: --case convert.
+- Rotate left (Settings.cs RotateBy(dir); Rotate() = 1, RotateLeft() = -1): action rotateLeft (Ctrl+Shift+R), menu choice
+  "rotateLeft" (icon E7AD mirrored by Flipped()), right-click on RotateBtn = the other way, Settings > Viewing > "The rotate
+  button turns" (rotateLeft= 0/1; UpdateRotateButton mirrors RotateGlyph with a LayoutTransform and writes the tip). Same
+  animation (counter-turn of -90 x dir) and the same save-to-file path as Rotate. "Rotate" is named "Rotate right".
+  Test: --case rotleft (scratch folder with photo.jpg and clip.mp4, --motion full).
+- Top messages have a "done" kind (tick icon E73E). New line icons: Ic.E7F0, Ic.E720, Ic.E8AB, Ic.EC4A.
+
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -405,12 +464,12 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
   keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full), share, crop, tracks (1.22.0, see Videos),
-  away (1.23.0, see Polish release),
+  away (1.23.0, see Polish release), convert, subs, addons, captions, smooth (1.24.0, see their section),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
 - Options: --preload n, --look <Id>, --strip, --grab-always, --settings <scratch.ini>,
-  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --update-feed <local json or "refused">, --update-page <file>, --update-test,
+  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --addons, --addon-source, --gpu, --frameboost, --speechwav <video> <wav>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
   --count, --every, --pattern, --front, --motion full|reduced|off (tests run with animations Off unless
   given), --convert <src> <dst> <rotation> [from to].
 - Any run with a "--" option never contacts GitHub.

@@ -514,7 +514,7 @@ namespace FastViewer
 
         // Writes the part (x, y, width, height, each 0..1 of the photo as shown, turn included) to temp as a file of
         // type ext, then reads it back to check it. Returns its size, "1200 x 800".
-        internal static string CropPhoto(string file, string temp, string ext, double[] part, int turn)
+        internal static string CropPhoto(string file, string temp, string ext, double[] part, int turn, bool onWhite = false)
         {
             BitmapEncoder encoder;
             switch (ext)
@@ -530,6 +530,9 @@ namespace FastViewer
             {
                 var frame = BitmapDecoder.Create(fs, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames[0];
                 BitmapSource picture = frame;
+                // Windows' WebP (and some other add-on) decoders don't name their pixel format; asked for colours
+                // plus see-through-ness they give both, where otherwise the see-through parts would come out black.
+                if (picture.Format == PixelFormats.Default || picture.Format.ToString() == "Default") picture = new FormatConvertedBitmap(picture, PixelFormats.Bgra32, null, 0);
                 BitmapMetadata meta = null;
                 int orientation = 1;
                 try
@@ -566,6 +569,23 @@ namespace FastViewer
                 w = Math.Max(1, Math.Min(fullW - x, (int)Math.Round(part[2] * fullW)));
                 h = Math.Max(1, Math.Min(fullH - y, (int)Math.Round(part[3] * fullH)));
                 BitmapSource cut = new CachedBitmap(new CroppedBitmap(picture, new Int32Rect(x, y, w, h)), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                if (onWhite && (cut.Format == PixelFormats.Bgra32 || cut.Format == PixelFormats.Pbgra32 || cut.Format == PixelFormats.Rgba64 || cut.Format == PixelFormats.Prgba64 ||
+                                cut.Format == PixelFormats.Rgba128Float || cut.Format == PixelFormats.Prgba128Float || cut.Palette != null))
+                {
+                    // See-through parts on white (Convert to JPG): with the colours stored times their see-through-ness,
+                    // putting a pixel on white is just adding what's missing to each colour.
+                    var pre = new FormatConvertedBitmap(cut, PixelFormats.Pbgra32, null, 0);
+                    int stride = w * 4;
+                    var px = new byte[stride * h];
+                    pre.CopyPixels(px, stride, 0);
+                    for (int i = 0; i < px.Length; i += 4)
+                    {
+                        int rest = 255 - px[i + 3];
+                        if (rest == 0) continue;
+                        px[i] = (byte)Math.Min(255, px[i] + rest); px[i + 1] = (byte)Math.Min(255, px[i + 1] + rest); px[i + 2] = (byte)Math.Min(255, px[i + 2] + rest); px[i + 3] = 255;
+                    }
+                    cut = BitmapSource.Create(w, h, cut.DpiX, cut.DpiY, PixelFormats.Bgr32, null, px, stride);
+                }
                 System.Collections.ObjectModel.ReadOnlyCollection<ColorContext> colour = null;
                 try { colour = frame.ColorContexts; } catch { }
                 BitmapFrame made;

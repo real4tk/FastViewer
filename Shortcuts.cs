@@ -69,7 +69,12 @@ namespace FastViewer
                 S("saveFrame", "Save a frame", SaveFrame),
                 S("copyFrame", "Copy frame", CopyFrame, "Ctrl+Shift+C"),
                 S("compatible", "Make compatible copy", MakeCompatibleCopy),
-                S("rotate", "Rotate", Rotate, "Ctrl+R"),
+                S("subtitles", "Subtitles on/off", ToggleSubtitles, "S"),
+                S("autoCaptions", "Make captions automatically", MakeCaptions),
+                S("toJpg", "Convert to JPG", delegate { ConvertPhoto(".jpg"); }),
+                S("toPng", "Convert to PNG", delegate { ConvertPhoto(".png"); }),
+                S("rotate", "Rotate right", Rotate, "Ctrl+R"),
+                S("rotateLeft", "Rotate left", RotateLeft, "Ctrl+Shift+R"),
                 S("saveRotation", "Save rotation to file", SaveRotationToFile),
                 S("zoomIn", "Zoom in", delegate { ZoomBy(1.25, StageCenter()); }, "OemPlus", "Add"),
                 S("zoomOut", "Zoom out", delegate { ZoomBy(0.8, StageCenter()); }, "OemMinus", "Subtract"),
@@ -136,6 +141,7 @@ namespace FastViewer
             { "TrimGifBtn", "Save the part between the handles as a GIF", "" }, { "TrimShareBtn", "Make a small copy for Discord and copy it, ready to paste", "" },
             { "CropSaveBtn", "Keep only the part in the frame; the original goes to the Recycle Bin (Enter)", "" }, { "CropCopyBtn", "Save the part in the frame as a new file", "" }, { "CropCancelBtn", "Leave without cropping (Esc)", "" },
             { "CropRatioBtn", "Hold a shape while dragging", "" }, { "CropResetBtn", "Back to the whole picture", "" },
+            { "SubBtn", "Subtitles", "subtitles" },
             { "GridSizeBtn", "Thumbnail size (Ctrl + mouse wheel)", "" }
         };
 
@@ -158,6 +164,7 @@ namespace FastViewer
             System.Windows.Automation.AutomationProperties.SetName(vol, "Mute");
             SetSlideshowButton();
             UpdateSkipButtons();
+            UpdateRotateButton();
             centerPlayBtn.ToolTip = WithKey(playing ? "Pause" : "Play", KeyOf("play"));
             System.Windows.Automation.AutomationProperties.SetName(centerPlayBtn, playing ? "Pause" : "Play");
             foreach (var s in new[] { new[] { "Seek", "Position in the video" }, new[] { "Vol", "Volume" }, new[] { "ZoomSlider", "Zoom" } })
@@ -183,6 +190,8 @@ namespace FastViewer
             { "zoomIn", "" }, { "zoomOut", "" }, { "fit", "" }, { "actualSize", "" }, { "fullscreen", "" },
             { "mini", "" }, { "pin", "" }, { "slideshow", "" }, { "info", "" }, { "open", "" },
             { "saveAs", "" }, { "copy", "" }, { "copyPath", "" }, { "showInFolder", "" }, { "openWith", "" },
+            { "subtitles", "\uE7F0" }, { "autoCaptions", "\uE720" }, { "toJpg", "\uE8AB" }, { "toPng", "\uE8AB" },
+            { "rotateLeft", "\uE7AD" },
             { "copyFrame", "\uEB9F" }, { "delete", "" }, { "settings", "" }, { "close", "" }
         };
 
@@ -330,7 +339,8 @@ namespace FastViewer
                     boxes.Children.Add(b);
                 }
                 string icon;
-                AddCard(ActionIcons.TryGetValue(sc.Id, out icon) ? icon : "", sc.Name, null, boxes);
+                var keyCard = AddCard(ActionIcons.TryGetValue(sc.Id, out icon) ? icon : "", sc.Name, null, boxes);
+                if (sc.Id == "rotateLeft") FlipCardIcon(keyCard);
             }
             RefreshShortcutEditors();
         }

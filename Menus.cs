@@ -28,7 +28,9 @@ namespace FastViewer
             new MenuChoice("copyPath", "Copy file path", "", 0),
             new MenuChoice("showInFolder", "Show in folder", "", 0),
             new MenuChoice("delete", "Delete", "", 0),
-            new MenuChoice("rotate", "Rotate", "", 1),
+            new MenuChoice("convert", "Convert to JPG / PNG", "\uE8AB", 0),
+            new MenuChoice("rotate", "Rotate right", "", 1),
+            new MenuChoice("rotateLeft", "Rotate left", "\uE7AD", 1),
             new MenuChoice("saveRotation", "Save rotation to file", "", 1),
             new MenuChoice("crop", "Crop", "", 1),
             new MenuChoice("mini", "Mini player", "", 1),
@@ -49,9 +51,13 @@ namespace FastViewer
             new MenuChoice("loopA", "Loop from here (A)", "", 2),
             new MenuChoice("loopB", "Loop until here (B)", "", 2),
             new MenuChoice("changeCover", "Change cover (music)", "", 3),
+            new MenuChoice("subtitles", "Subtitles on/off", "\uE7F0", 3),
+            new MenuChoice("subFile", "Choose subtitles", "\uE8E5", 3),
+            new MenuChoice("autoCaptions", "Make captions automatically", "\uE720", 3),
             new MenuChoice("trim", "Trim", "", 4),
             new MenuChoice("crop", "Crop", "", 4),
             new MenuChoice("compatible", "Make compatible copy", "", 4),
+            new MenuChoice("smooth", "Make smoother (2x / 4x)", "\uEC4A", 4),
         };
 
         // Every item in the chosen order; hidden ones are kept in their place so switching them back on puts them there.
@@ -136,7 +142,9 @@ namespace FastViewer
                 case "copyPath": return One(Item("Copy file path", "", CopyPath, KeyOf("copyPath")));
                 case "showInFolder": return One(Item("Show in folder", "", ShowInFolder, KeyOf("showInFolder")));
                 case "delete": return One(Item("Delete", "", AskDelete, KeyOf("delete")));
-                case "rotate": return One(Item("Rotate", "", Rotate, KeyOf("rotate")));
+                case "convert": return ConvertMenuItems();
+                case "rotate": return One(Item("Rotate right", "", Rotate, KeyOf("rotate")));
+                case "rotateLeft": return One(Flipped(Item("Rotate left", "\uE7AD", RotateLeft, KeyOf("rotateLeft"))));
                 case "saveRotation": return One(Enabled(Item("Save rotation to file", "", SaveRotationToFile, KeyOf("saveRotation")), CanSaveRotation()));
                 case "crop": return shown != null && shown.IsAudio ? new Control[0] : One(Item("Crop...", "", StartCrop, KeyOf("crop")));
                 case "mini": return One(Item("Mini player", "", ToggleMini, KeyOf("mini")));
@@ -170,6 +178,8 @@ namespace FastViewer
                 case "trim": return music ? none : One(Item("Trim...", "", StartTrim, KeyOf("trim")));
                 case "crop": return music ? none : One(Item("Crop...", "", StartCrop, KeyOf("crop")));
                 case "compatible": return music ? none : One(Item("Make compatible copy...", "", MakeCompatibleCopy, KeyOf("compatible")));
+                case "smooth": return SmoothMenuItems();
+                case "subtitles": case "subFile": case "autoCaptions": return SubtitleMenuItem(id);
             }
             return none;
         }
@@ -252,6 +262,7 @@ namespace FastViewer
                     System.Windows.Automation.AutomationProperties.SetName(toggle, "Show " + c.Name + " in the " + (vid ? "video" : "top") + " menu");
                     controls.Children.Add(toggle);
                     var card = AddCard(c.Glyph, c.Name, null, controls);
+                    if (id == "rotateLeft") FlipCardIcon(card); // the same mirrored arrow as in the menu itself
                     settingsPage.Children.Remove(card); // AddCard puts it on the page: it belongs in this list
                     card.Margin = new Thickness(card.Margin.Left, 0, card.Margin.Right, 2);
                     menuRows.Children.Add(card);

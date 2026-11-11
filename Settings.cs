@@ -61,6 +61,7 @@ namespace FastViewer
                 case "preload": preloadAhead = Math.Max(1, Math.Min(3, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "resume": resumeVideos = v == "1"; break;
                 case "saveRotation": saveRotation = v == "1"; break;
+                case "rotateLeft": rotateLeft = v == "1"; break;
                 case "autoUpdate": autoUpdate = v == "1"; break;
                 case "playNext": playNextAtEnd = v == "1"; break;
                 case "keepReady": keepReady = v == "1"; break;
@@ -86,6 +87,9 @@ namespace FastViewer
                 case "videoMenu": LoadMenuLine(true, v); break;
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "gridSort": gridSort = Math.Max(0, Math.Min(GridSortNames.Length - 1, int.Parse(v, CultureInfo.InvariantCulture))); break;
+                case "subs": subsOn = v == "1"; break;
+                case "subSize": subSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
+                case "captionLang": captionLanguage = Array.IndexOf(Whisper.LanguageCodes, v) >= 0 ? v : "auto"; break;
                 case "discordMb": { int mb = int.Parse(v, CultureInfo.InvariantCulture); discordMb = mb == 50 || mb == 500 ? mb : 20; } break;
                 default:
                     if (LoadCustomOption(key, v)) { } // the custom look (CustomLook.cs)
@@ -121,6 +125,7 @@ namespace FastViewer
                 "preload=" + preloadAhead.ToString(CultureInfo.InvariantCulture),
                 "resume=" + (resumeVideos ? "1" : "0"),
                 "saveRotation=" + (saveRotation ? "1" : "0"),
+                "rotateLeft=" + (rotateLeft ? "1" : "0"),
                 "autoUpdate=" + (autoUpdate ? "1" : "0"),
                 "playNext=" + (playNextAtEnd ? "1" : "0"),
                 "keepReady=" + (keepReady ? "1" : "0"),
@@ -140,6 +145,9 @@ namespace FastViewer
                 "gridSize=" + gridSize.ToString(CultureInfo.InvariantCulture),
                 "gridSort=" + gridSort.ToString(CultureInfo.InvariantCulture),
                 "discordMb=" + discordMb.ToString(CultureInfo.InvariantCulture),
+                "subs=" + (subsOn ? "1" : "0"),
+                "subSize=" + subSize.ToString(CultureInfo.InvariantCulture),
+                "captionLang=" + captionLanguage,
                 "lastUpdateCheck=" + lastUpdateCheck.Ticks.ToString(CultureInfo.InvariantCulture),
                 "miniLong=" + miniLong.ToString(CultureInfo.InvariantCulture),
                 "miniLeft=" + miniLeft.ToString(CultureInfo.InvariantCulture),
@@ -383,6 +391,10 @@ namespace FastViewer
                 "(JPEGs, MP4 and MOV videos without any quality loss). Either way FastViewer remembers the turn.",
                 Dropdown(new[] { "Only how it's shown", "Also save it to the file" },
                     () => saveRotation ? 1 : 0, i => saveRotation = i == 1));
+            AddCard("", "The rotate button turns",
+                "Right-clicking the button turns the other way. Both ways have their own key (Settings > Keyboard) and their own item in the \"...\" menu.",
+                Dropdown(new[] { "Right (clockwise)", "Left (counter-clockwise)" },
+                    () => rotateLeft ? 1 : 0, i => { rotateLeft = i == 1; UpdateRotateButton(); }));
 
             AddGroup("Videos");
             AddCard("\uE7F2", "Continue where you left off",
@@ -435,6 +447,8 @@ namespace FastViewer
                         slideSeconds = new[] { 2, 4, 8 }[i];
                         slideTimer.Interval = TimeSpan.FromSeconds(slideSeconds);
                     }));
+            AddSubtitleSettings(); // Subtitles.cs, Captions.cs
+            AddSmoothSettings();   // Tools.cs
 
             AddGroup("Keyboard");
             AddShortcutCards();
@@ -785,7 +799,51 @@ namespace FastViewer
         readonly Dictionary<string, int> rotations = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         // Turns the current photo or video a quarter turn clockwise, with a short animation (like Telegram).
-        void Rotate()
+        void Rotate() { RotateBy(1); }
+
+        // The other way (1.24.0: Ctrl+Shift+R, "..." > Rotate left, right-click on the rotate button).
+        void RotateLeft() { RotateBy(-1); }
+
+        bool rotateLeft; // Settings > Viewing: the rotate button turns counter-clockwise (settings line rotateLeft=)
+
+        // The rotate button: the way chosen in Settings; right-click turns the other way.
+        void RotateButton(bool other)
+        {
+            RotateBy(rotateLeft != other ? -1 : 1);
+            Motion.Pulse(F<Glyph>("RotateGlyph"));
+        }
+
+        // Shows on the button which way it turns (the arrow mirrored), and says so in its tip.
+        void UpdateRotateButton()
+        {
+            var b = F<Button>("RotateBtn");
+            var g = F<Glyph>("RotateGlyph");
+            if (b == null || g == null) return;
+            g.LayoutTransform = rotateLeft ? new ScaleTransform(-1, 1) : null; // (its animations use the render transform)
+            string main = rotateLeft ? WithKey("Rotate left", KeyOf("rotateLeft")) : WithKey("Rotate right", KeyOf("rotate"));
+            string otherWay = rotateLeft ? WithKey("right-click turns it right", KeyOf("rotate")) : WithKey("right-click turns it left", KeyOf("rotateLeft"));
+            b.ToolTip = main + "; " + otherWay;
+            System.Windows.Automation.AutomationProperties.SetName(b, rotateLeft ? "Rotate left" : "Rotate right");
+        }
+
+        // A menu item whose icon is drawn mirrored (the rotate arrow, pointing the other way).
+        static MenuItem Flipped(MenuItem item)
+        {
+            var g = item.Icon as Glyph;
+            if (g != null) g.LayoutTransform = new ScaleTransform(-1, 1);
+            return item;
+        }
+
+        // The same for the icon of a Settings card (the "..." menus list, the Keyboard page).
+        static void FlipCardIcon(Border card)
+        {
+            var grid = card == null ? null : card.Child as Grid;
+            var g = grid == null || grid.Children.Count == 0 ? null : grid.Children[0] as Glyph;
+            if (g != null) g.LayoutTransform = new ScaleTransform(-1, 1);
+        }
+
+        // Turns the current photo or video a quarter turn (dir 1: clockwise, -1: counter-clockwise).
+        void RotateBy(int dir)
         {
             var s = shown;
             if (s == null || s.File == null || s.Failed || !s.Ready || s.IsAudio) return;
@@ -793,7 +851,7 @@ namespace FastViewer
             string file = s.File;
             int from;
             rotations.TryGetValue(file, out from);
-            int to = (from + 90) % 360;
+            int to = ((from + 90 * dir) % 360 + 360) % 360;
             Motion.Stop("zoom");
             ResetZoom(s);
             double before = FitScale(s);       // screen pixels per picture pixel, before turning
@@ -824,7 +882,7 @@ namespace FastViewer
                 var angle = (RotateTransform)spin.Children[1];
                 double k = before / after;
                 double turnMs = Motion.Ms(Motion.Normal);
-                Motion.FromTo(angle, RotateTransform.AngleProperty, angle.Angle - 90, 0, turnMs, Motion.In);
+                Motion.FromTo(angle, RotateTransform.AngleProperty, angle.Angle - 90 * dir, 0, turnMs, Motion.In);
                 Motion.FromTo(size, ScaleTransform.ScaleXProperty, size.ScaleX * k, 1, turnMs, Motion.In);
                 Motion.FromTo(size, ScaleTransform.ScaleYProperty, size.ScaleY * k, 1, turnMs, Motion.In);
             }

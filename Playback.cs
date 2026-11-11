@@ -40,6 +40,7 @@ namespace FastViewer
             InitTrim();
             InitShare();
             InitCrop();
+            InitSubtitles();
             toastTimer.Tick += delegate { HideToast(null); };
             loopTimer.Tick += delegate { KeepInLoop(); };
             transport.SizeChanged += delegate { UpdateLoopUi(); };
@@ -53,6 +54,7 @@ namespace FastViewer
             if (cropping) EndCrop();
             ClearLoop();
             HideToast("resume");
+            FindSubtitles();
             var s = shown;
             double saved;
             if (s.IsVideo && resumeVideos && positions.TryGetValue(s.File, out saved) && saved > 1)
@@ -390,7 +392,7 @@ namespace FastViewer
             toastKind = kind;
             // An icon says what kind of message it is (the short notes of a key or the wheel have none).
             var toastIcon = F<Glyph>("ToastIcon");
-            string code = kind == "feedback" || kind == null ? null : kind == "error" ? "\uE7BA" : kind == "update" ? "\uE72C" : kind == "resume" ? "\uE768" : kind == "convert" ? "\uE74E" : "\uE946";
+            string code = kind == "feedback" || kind == null ? null : kind == "error" ? "\uE7BA" : kind == "update" ? "\uE72C" : kind == "resume" ? "\uE768" : kind == "convert" ? "\uE74E" : kind == "done" ? "\uE73E" : "\uE946";
             toastIcon.Visibility = code == null ? Visibility.Collapsed : Visibility.Visible;
             if (code != null) toastIcon.Code = code;
             // Drops in from just above (a message that's already showing only changes its text).

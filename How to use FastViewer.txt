@@ -1,4 +1,4 @@
-FastViewer 1.23.0 - a fast photo, video and music viewer for Windows 10 and 11
+FastViewer 1.24.0 - a fast photo, video and music viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -37,6 +37,22 @@ Cropping a photo or video
   move it; Shape keeps it square, 16:9 and so on. "Save a copy" makes a new file; "Save" keeps only
   the cropped part and moves the original to the Recycle Bin. Esc leaves without cropping.
 
+Subtitles and automatic captions
+  A subtitle file (.srt or .vtt) with the same name as the video, in the same folder, shows by itself.
+  The CC button on the video bar (or the S key) switches subtitles off and on; video "..." -> Choose
+  subtitles picks another file. No subtitle file? Video "..." -> Make captions automatically lets
+  FastViewer write them by listening, on your own PC. The first time it asks to download 190 MB once
+  (also in Settings -> Videos -> Automatic captions); after that it works without internet.
+
+Smoother video
+  Video "..." -> Make smoother (2x or 4x the frames) saves a smoother copy next to the original, made
+  on your graphics card. One-time download of 47 MB (Settings -> Videos -> Make videos smoother);
+  FastViewer tells you first whether your graphics card is up to it.
+
+Convert a photo
+  "..." at the top -> Convert to JPG / Convert to PNG makes a copy next to the original (handy for
+  .webp pictures from the web). The original stays as it is.
+
 All files in the folder
   G (or the grid button in the bottom bar) shows every photo and video in the folder as
   thumbnails, in File Explorer's order. Click one to open it; arrows + Enter work too. Names shows file names.
@@ -52,9 +68,11 @@ Handy keys
   [  ]  \              A-B loop: set start, set end, stop
   Ctrl + T             trim: save part of a video as a new file, a GIF or a Discord-sized copy
   C                    crop a photo or video
+  S                    subtitles on / off
   Ctrl + Shift + C     copy the video frame on screen (paste it in Discord, Paint...)
   Up / Down            volume
   Ctrl + R             rotate 90 degrees (also the rotate button at the top)
+  Ctrl + Shift + R     rotate the other way (or right-click the rotate button)
   Ctrl + M             mini player
   G                    all files in the folder (grid)
   F or F11             full screen

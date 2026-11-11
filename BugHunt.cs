@@ -82,6 +82,12 @@ namespace FastViewer
                 case "switches": HuntSwitches(); break;
                 case "taskbar": HuntTaskbar(); break;
                 case "away": HuntAway(); break;
+                case "convert": HuntConvert(); break;
+                case "rotleft": HuntRotateLeft(); break;
+                case "subs": HuntSubs(); break;
+                case "addons": HuntAddons(); break;
+                case "captions": HuntCaptions(); break;
+                case "smooth": HuntSmooth(); break;
                 case "rotsave": HuntRotSave(); break;
                 case "showmigrate": HuntShowMigrate(); break;
                 case "minivol":
