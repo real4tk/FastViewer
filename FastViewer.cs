@@ -58,6 +58,13 @@ namespace FastViewer
                 catch (Exception ex) { File.WriteAllText(args[2] + ".log", "ERROR " + ex); }
                 return;
             }
+            if (args.Length >= 3 && args[0] == "--tidy") // test: automatic captions <in.srt> tidied into <out.srt> (Whisper.Tidy)
+            {
+                var notes = new List<string>();
+                try { File.WriteAllText(args[2], SubtitleFile.ToSrt(Whisper.Tidy(SubtitleFile.Load(args[1]), notes)), new System.Text.UTF8Encoding(true)); File.WriteAllLines(args[2] + ".log", notes); }
+                catch (Exception ex) { File.WriteAllText(args[2] + ".log", "ERROR " + ex); }
+                return;
+            }
             if (args.Length >= 4 && args[0] == "--convert")
             {
                 string log = args[2] + ".log";
@@ -86,10 +93,44 @@ namespace FastViewer
             var app = new Application();
             app.ShutdownMode = ShutdownMode.OnMainWindowClose;
             // If FastViewer ever crashes, the reason is kept in %TEMP%\FastViewer\crash.txt.
-            app.DispatcherUnhandledException += (o, e) => WriteCrash(e.Exception);
+            // 1.27.0: an unexpected error in the window never closes FastViewer: it is written to
+            // %LOCALAPPDATA%\FastViewer\errors.txt and the window carries on. (Test runs still stop, so a test shows it.)
+            bool testing = args.Any(a => a.StartsWith("--") && a != "--updated");
+            int errorsAt = Array.IndexOf(args, "--errors"); // tests: the safety net on, writing to this file
+            if (errorsAt >= 0 && errorsAt + 1 < args.Length) { ErrorsFile = args[errorsAt + 1]; testing = false; }
+            app.DispatcherUnhandledException += (o, e) =>
+            {
+                WriteCrash(e.Exception);
+                if (testing) return;
+                LogUiError(e.Exception);
+                e.Handled = true;
+            };
             AppDomain.CurrentDomain.UnhandledException += (o, e) => WriteCrash(e.ExceptionObject as Exception);
             app.Resources.MergedDictionaries.Add(Ui.Load<ResourceDictionary>("FastViewer.Theme.xaml")); // the window applies its look (Looks.cs)
             app.Run(new ViewerWindow(args));
+        }
+
+        static int uiErrors;
+        internal static string ErrorsFile;
+        static DateTime uiErrorsSince = DateTime.MinValue;
+
+        // errors.txt: when and what (at most 30 a minute, so an error that repeats every frame can't fill the disk;
+        // over 1 MB the old part moves to errors.old.txt).
+        public static void LogUiError(Exception ex)
+        {
+            try
+            {
+                if ((DateTime.Now - uiErrorsSince).TotalMinutes > 1) { uiErrorsSince = DateTime.Now; uiErrors = 0; }
+                if (++uiErrors > 30) return;
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FastViewer");
+                Directory.CreateDirectory(dir);
+                string file = ErrorsFile ?? Path.Combine(dir, "errors.txt");
+                if (File.Exists(file) && new FileInfo(file).Length > 1 << 20) File.Copy(file, Path.ChangeExtension(file, ".old.txt"), true);
+                if (File.Exists(file) && new FileInfo(file).Length > 1 << 20) File.Delete(file);
+                File.AppendAllText(file, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " FastViewer " + Assembly.GetExecutingAssembly().GetName().Version +
+                    " (kept running)" + Environment.NewLine + ex + Environment.NewLine + Environment.NewLine);
+            }
+            catch { }
         }
 
         public static void WriteCrash(Exception ex)
@@ -441,6 +482,9 @@ namespace FastViewer
                 else if (args[i] == "--positions" && i + 1 < args.Length) { PositionsFile = args[++i]; positionsOverride = true; }
                 else if (args[i] == "--rotations" && i + 1 < args.Length) { TurnMemory.Path = args[++i]; TurnMemory.Overridden = true; }
                 else if (args[i] == "--addons" && i + 1 < args.Length) Addon.RootOverride = args[++i];
+                else if (args[i] == "--errors" && i + 1 < args.Length) i++; // (read in Main: the safety net in a test)
+                else if (args[i] == "--recent" && i + 1 < args.Length) { RecentPath = args[++i]; recentOverride = true; } // tests: a scratch recent.txt
+                else if (args[i] == "--default" && i + 1 < args.Length) defaultOverride = args[++i] == "yes"; // tests: FastViewer is (not) the default viewer
                 else if (args[i] == "--vocals") Vocals.Offered = true;
                 else if (args[i] == "--addon-source" && i + 1 < args.Length) Addon.SourceOverride = args[++i];
                 else if (args[i] == "--gpu" && i + 1 < args.Length) GpuVerdict.Override = args[++i];
@@ -480,6 +524,7 @@ namespace FastViewer
             }
             bool testMode = selfTestInterval > 0 || snapDir != null || fadeTestLog != null;
             testRun = args.Any(a => a.StartsWith("--") && a != "--updated"); // any test option: GitHub is never contacted
+            testRunStatic = testRun;
             Addon.TestRun = Smooth.TestRun = testRun; // tests never see (or download) the real add-ons
             if (testRun && !TurnMemory.Overridden) TurnMemory.Path = null; // tests never touch the real rotations.txt
 
@@ -747,6 +792,7 @@ namespace FastViewer
                 InitGallery();
                 InitGridSearch();
                 InitAway();
+                InitWelcome();
                 foreach (var name in new[] { "GridScroll", "SettingsScroll", "SettingsNavScroll" }) SmoothWheel(F<ScrollViewer>(name));
                 ApplyButtons();
                 if (!testMode) StartSingleInstance();
@@ -855,7 +901,7 @@ namespace FastViewer
             return ImageExts.Contains(ext) || VideoExts.Contains(ext) || AudioExts.Contains(ext);
         }
 
-        void OpenPath(string path)
+        void OpenPath(string path, bool remember = true)
         {
             string start = null, folder;
             shuffled = false;
@@ -896,6 +942,7 @@ namespace FastViewer
                 message.Text = "No photos or videos in this folder";
                 return;
             }
+            if (remember) RememberRecent(start ?? folder); // (written a moment later, off the window's thread)
             ShowIndex(index, 1);
             if (gridOpen) FillGrid(true); // a folder dropped on the grid: show that folder
             WatchFolder(folder); // new / renamed / deleted files update the list by themselves
@@ -957,7 +1004,7 @@ namespace FastViewer
 
         void Go(int dir)
         {
-            if (files.Count == 0 || DialogOpen) return; // "Delete this file?" stays about the file it names
+            if (files.Count == 0 || DialogOpen || subEditOpen) return; // "Delete this file?" stays about the file it names; the subtitle editor stays on its video
             growFile = null;
             if (!wrapAround && (index + dir < 0 || index + dir >= files.Count)) return;
             ShowIndex(index + dir, dir);
@@ -1563,6 +1610,7 @@ namespace FastViewer
             if (text.Length == 0)
             {
                 title.Visibility = body.Visibility = icon.Visibility = open.Visibility = Visibility.Collapsed;
+                ArrangeWelcome(false);
                 return;
             }
             bool cantOpen = text.StartsWith("Can't open ");
@@ -1578,6 +1626,7 @@ namespace FastViewer
             body.Visibility = rest.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             icon.Visibility = mini ? Visibility.Collapsed : Visibility.Visible;
             open.Visibility = cantOpen || mini ? Visibility.Collapsed : Visibility.Visible; // nothing to look at: offer Open
+            ArrangeWelcome(WelcomeShowing); // (1.27.0: Settings, default viewer, recent files)
         }
 
         void RefreshForShown()
@@ -2141,6 +2190,7 @@ namespace FastViewer
 
         void ToggleInfo()
         {
+            if (subEditOpen) CloseSubEditor(true); // (they share the right side)
             infoOpen = !infoOpen;
             if (infoOpen) FillInfo();
             PlaceInfo(infoOpen && !fullscreen, true);
@@ -2334,9 +2384,10 @@ namespace FastViewer
                 From = f + "\0",       // list must end with a double null
                 Flags = 0x40 | 0x10 | 0x400 | 0x4 // allow undo (Recycle Bin), no confirm, no error UI, silent
             };
-            int result = SHFileOperation(ref op);
-            if (result != 0 || File.Exists(f))
-            {
+            if (TestBin != null && !RealBin) { try { Recycle(f); } catch { } } // test runs: into <out>\recycled, never the real bin
+            else SHFileOperation(ref op);
+            if (File.Exists(f)) // (1.27.0: a file that is gone counts as deleted whatever the result says; before, a
+            {                  //  non-zero result for a file already in the bin retried, failed and showed a random file)
                 if (attempt < 10)
                 {
                     // The video player can take a moment to let go of the file.
@@ -2352,18 +2403,25 @@ namespace FastViewer
 
             string current = CurrentFile;
             int i = files.FindIndex(x => string.Equals(x, f, StringComparison.OrdinalIgnoreCase));
+            string after = i >= 0 ? NeighbourAfter(files, i) : null; // the next file in this order, or the one before at the end
             if (i >= 0) files.RemoveAt(i);
+            if (snapDir != null) testLog.Add("deleted " + Path.GetFileName(f) + ", next " + (after == null ? "(none)" : Path.GetFileName(after)));
             if (files.Count == 0)
             {
-                message.Text = "No more photos or videos in this folder";
-                titleText.Text = "";
-                UpdateControls();
-                UpdateFacts();
+                ShowWelcome(); // the folder is empty now: the welcome screen (it keeps watching the folder)
                 return;
             }
             int still = string.Equals(current, f, StringComparison.OrdinalIgnoreCase) ? -1
                 : files.FindIndex(x => string.Equals(x, current, StringComparison.OrdinalIgnoreCase));
+            if (still < 0 && after != null) still = files.FindIndex(x => string.Equals(x, after, StringComparison.OrdinalIgnoreCase));
             ShowIndex(still >= 0 ? still : Math.Min(i < 0 ? index : i, files.Count - 1), lastDir);
+        }
+
+        // The file that takes a removed file's place: the next one in the list's order, or the one before it at the end.
+        static string NeighbourAfter(List<string> list, int i)
+        {
+            if (i + 1 < list.Count) return list[i + 1];
+            return i > 0 ? list[i - 1] : null;
         }
 
         void CopyFile()
@@ -2708,7 +2766,7 @@ namespace FastViewer
         // The top and bottom bars float over the picture and fade with the other controls in full screen, and
         // always in looks like Clean (Look.BarsFloat), except while Settings or the grid is open. Settings docks them in
         // full screen too (they'd sit on its Back button and title); the grid covers them there instead.
-        bool Floating { get { return !mini && !settingsOpen && (fullscreen || (barsFloat && !gridOpen && !infoOpen)); } }
+        bool Floating { get { return !mini && !settingsOpen && (fullscreen || (barsFloat && !gridOpen && !infoOpen && !subEditOpen)); } } // (the Info pane and the subtitle editor dock floating bars, or the window buttons cover the pane)
 
         void PlaceBars()
         {
@@ -2774,6 +2832,7 @@ namespace FastViewer
                 fullscreen = true;
                 chrome.CaptionHeight = 0;
                 chrome.ResizeBorderThickness = new Thickness(0);
+                CloseSubEditor(true);
                 PlaceInfo(false, false);
                 stage.SetResourceReference(Panel.BackgroundProperty, "FullBg");
                 cover.SetResourceReference(Border.BackgroundProperty, "FullBg");
@@ -2827,6 +2886,9 @@ namespace FastViewer
                 e.Handled = true;
                 return;
             }
+            int subKey = HandleSubEditKey(e); // the subtitle editor (SubEditor.cs): typing, Esc, Ctrl+Z
+            if (subKey == 1) { e.Handled = true; return; }
+            if (subKey == 2) return;
             if (settingsOpen)
             {
                 Shortcut sc;

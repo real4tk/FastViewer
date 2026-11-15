@@ -160,7 +160,9 @@ namespace FastViewer
             ShowCue(-1, false);
             UpdateSubButton();
             var s = shown;
+            if (subEditOpen && (s == null || s.File != subEditVideo)) CloseSubEditor(true); // another file came (deleted, folder changed)
             if (s == null || !s.IsVideo || s.Failed) return;
+            if (UseEditedSubs(s.File)) return; // changed in the editor this session, not saved
             string video = s.File, chosen;
             chosenSubs.TryGetValue(video, out chosen);
             ThreadPool.QueueUserWorkItem(delegate
@@ -174,7 +176,7 @@ namespace FastViewer
                     else
                     {
                         string made = Whisper.CaptionsFile(video);
-                        if (made != null && File.Exists(made)) { list = SubtitleFile.Load(made); from = "auto"; }
+                        if (made != null && File.Exists(made)) { list = Whisper.Tidy(SubtitleFile.Load(made)); from = "auto"; } // (1.27.0: captions made before are tidied too)
                     }
                 }
                 catch { list = null; }
@@ -338,6 +340,7 @@ namespace FastViewer
             list.Add(Item(HasSubs ? "Choose other subtitles..." : "Choose subtitles...", "", ChooseSubtitles));
             list.Add(Item(auto ? "Make the captions again" : "Make captions automatically", "", MakeCaptions, KeyOf("autoCaptions")));
             if (auto) list.Add(Item("Save captions as a file...", "", SaveCaptionsAs));
+            list.Add(Item(HasSubs ? "Edit subtitles..." : "Write subtitles...", "\uE70F", ToggleSubEditor, KeyOf("editSubs"))); // (1.27.0, SubEditor.cs)
             if (HasSubs && !s.IsAudio) list.Add(Item("Save a copy with captions...", "", SaveCopyWithCaptions, KeyOf("burnCaptions")));
             return One(WithSub(SubItem("Subtitles", "", delegate { }, HasSubs ? KeyOf("subtitles") : null), list));
         }

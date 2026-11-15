@@ -72,6 +72,7 @@ namespace FastViewer
                 S("subtitles", "Subtitles on/off", ToggleSubtitles, "S"),
                 S("autoCaptions", "Make captions automatically", MakeCaptions),
                 S("burnCaptions", "Save a copy with captions", SaveCopyWithCaptions),
+                S("editSubs", "Edit subtitles", ToggleSubEditor, "Ctrl+E"),
                 S("toJpg", "Convert to JPG", delegate { ConvertPhoto(".jpg"); }),
                 S("toPng", "Convert to PNG", delegate { ConvertPhoto(".png"); }),
                 S("rotate", "Rotate right", Rotate, "Ctrl+R"),
@@ -177,7 +178,8 @@ namespace FastViewer
         string EmptyMessage()
         {
             string key = KeyOf("open");
-            return "Drop a photo, video or folder here\nor " + (key.Length > 0 ? "press " + key : "click Open") + " to open one";
+            // (1.27.0: the welcome screen's headline; Welcome.cs adds Settings, the default viewer and recent files)
+            return "Open a photo, video or song\nDrag a file or folder here" + (key.Length > 0 ? ", or press " + key : "") + ".";
         }
 
         static readonly Dictionary<string, string> ActionIcons = new Dictionary<string, string>
@@ -187,12 +189,12 @@ namespace FastViewer
             { "back5", "" }, { "forward5", "" }, { "frameBack", "" }, { "frameForward", "" },
             { "loopA", "\uE892" }, { "loopB", "\uE893" }, { "loopStop", "" }, { "repeat", "" }, { "volumeUp", "" },
             { "volumeDown", "" }, { "mute", "" }, { "speedDown", "" }, { "speedUp", "" }, { "speedNormal", "" },
-            { "trim", "" }, { "crop", "" }, { "saveFrame", "" }, { "compatible", "\uE895" }, { "rotate", "" }, { "saveRotation", "" },
+            { "trim", "" }, { "crop", "" }, { "saveFrame", "" }, { "compatible", "\uE895" }, { "rotate", Glyph.RotateLeft }, { "saveRotation", "" },
             { "zoomIn", "" }, { "zoomOut", "" }, { "fit", "" }, { "actualSize", "" }, { "fullscreen", "" },
             { "mini", "" }, { "pin", "" }, { "slideshow", "" }, { "info", "" }, { "open", "" },
             { "saveAs", "" }, { "copy", "" }, { "copyPath", "" }, { "showInFolder", "" }, { "openWith", "" },
-            { "subtitles", "\uE7F0" }, { "burnCaptions", "\uE792" }, { "autoCaptions", "\uE720" }, { "toJpg", "\uE8AB" }, { "toPng", "\uE8AB" },
-            { "rotateLeft", "\uE7AD" },
+            { "subtitles", "\uE7F0" }, { "editSubs", "\uE70F" }, { "burnCaptions", "\uE792" }, { "autoCaptions", "\uE720" }, { "toJpg", "\uE8AB" }, { "toPng", "\uE8AB" },
+            { "rotateLeft", Glyph.RotateLeft },
             { "copyFrame", "\uEB9F" }, { "delete", "" }, { "settings", "" }, { "close", "" }
         };
 
@@ -341,7 +343,7 @@ namespace FastViewer
                 }
                 string icon;
                 var keyCard = AddCard(ActionIcons.TryGetValue(sc.Id, out icon) ? icon : "", sc.Name, null, boxes);
-                if (sc.Id == "rotateLeft") FlipCardIcon(keyCard);
+                if (sc.Id == "rotate") FlipCardIcon(keyCard);
             }
             RefreshShortcutEditors();
         }

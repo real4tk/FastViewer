@@ -179,7 +179,10 @@ namespace FastViewer
         {
             StopSingleInstance(); // on screen now: the next double-clicked file gets a new window
             if (!string.IsNullOrEmpty(path) && (File.Exists(path) || Directory.Exists(path))) OpenPath(path);
-            else if (files.Count == 0 && lastOpened != null && File.Exists(lastOpened)) OpenPath(lastOpened);
+            // The icon by the clock (path null) brings back the last file; FastViewer.exe started on its own (path "")
+            // shows the welcome screen (1.27.0: it used to reopen and play the last video after a moment).
+            else if (path == null && files.Count == 0 && lastOpened != null && File.Exists(lastOpened)) OpenPath(lastOpened);
+            else if (path != null && files.Count == 0) ShowWelcome();
             if (!IsVisible) Show();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
             Activate();

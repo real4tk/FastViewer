@@ -31,7 +31,7 @@
         <fv:Glyph Code="&#xE8C8;"/>
       </Button>
       <Button x:Name="RotateBtn" Style="{StaticResource Subtle}" Margin="0,0,4,0" ToolTip="Rotate (Ctrl+R)">
-        <fv:Glyph x:Name="RotateGlyph" Code="&#xE7AD;"/>
+        <fv:Glyph x:Name="RotateGlyph" Code="&#xF1A0;"><fv:Glyph.LayoutTransform><ScaleTransform ScaleX="-1"/></fv:Glyph.LayoutTransform></fv:Glyph><!-- 1.27.0: Tabler rotate, mirrored = turns right (UpdateRotateButton) -->
       </Button>
       <Button x:Name="MoreBtn" Style="{StaticResource Subtle}" ToolTip="See more">
         <fv:Glyph Code="&#xE712;"/>
@@ -80,12 +80,31 @@
 
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
         <Button x:Name="MessageOpenBtn" Style="{StaticResource AccentButton}" Height="34" MinWidth="120" Content="Open a file" Visibility="Collapsed"/>
+        <!-- Welcome screen (1.27.0, Welcome.cs) -->
+        <Button x:Name="WelcomeSettingsBtn" Style="{StaticResource Outlined}" Height="34" MinWidth="120" Margin="8,0,0,0" Content="Settings" Visibility="Collapsed"/>
         <!-- A file FastViewer can't open: offer another app -->
         <!-- Its sound has no description, which a copy can get (SoundFix.cs) -->
         <Button x:Name="MessageFixBtn" Style="{StaticResource AccentButton}" Height="34" MinWidth="120" Margin="0,0,8,0"
                 Content="Make a playable copy" Visibility="Collapsed"/>
         <Button x:Name="MessageBtn" Style="{StaticResource Outlined}" Height="34" MinWidth="120"
                 Content="Open with another app" Visibility="Collapsed"/>
+      </StackPanel>
+
+      <!-- Welcome screen, under the buttons: become the default viewer (only when FastViewer isn't yet) and recent files -->
+      <StackPanel x:Name="WelcomeExtras" Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,10,0,0">
+        <Button x:Name="WelcomeDefaultBtn" Style="{StaticResource Subtle}" Height="32" HorizontalAlignment="Center" Visibility="Collapsed">
+          <StackPanel Orientation="Horizontal">
+            <fv:Glyph Code="&#xE7AC;" Size="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <TextBlock Text="Make FastViewer my default viewer" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Grid x:Name="WelcomeRecentHead" Width="380" Margin="0,24,0,4" Visibility="Collapsed">
+          <TextBlock Text="Recent" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center"/>
+          <!-- right-click a file for "Remove from Recent" -->
+          <Button x:Name="WelcomeClearBtn" Style="{StaticResource Small}" HorizontalAlignment="Right" Content="Clear recent" FontSize="12"
+                  ToolTip="Empty the list (the files stay where they are). Right-click a file to take only that one off."/>
+        </Grid>
+        <StackPanel x:Name="WelcomeRecent" Width="380"/>
       </StackPanel>
     </StackPanel>
 
@@ -155,7 +174,7 @@
               <Path Data="M4.07,7 A8,8 0 1 0 11,3" StrokeThickness="1.6" StrokeStartLineCap="Round"
                     Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
               <Path Data="M7.4,3 L11.2,0.4 L11.2,5.6 Z" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
-              <TextBlock x:Name="BackText" FontSize="8.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,3,0,0"/>
+              <fv:SkipNumber x:Name="BackText"/><!-- 1.27.0: the digits drawn exactly in the middle, bigger (Looks.cs SkipNumber) -->
             </Grid>
           </Button>
           <Button x:Name="FwdBtn" Grid.Column="2" Style="{StaticResource Transport}">
@@ -163,7 +182,7 @@
               <Path Data="M17.93,7 A8,8 0 1 1 11,3" StrokeThickness="1.6" StrokeStartLineCap="Round"
                     Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
               <Path Data="M14.6,3 L10.8,0.4 L10.8,5.6 Z" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}"/>
-              <TextBlock x:Name="FwdText" FontSize="8.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,3,0,0"/>
+              <fv:SkipNumber x:Name="FwdText"/><!-- 1.27.0: the digits drawn exactly in the middle, bigger (Looks.cs SkipNumber) -->
             </Grid>
           </Button>
           <StackPanel Grid.Column="3" Orientation="Horizontal">
@@ -368,6 +387,10 @@
         <StackPanel x:Name="InfoList" Margin="0,0,10,0"/>
       </DockPanel>
     </Border>
+
+    <!-- Subtitle editor (1.27.0, SubEditor.cs builds what's inside): takes the Info pane's place on the right -->
+    <Border x:Name="SubEditPanel" Grid.ColumnSpan="2" HorizontalAlignment="Right" Width="360" Visibility="Collapsed"
+            Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelEdge}" BorderThickness="1,0,0,0"/>
   </Grid>
 
   <!-- Bottom: the thumbnail strip (when switched on in Settings) above the bar with the file details -->

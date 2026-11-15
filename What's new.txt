@@ -5,6 +5,54 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.27.0  (15 Nov 2026)
+  New
+  - Edit subtitles. Video "..." -> Subtitles -> Edit subtitles (or Ctrl+E) opens a pane on the right with every
+    line. Click a line to go there; type to change its text; - and + move its start or end by 0.1 s (hold to
+    repeat, Shift: 0.5 s), "Now" puts it at this moment of the video. "Shift all" moves every line at once
+    (when the whole file is a bit early or late). Delete and Merge with next, "Add line here" adds a line where
+    the video is, and Undo (Ctrl+Z) takes back the last change. What you change shows in the video at once.
+    "Save as..." writes a new .srt; your original file is only changed when you click Save and then
+    "Replace the file?". Works for subtitle files, for automatic captions and for a video without any subtitles yet.
+  - A welcome screen when FastViewer starts without a file: Open a file (or drop one on the window), Settings,
+    "Make FastViewer my default viewer" (only while it isn't yet; Windows asks you to pick it in Default apps)
+    and the files and folders you opened last (right-click one to take it off the list; "Clear recent" empties
+    it). Delete, Copy, Rotate and the other buttons for a file step out of the top bar while there's no file.
+    It also shows when you delete the last file of a folder.
+  Better automatic captions (measured on a whole 1 hour 45 film with the "better quality" model)
+  - Films with 5.1 sound: the voices now come from the centre channel, where films put them. Windows' own mix
+    buried them under music and effects, so whole stretches got no text.
+  - A line stays on screen only as long as it takes to read it (1.5 s plus a little per letter, 7 s at
+    most) and ends when the next one begins. Before, a line could stay for 30 seconds.
+  - A block of lines written twice in a row is shown once, at the right time; "PHONE RINGING" three times in
+    a row is shown once. Captions you made before are tidied up the same way, no need to make them again.
+  - On that film: spoken lines without any text went from 9.8% to 4.7%, lines starting more than 3 seconds
+    off from 6.9% to 1.6%, and the longest line from 30 to 6.7 seconds. Making them takes just as long.
+  Changed
+  - Opening Settings no longer pauses the video or song. It keeps playing (also when a setting reloads the
+    folder or changes the look) until you pause it yourself.
+  - The number inside the skip buttons is bigger and exactly in the middle of the circle, for every amount.
+  - The rotate button and Rotate left / Rotate right in the menus have a new, clearer icon (Tabler Icons).
+  - A Custom look made see-through ("See-through" lowered for the background, the bars or the pages) now also
+    makes the Settings screen see-through, so the video playing behind it shows. It always stays covered enough
+    to read, and the video's buttons don't show through.
+  Fixed
+  - Changing a colour of your Custom look closed FastViewer half a second later, once Settings > Appearance had
+    been opened (since 1.23.0). Fixed, and every control of the Custom look page was tested.
+  - FastViewer no longer closes when something unexpected goes wrong in its window: it writes what happened to
+    errors.txt in %LOCALAPPDATA%\FastViewer and keeps running.
+  - Starting FastViewer.exe on its own while FastViewer was ready in the background played the last video
+    after a moment. It now shows the welcome screen and stays there (the icon by the clock still opens the
+    last file).
+  - Deleting the file on screen sometimes showed a random file of the folder. It now always shows the next
+    file in the order you're going through (sorted, shuffled or only videos), or the one before when it was
+    the last.
+  - With a see-through background in a Custom look, the files FastViewer gets ready next to the one you're
+    looking at (and their dark bars) could show through behind it. They never show now, whatever you choose.
+  - The subtitle editor docks floating bars while it's open (the window buttons covered its own buttons),
+    gets narrower with a narrow window and keeps every button usable.
+
+
 1.26.0  (14 Nov 2026)
   New
   - Clips with several sound tracks (Medal: game and microphone apart) now sound right. Windows' player only

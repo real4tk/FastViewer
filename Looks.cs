@@ -302,10 +302,26 @@ namespace FastViewer
         public double Size { get { return (double)GetValue(SizeProperty); } set { SetValue(SizeProperty, value); } }
         public Brush Foreground { get { return (Brush)GetValue(ForegroundProperty); } set { SetValue(ForegroundProperty, value); } }
 
+        // Icons drawn as lines in every look (1.27.0), on the same 24 x 24 grid as the line icons.
+        // RotateLeft: the "rotate" icon of Tabler Icons (tabler.io/icons, MIT licence, Copyright (c) 2020-2024 Pawel Kuna),
+        // "M19.95 11a8 8 0 1 0 -.5 4m.5 5v-5h-5"; Rotate right is the same, mirrored.
+        internal const string RotateLeft = "";
+        static readonly System.Collections.Generic.Dictionary<string, Geometry> Always = MakeAlways();
+        static System.Collections.Generic.Dictionary<string, Geometry> MakeAlways()
+        {
+            var g = Geometry.Parse("M19.95,11 A8,8 0 1 0 19.45,15 M19.95,20 V15 H14.95");
+            g.Freeze();
+            return new System.Collections.Generic.Dictionary<string, Geometry> { { RotateLeft, g } };
+        }
+        bool always;
+        internal static double SegoeStroke = 1.0;
+
         void Hook()
         {
             var c = Code;
+            always = !string.IsNullOrEmpty(c) && Always.ContainsKey(c);
             if (string.IsNullOrEmpty(c)) ClearValue(ShapeProperty);
+            else if (always) SetValue(ShapeProperty, Always[c]);
             else SetResourceReference(ShapeProperty, "Ic." + ((int)c[0]).ToString("X4"));
         }
 
@@ -321,6 +337,8 @@ namespace FastViewer
             {
                 double k = s * 1.3 / 24; // line icons look right a little bigger than the symbol font
                 double stroke = GetValue(StrokeProperty) is double ? (double)GetValue(StrokeProperty) : 1.7;
+                // In a look with Segoe icons, as heavy as those (their lines are 1 px at 16 px).
+                if (always && (Looks.Current == null || (Looks.Current.Get("Look.Icons") as string) != "Lines")) stroke = SegoeStroke * s / 16;
                 // Drawn on the icon's 24 x 24 grid, so the line width is divided by the same scale.
                 var pen = new Pen(Foreground, stroke / k) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
                 dc.PushTransform(new TranslateTransform((w - 24 * k) / 2, (h - 24 * k) / 2));
@@ -334,6 +352,75 @@ namespace FastViewer
                 new Typeface(Mdl2, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), s, Foreground,
                 VisualTreeHelper.GetDpi(this).PixelsPerDip);
             dc.DrawText(text, new Point((w - text.WidthIncludingTrailingWhitespace) / 2, (h - text.Height) / 2));
+        }
+    }
+
+    // The seconds inside a skip button (1.27.0). Drawn as the outline of the digits, whose box is put exactly in the
+    // middle of the circle: a TextBlock centres its line (with room for accents above and below), which left the
+    // number low and a little to one side. All amounts get the same digit height; two digits never touch the circle.
+    public class SkipNumber : FrameworkElement
+    {
+        public static readonly DependencyProperty TextProperty = DependencyProperty.Register("Text", typeof(string), typeof(SkipNumber),
+            new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.AffectsRender));
+        public static readonly DependencyProperty ForegroundProperty = TextElement.ForegroundProperty.AddOwner(typeof(SkipNumber),
+            new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.Inherits | FrameworkPropertyMetadataOptions.AffectsRender));
+        public static readonly DependencyProperty FontFamilyProperty = TextElement.FontFamilyProperty.AddOwner(typeof(SkipNumber),
+            new FrameworkPropertyMetadata(SystemFonts.MessageFontFamily, FrameworkPropertyMetadataOptions.Inherits | FrameworkPropertyMetadataOptions.AffectsRender));
+
+        public string Text { get { return (string)GetValue(TextProperty); } set { SetValue(TextProperty, value); } }
+        public Brush Foreground { get { return (Brush)GetValue(ForegroundProperty); } set { SetValue(ForegroundProperty, value); } }
+        public FontFamily FontFamily { get { return (FontFamily)GetValue(FontFamilyProperty); } set { SetValue(FontFamilyProperty, value); } }
+
+        // In the button's 22 x 22 box (circle of radius 8 round the middle, line 1.6): digit height and the widest a
+        // number may be.
+        public static double DigitHeight = 7.2, Widest = 9.6;
+
+        public SkipNumber() { IsHitTestVisible = false; SnapsToDevicePixels = false; }
+
+        // Made once per amount and font (drawing it again, e.g. on hover, costs nothing).
+        static readonly Dictionary<string, Geometry> made = new Dictionary<string, Geometry>();
+
+        // The outline centred on (0, 0) at the size it is drawn, or null.
+        public Geometry Outline()
+        {
+            var t = Text;
+            if (string.IsNullOrEmpty(t)) return null;
+            string key = (FontFamily == null ? "" : FontFamily.Source) + "|" + t;
+            Geometry known;
+            if (made.TryGetValue(key, out known)) return known;
+            known = Shape(t);
+            if (known != null) { known.Freeze(); made[key] = known; }
+            return known;
+        }
+
+        Geometry Shape(string t)
+        {
+            var ft = new FormattedText(t, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                new Typeface(FontFamily, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 100, Brushes.Black, 1.0);
+            var g = ft.BuildGeometry(new Point(0, 0));
+            var b = g.Bounds;
+            if (b.IsEmpty || b.Height <= 0) return null;
+            // The same height for every amount: the height of the digits 0-9 together (so a "1" or a "7" isn't blown up).
+            var all = new FormattedText("0123456789", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                new Typeface(FontFamily, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 100, Brushes.Black, 1.0).BuildGeometry(new Point(0, 0)).Bounds;
+            double k = DigitHeight / all.Height, kx = k;
+            if (b.Width * kx > Widest) kx = Math.Max(Widest / b.Width, k * 0.8); // two digits: a little narrower, same height
+            if (b.Width * kx > Widest) { k *= Widest / (b.Width * kx); kx = Widest / b.Width; } // (only a very wide number gets smaller)
+            var tg = new TransformGroup();
+            tg.Children.Add(new TranslateTransform(-(b.Left + b.Width / 2), -(all.Top + all.Height / 2)));
+            tg.Children.Add(new ScaleTransform(kx, k));
+            var shaped = g.Clone();
+            shaped.Transform = tg;
+            return shaped;
+        }
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            var g = Outline();
+            if (g == null) return;
+            dc.PushTransform(new TranslateTransform(ActualWidth / 2, ActualHeight / 2));
+            dc.DrawGeometry(Foreground, null, g);
+            dc.Pop();
         }
     }
 }

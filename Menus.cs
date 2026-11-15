@@ -30,8 +30,8 @@ namespace FastViewer
             new MenuChoice("showInFolder", "Show in folder", "", 0),
             new MenuChoice("delete", "Delete", "", 0),
             new MenuChoice("convert", "Convert to JPG / PNG", "\uE8AB", 0),
-            new MenuChoice("rotate", "Rotate right", "", 1),
-            new MenuChoice("rotateLeft", "Rotate left", "\uE7AD", 1),
+            new MenuChoice("rotate", "Rotate right", Glyph.RotateLeft, 1),
+            new MenuChoice("rotateLeft", "Rotate left", Glyph.RotateLeft, 1),
             new MenuChoice("saveRotation", "Save rotation to file", "", 1),
             new MenuChoice("crop", "Crop", "", 1),
             new MenuChoice("mini", "Mini player", "", 1),
@@ -142,8 +142,8 @@ namespace FastViewer
                 case "showInFolder": return One(Item("Show in folder", "", ShowInFolder, KeyOf("showInFolder")));
                 case "delete": return One(Item("Delete", "", AskDelete, KeyOf("delete")));
                 case "convert": return ConvertMenuItems();
-                case "rotate": return One(Item("Rotate right", "", Rotate, KeyOf("rotate")));
-                case "rotateLeft": return One(Flipped(Item("Rotate left", "\uE7AD", RotateLeft, KeyOf("rotateLeft"))));
+                case "rotate": return One(Flipped(Item("Rotate right", Glyph.RotateLeft, Rotate, KeyOf("rotate")))); // (1.27.0: the Tabler rotate icon, mirrored)
+                case "rotateLeft": return One(Item("Rotate left", Glyph.RotateLeft, RotateLeft, KeyOf("rotateLeft")));
                 case "saveRotation": return One(Enabled(Item("Save rotation to file", "", SaveRotationToFile, KeyOf("saveRotation")), CanSaveRotation()));
                 case "crop": return shown != null && shown.IsAudio ? new Control[0] : One(Item("Crop...", "", StartCrop, KeyOf("crop")));
                 case "mini": return One(Item("Mini player", "", ToggleMini, KeyOf("mini")));
@@ -318,7 +318,7 @@ namespace FastViewer
                     System.Windows.Automation.AutomationProperties.SetName(toggle, "Show " + c.Name + " in the " + (vid ? "video" : "top") + " menu");
                     controls.Children.Add(toggle);
                     var card = AddCard(c.Glyph, c.Name, null, controls);
-                    if (id == "rotateLeft") FlipCardIcon(card); // the same mirrored arrow as in the menu itself
+                    if (id == "rotate") FlipCardIcon(card); // the same mirrored arrow as in the menu itself
                     settingsPage.Children.Remove(card); // AddCard puts it on the page: it belongs in this list
                     card.Margin = new Thickness(card.Margin.Left, 0, card.Margin.Right, 2);
                     menuRows.Children.Add(card);

@@ -191,7 +191,7 @@ namespace FastViewer
         // Re-reads the current folder after a Show/Order change, staying on the same file.
         void ReloadFolder()
         {
-            if (CurrentFile != null) OpenPath(CurrentFile);
+            if (CurrentFile != null) OpenPath(CurrentFile, false); // (not a newly opened file for the welcome screen's Recent list)
         }
 
         // ---------------------------------------------------------------- layout
@@ -234,7 +234,7 @@ namespace FastViewer
             var left = F<FrameworkElement>("TopLeft");
             var right = F<FrameworkElement>("TopRight");
             // Buttons switched off in Settings > Buttons, and in very narrow windows a few extras (also in the "..." menu).
-            Action<string, bool> show = (name, fits) => F<FrameworkElement>(name).Visibility = Shown(name) && fits ? Visibility.Visible : Visibility.Collapsed;
+            Action<string, bool> show = (name, fits) => F<FrameworkElement>(name).Visibility = Shown(name) && fits && !(fileButtonsHidden && FileButtons.Contains(name)) ? Visibility.Visible : Visibility.Collapsed; // (no file buttons on the welcome screen)
             foreach (var name in new[] { "DeleteBtn", "CopyBtn", "OpenWithBtn" }) show(name, w >= 540);
             foreach (var name in new[] { "OpenBtn", "RotateBtn", "MiniBtn" }) show(name, true);
             root.UpdateLayout(); // apply the label changes above before measuring
@@ -284,8 +284,8 @@ namespace FastViewer
 
         void UpdateSkipButtons()
         {
-            F<TextBlock>("BackText").Text = skipBack.ToString(CultureInfo.InvariantCulture);
-            F<TextBlock>("FwdText").Text = skipForward.ToString(CultureInfo.InvariantCulture);
+            F<SkipNumber>("BackText").Text = skipBack.ToString(CultureInfo.InvariantCulture);
+            F<SkipNumber>("FwdText").Text = skipForward.ToString(CultureInfo.InvariantCulture);
             F<Button>("BackBtn").ToolTip = WithKey("Back " + skipBack + " seconds", KeyOf("skipBack"));
             F<Button>("FwdBtn").ToolTip = WithKey("Forward " + skipForward + " seconds", KeyOf("skipForward"));
             System.Windows.Automation.AutomationProperties.SetName(F<Button>("BackBtn"), "Back " + skipBack + " seconds");
@@ -297,8 +297,9 @@ namespace FastViewer
         void OpenSettings()
         {
             CloseGrid();
+            CloseSubEditor(true);
             SetVolumeSlider(false);
-            if (playing) TogglePlay();
+            // (1.27.0: whatever plays keeps playing behind Settings; before, opening it paused the video or song)
             settingsOpen = true;
             foreach (var refresh in settingsRefresh) refresh(); // things changed by a key or menu since last time (Keep on top...)
             if (settingsList.Children.Count == 0 && settingsPages.Count > 0) ShowSettingsPage(settingsPages[0].Value);
@@ -356,8 +357,47 @@ namespace FastViewer
             foreach (var name in new[] { "DeleteBtn", "CopyBtn", "RotateBtn", "MoreBtn", "MiniBtn", "OpenWithBtn" })
                 Motion.To(F<FrameworkElement>(name), OpacityProperty, open ? 0 : 1, ms, Motion.Smooth);
             var view = F<FrameworkElement>("ViewArea");
-            if (open && seeThrough) Motion.To(view, OpacityProperty, 0, Motion.Ms(Motion.Normal, false), Motion.Smooth);
-            else Motion.Set(view, OpacityProperty, 1);
+            double clear = SettingsSeeThrough();
+            UpdateSettingsSeeThrough();
+            if (open && seeThrough && clear >= 0.99) Motion.To(view, OpacityProperty, 0, Motion.Ms(Motion.Normal, false), Motion.Smooth);
+            else Motion.Set(view, OpacityProperty, 1); // (a see-through Custom look: the video shows behind the page)
+            // ...but not its controls: the bar and arrows behind a see-through page looked like they could be clicked.
+            F<FrameworkElement>("Overlay").Visibility = open && clear < 0.99 ? Visibility.Hidden : Visibility.Visible;
+        }
+
+        // 1.27.0: in a Custom look made see-through (a colour's "See-through" lowered for the background, the bars or the
+        // pages), the Settings page follows it, so what plays shows behind it. Never under 55% covered, so the side
+        // menu's text stays readable; the cards keep their own colour, so their text does too. 1 = not see-through.
+        const double SettingsLeastCover = 0.55;
+
+        double SettingsSeeThrough()
+        {
+            if (lookId != CustomId) return 1;
+            var r = Application.Current.Resources;
+            double least = 1;
+            foreach (var key in new[] { "WindowBg", "TopBarBg", "PageBg" }) least = Math.Min(least, BrushAlpha(r[key] as Brush));
+            return least;
+        }
+
+        static double BrushAlpha(Brush b)
+        {
+            var solid = b as SolidColorBrush;
+            if (solid != null) return solid.Color.A / 255.0 * solid.Opacity;
+            var grad = b as GradientBrush;
+            if (grad != null && grad.GradientStops.Count > 0) return grad.GradientStops.Min(s => s.Color.A) / 255.0 * grad.Opacity;
+            return 1;
+        }
+
+        void UpdateSettingsSeeThrough()
+        {
+            var page = F<Panel>("SettingsPage");
+            if (page == null) return;
+            double clear = SettingsSeeThrough();
+            var bg = Application.Current.Resources["PageBg"] as SolidColorBrush;
+            if (clear >= 0.99 || bg == null) { page.SetResourceReference(Panel.BackgroundProperty, "PageBg"); return; }
+            var c = bg.Color;
+            c.A = (byte)Math.Round(255 * Math.Max(SettingsLeastCover, Math.Min(c.A / 255.0, clear)));
+            page.Background = new SolidColorBrush(c);
         }
 
         void BuildSettingsPage()
@@ -796,7 +836,8 @@ namespace FastViewer
             var b = F<Button>("RotateBtn");
             var g = F<Glyph>("RotateGlyph");
             if (b == null || g == null) return;
-            g.LayoutTransform = rotateLeft ? new ScaleTransform(-1, 1) : null; // (its animations use the render transform)
+            g.Code = Glyph.RotateLeft; // (1.27.0: the Tabler rotate icon, as in the menus; it turns left, mirrored it turns right)
+            g.LayoutTransform = rotateLeft ? null : new ScaleTransform(-1, 1); // (its animations use the render transform)
             string main = rotateLeft ? WithKey("Rotate left", KeyOf("rotateLeft")) : WithKey("Rotate right", KeyOf("rotate"));
             string otherWay = rotateLeft ? WithKey("right-click turns it right", KeyOf("rotate")) : WithKey("right-click turns it left", KeyOf("rotateLeft"));
             b.ToolTip = main + "; " + otherWay;
@@ -995,6 +1036,25 @@ namespace FastViewer
                 }
                 foreach (var ext in ImageExts.Concat(VideoExts).Concat(AudioExts))
                     using (Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\" + ext + @"\OpenWithList\FastViewer.exe")) { }
+                // 1.27.0: also a registered application, so Windows' Default apps offers FastViewer as Photo viewer, Video
+                // player and Music player (choosing it there uses the FastViewer.File type, which opens files the same way).
+                using (var progId = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\FastViewer.File"))
+                {
+                    progId.SetValue("", "FastViewer");
+                    progId.SetValue("TypeOverlay", ""); // no badge on thumbnails here either
+                    using (var icon = progId.CreateSubKey("DefaultIcon")) icon.SetValue("", "\"" + exe + "\",0");
+                    using (var cmd = progId.CreateSubKey(@"shell\open\command")) cmd.SetValue("", "\"" + exe + "\" \"%1\"");
+                }
+                using (var caps = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\FastViewer\Capabilities"))
+                {
+                    caps.SetValue("ApplicationName", "FastViewer");
+                    caps.SetValue("ApplicationDescription", "A fast photo, video and music viewer");
+                    caps.SetValue("ApplicationIcon", "\"" + exe + "\",0");
+                    using (var assoc = caps.CreateSubKey("FileAssociations"))
+                        foreach (var ext in ImageExts.Concat(VideoExts).Concat(AudioExts)) assoc.SetValue(ext, "FastViewer.File");
+                }
+                using (var apps = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\RegisteredApplications"))
+                    apps.SetValue("FastViewer", @"Software\FastViewer\Capabilities");
                 SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); // SHCNE_ASSOCCHANGED
                 return true;
             }

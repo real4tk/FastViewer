@@ -272,6 +272,8 @@ namespace FastViewer
                 customSaveTimer.Start();
             }
             foreach (var refresh in customRefresh) refresh();
+            if (settingsOpen) SettingsChrome(true); // (1.27.0: the page follows a see-through colour while you drag it)
+            UpdateSlotOpacity(); // (a see-through background can't hide the preloaded files: they go to opacity 0)
         }
 
         readonly List<Action> customRefresh = new List<Action>();
@@ -653,14 +655,31 @@ namespace FastViewer
         void RefreshCustomCard()
         {
             if (lookCards == null || Looks.Custom == null) return;
-            foreach (var card in lookCards.Children.OfType<Button>().Where(c => (string)c.Tag == CustomId))
+            foreach (var card in lookCards.Children.OfType<Button>().Where(c => c.Tag as string == CustomId))
             {
-                var stack = (StackPanel)card.Content;
-                ((Border)((Border)stack.Children[0]).Child).Child = Mock(Looks.Custom, Looks.IsLight(Looks.Custom, lookMode));
-                ((TextBlock)stack.Children[1]).Text = customName;
-                ((TextBlock)stack.Children[2]).Text = Looks.Custom.Description;
+                // (1.27.0: the preview has been inside a Viewbox since 1.23.0, and this still took it for a Border: an
+                // InvalidCastException half a second after every Custom look change, which closed FastViewer)
+                var holder = PreviewHolder(card);
+                if (holder != null) holder.Child = Mock(Looks.Custom, Looks.IsLight(Looks.Custom, lookMode));
+                var stack = card.Content as StackPanel;
+                if (stack != null && stack.Children.Count >= 3)
+                {
+                    var name = stack.Children[1] as TextBlock;
+                    var text = stack.Children[2] as TextBlock;
+                    if (name != null) name.Text = customName;
+                    if (text != null) text.Text = Looks.Custom.Description;
+                }
                 card.ToolTip = customName;
             }
+        }
+
+        // The Border that holds a look card's preview drawing: card > StackPanel > frame Border > Viewbox > Border.
+        static Border PreviewHolder(Button card)
+        {
+            var stack = card == null ? null : card.Content as StackPanel;
+            var frame = stack == null || stack.Children.Count == 0 ? null : stack.Children[0] as Border;
+            var box = frame == null ? null : frame.Child as Viewbox;
+            return box == null ? null : box.Child as Border;
         }
 
         // ---------------------------------------------------------------- the colour picker

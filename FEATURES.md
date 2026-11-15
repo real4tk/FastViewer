@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.26.0)
+# FastViewer: complete feature list (version 1.27.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -88,7 +88,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   glide from where they were (SlideFrom). Collapsed when closed (the audit's old "Info cut off" false alarms are gone).
 - Narrow windows: labels drop, extras tuck into the "..." menu, the Info button steps aside, the video bar
   keeps its time bar (skip/repeat buttons make room), the middle play button shrinks.
-- Empty window: "Drop a photo, video or folder here or press Ctrl+O"; no leftover details.
+- Empty window = the welcome screen (1.27.0, see its section); no leftover details.
 - Message screens (1.23.0): `message` is a small MessageText object (not a TextBlock); setting message.Text runs
   ArrangeMessage, which splits it into MessageIcon (picture E8B9, folder E838 for "No ...", warning E7BA for problems),
   MessageTitle (first line; "Can't open this file" for failures), MessageBody (the rest, at most 520 wide) and the buttons
@@ -123,7 +123,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   date Explorer, the strip and the grid kept the unturned thumbnail), then Thumbs.RebuildCachedThumbnails (IThumbnailCache
   GetThumbnail with WTS_FORCEEXTRACTION for 16-1280 px, on an STA thread), then SHCNE_UPDATEITEM and the strip refresh; rotations are saved even if
   you switch away right after rotating.
-- Delete to the Recycle Bin (Delete key) with an optional confirmation ("Ask for permission to delete");
+- Delete to the Recycle Bin (Delete key) with an optional confirmation ("Ask for permission to delete"); then the next file of the order you're in shows (1.27.0, see its section);
   the dialog always deletes the file it names and nothing moves on while it's open.
 - Copy (Ctrl+C copies the file), Copy file path, Show in folder, Open with another app, Save as (Ctrl+S).
 
@@ -620,6 +620,105 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   HE-AAC: one real file tested in round 4 (plays both ways); the real sound and lip-sync can only be
   judged by ear on the user's PC (tests measure clocks, silently).
 
+## Fixes, welcome screen, better captions, subtitle editor (1.27.0)
+- Settings no longer pauses (OpenSettings used to call TogglePlay): a video or song plays on behind the page. Show/Order
+  (ReloadFolder -> OpenPath(CurrentFile, remember: false) keeps the slot of the file on screen, so it isn't reloaded),
+  Preload (SetPreload never touches shown/wanted), looks and "View at actual size" don't interrupt it either. Test:
+  --case settingsplay (a video and a song: position moves on through every step; paused stays paused).
+- Welcome screen (Welcome.cs): the empty window's message is "Open a photo, video or song / Drag a file or folder here,
+  or press <Open key>." (EmptyMessage); ArrangeMessage -> ArrangeWelcome(WelcomeShowing = no files, not mini, that text)
+  shows WelcomeSettingsBtn next to "Open a file", WelcomeDefaultBtn ("Make FastViewer my default viewer", icon E7AC) only
+  while IsDefaultViewer() is false (AssocQueryString ASSOCSTR_EXECUTABLE for .jpg .png .mp4 = this exe), and up to 5
+  recent files/folders (WelcomeRecent rows: 40 px shell thumbnail or a type icon, name, folder; click = OpenPath).
+  Recent list: %APPDATA%\FastViewer\recent.txt, newest first, 20 kept; OpenPath(file or folder) adds it 1.5 s later on a
+  pool thread (never on the way of the first picture); the existence checks and the default check run on a pool thread
+  too; re-filled on Activated. Making it the default: RegisterOpenWith now also writes HKCU\Software\Classes\FastViewer.File
+  (open command, icon, TypeOverlay ""), Software\FastViewer\Capabilities (FileAssociations -> FastViewer.File) and
+  Software\RegisteredApplications\FastViewer, then opens ms-settings:defaultapps with a message which entries to pick
+  (Windows 10/11 don't let an app set itself). ShowWelcome() (also when a folder becomes empty by deleting or from outside)
+  lets every player go like LetGoOfFiles but keeps watching the folder. Test: --case welcome (no file; --recent <scratch>,
+  --default yes|no; pictures welcome.png / welcome_again.png).
+- Delete goes to the next file (FastViewer.cs TryDelete, FolderWatch.cs): the file after the deleted one in the list as it
+  is (sorted, shuffled, filtered), or the one before when it was the last (NeighbourAfter); an empty folder -> welcome. A
+  gone file counts as deleted whatever SHFileOperation returns (before: a non-zero result retried 10 x, "Couldn't delete",
+  and a folder rescan in between had picked "the same number" in a re-sorted list = a random file). Rescans in "Same as
+  File Explorer" order keep the known files' order until Explorer answers (before: name order for a moment), the answer
+  leaves out files deleted meanwhile, and a file deleted from outside is replaced by its nearest surviving neighbour in
+  the old order. Test runs "delete" into <out>\recycled. Test: --case deletenext (scratch copy of a folder with dates
+  that differ from the names: name order, the last file, newest first, shuffled, only videos, emptying it).
+- Skip buttons: the seconds are a SkipNumber (Looks.cs): the digits' outline (bold, the look's font) centred exactly in the
+  circle by the digits' own box (all digits 0-9 for the height, so every amount sits at the same height: 7.2 of the 22
+  grid); two digits are narrowed to at most 9.6 wide (at most 0.8 x) so they never touch the circle. Test: --case
+  skipnumbers (skipnumbers_dark/light.png: every look x 5/10/15/30/60, plus menu icons).
+- Rotate icons in the menus, Settings' "..." menu list and the Keyboard page: Tabler Icons "rotate" (MIT) for Rotate left,
+  mirrored for Rotate right (Glyph.RotateLeft = U+F1A0, Glyph.Always: drawn as lines in every look; in a Segoe look with
+  a 1 px line at 16 px like the Segoe icons, in a line-icon look with Look.IconStroke). The top bar's Rotate button keeps E7AD.
+- Automatic captions, measured on the film "Духless" (1:45:25, AAC 5.1, large-v3-turbo; reference = an .srt with right
+  timing, its words not used; measure.py in the work chat's scratch folder): spoken lines with no text 9.8% -> 4.7%, start more
+  than 3 s off 6.9% -> 1.6% (p90 2.1 -> 1.7 s), longest line 30 s -> 6.7 s, lines over 7 s 32 -> 0, blocks written twice 1 -> 0,
+  a label repeated within 5 s 3 -> 0; 1057 -> 1150 lines; 57.5 min for the film through the app (Ryzen 5 5600X, 6 threads;
+  the 1.26.0 run took about as long). Left: 4 stretches of 3-5 missed lines (40:28, 1:08:32, 1:16:49, 1:39:19).
+  What changed: (1) VideoConverter.SpeechWav makes mono from 5.1/7.1 itself (asks Windows for 16 kHz with all channels):
+  centre + 0.3 x (front left + front right); Windows' own downmix buried the dialogue (on six hard stretches, 9 min: 17% of
+  the spoken lines without text -> 4%; over 1:30-12:00 continuous 14.5% -> 4.5%; same Whisper time). (2) Whisper.Tidy, on
+  the finished list and on captions made before when they're loaded: a block of 2-10 lines written twice in a row keeps
+  the second copy (when its times are made-up whole-second steps, its lines are spread by reading time from that copy's own start up to the next line; round 2); the same ALL-CAPS label again within
+  5 s becomes one line; a line longer than its reading time (ReadingTime = 1.5 s + 0.06 s a character, 7 s at most) keeps
+  its END and starts later (Whisper's long lines start early in the quiet before them: on the film 11.9% vs 14.0% of the
+  spoken lines without text when cutting the end instead); every line ends when the next begins; one of under 1.2 s gets
+  up to 1.2 s when there's room. Lines shown while writing are capped the same way. Tried and left out: whisper's -dtw
+  (token timing; output identical), VAD (needs a separate model download). Test hook: FastViewer.exe --tidy <in.srt> <out.srt>.
+- Subtitle editor (SubEditor.cs; video "..." > Subtitles > Edit subtitles... / Write subtitles..., action editSubs, Ctrl+E):
+  pane SubEditPanel (360 wide) in the Info pane's column (Info closes; the picture moves left; slides like Info). Header
+  with Undo (E7A7) and close, the source ("clip.srt / Automatic captions / New subtitles · n lines · changed"), Shift all
+  -1/-0.1/+0.1/+1 s (total shown), a virtualized ListBox (style SubLine) of "m:ss.f  text" rows, and the chosen line:
+  text box, Start/End with -/+ RepeatButtons (style SubStep; 0.1 s, Shift 0.5 s) and "Now", Add line here (at the playing
+  moment; the line on screen ends there), Delete, Merge with next (joined, two lines when long), Save as... and Save.
+  Picking a row seeks there; while playing the chosen row follows the video (not while typing or within 3 s of a pick).
+  Every change goes to `cues` at once (what shows in the video); Undo = snapshots (200). Save as -> SaveFileDialog
+  ("<video>.srt", or "(edited)" when that exists), the file is then this video's subtitles (chosenSubs). Save: a file ->
+  first click turns the button into "Replace <name>?", the second writes (temp file + File.Replace); automatic captions ->
+  Whisper.Keep; new subtitles -> Save as. Written UTF-8 with BOM, empty lines left out. Keys: typing goes to the box (2 =
+  not a shortcut), Esc leaves the box then the pane, Ctrl+Z undo, Delete/arrows act on the list when it has focus (never
+  delete the video there). Next/previous file is off while the pane is open; full screen, mini player, Settings, grid and
+  another file close it. Unsaved changes stay for the session (editedSubs, used by FindSubtitles) with a message offering
+  Save as. Test: --case subedit (clip.mp4 + clip.srt with 5 lines, plain.mp4; SubSaveTarget instead of the dialog).
+- Round 2 (user's tests on the real screen): (1) RefreshCustomCard cast the look card's preview holder as a Border, but since 1.23.0 it
+  is Border > Viewbox > Border: InvalidCastException from the customSaveTimer 0.5 s after any Custom change once Settings >
+  Appearance had built its cards (1.23.0-1.26.0 too). Now PreviewHolder(card) with safe casts. Test: --case customcard (92
+  steps: every dropdown item via huntMenuHook, roundness, name, see-through colours per group and per part, Show all colours,
+  Start over; logs that 1.26.0's cast fails on the same card). Safety net (Program.Main): DispatcherUnhandledException is
+  handled outside test runs: Program.LogUiError appends to %LOCALAPPDATA%\FastViewer\errors.txt (30 a minute at most, over
+  1 MB -> errors.old.txt) besides %TEMP% crash.txt, and the window carries on (errors on other threads still end the
+  process, as .NET 4.8 decides). Test: --case safetynet --errors <file>. (2) Settings follows a see-through Custom look:
+  SettingsSeeThrough = lowest alpha of WindowBg / TopBarBg / PageBg (Custom look only); UpdateSettingsSeeThrough gives the
+  SettingsPage PageBg with that alpha but at least 0.55 (SettingsLeastCover); cards keep their colour; the viewer stays
+  visible then (also in a see-through window) and its Overlay (bars, arrows) is Hidden while Settings is open; updated live
+  from CustomChanged. Test: --case settingsclear. (3) OpenFromOutside: null (tray icon) reopens lastOpened, "" (FastViewer.exe
+  started without a file, handed over the pipe to the background copy) shows the welcome screen; before, it opened and
+  played the last video while the welcome screen showed for a moment. Test: --case handover. (4) RotateBtn uses
+  Glyph.RotateLeft too (mirrored unless "The rotate button turns" is left). (5) Block timing as above: the film's 49:08 block
+  now 49:16.8-49:24.8 (speech 49:18-49:30); in the 1.27.0 run itself it was never repeated (Садись at 49:18.5). Of the old
+  captions' lines that tidying moves over 1.5 s, 36 end up nearer a spoken line, 13 further (long lines whose start was
+  right; neither a gap before the line nor a whole-second start tells which end to keep, keeping the end wins about 2:1).
+- Round 3: (1) Hidden preloaded files: non-glass looks kept them at opacity 1 behind the "cover" (CoverBg), so a Custom look
+  whose background (CoverBg is in that group) is see-through showed them (user's #17121212: --case preloadghost found 821062
+  differing pixel values on photos). UpdateSlotOpacity: glassSlots also when BrushAlpha(cover.Background) < 0.999 (hidden slots
+  at opacity 0, cover collapsed, as in Liquid Glass); CustomChanged calls it. Test: scratch ghost.ps1 = preloadghost with those
+  colours (0 differences after, also based on Glass and in the mini player). (2) Subtitle editor: Floating is false while
+  subEditOpen (floating bars put the window buttons over the pane's header); pane width SubPaneWidth = 45% of the viewing area,
+  260-360, kept on resize; Shift all row is a WrapPanel; Start/End rows: label | - | time (fills) | + | Now docked right;
+  the pane scrolls as a whole when the window is short (DockPanel at least 440 high); Save's confirm text is "Replace the
+  file?" (the tip names it). Test: --case subeditfit (Custom with floating bars, Clean, Photos x 1440x760 / 900x600 / 640x480 /
+  520x420: every enabled control gets its click, nothing sticks out, window buttons free). (3) Welcome: FileButtons (Delete,
+  Copy, Rotate, Mini, Open with) are collapsed while WelcomeShowing (UpdateResponsive's show() checks fileButtonsHidden; only
+  on a change); right-click a Recent row -> menu Remove from Recent / Clear recent (RecentMenu, huntMenuHook in tests), and
+  WelcomeClearBtn "Clear recent" beside the heading; ChangeRecent/WriteRecent on a pool thread. Test: --case welcome.
+- Part D: the 1.20 music test's last step clicked the Settings speed buttons removed in 1.25.0 (crash "Sequence contains
+  no matching element"); it now checks that they and speeds= are gone and lists the speed row's stops. The changed pitch
+  at other speeds stays as it is. VK-style AAC without its description still needs "Make a playable copy": Windows' player
+  (the picture) refuses the whole file, and playing it as it is would mean patching the user's file or a hidden copy.
+
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -686,11 +785,12 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full), share, crop, tracks (1.22.0, see Videos),
   away (1.23.0, see Polish release), convert, subs, addons, captions, smooth (1.24.0, see their section), burn, videomenu, captionsall (1.25.0),
   sound, soundfix, ownsound, trimsound, keepspeed, speedstorm, speeddrag, loopsound (1.26.0, see Sound),
+  settingsplay, welcome, deletenext, skipnumbers, subedit, subeditfit, customcard, safetynet (--errors <file>), settingsclear, handover (1.27.0),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
 - Options: --preload n, --look <Id>, --strip, --grab-always, --settings <scratch.ini>,
-  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --addons, --addon-source, --vocals, --gpu, --frameboost, --speechwav <video> <wav>, --own-sound-off (sound as before 1.26), --own-sound-aloud, --tracks <scratch file>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
+  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --addons, --addon-source, --vocals, --gpu, --frameboost, --speechwav <video> <wav>, --own-sound-off (sound as before 1.26), --own-sound-aloud, --recent <scratch recent.txt>, --default yes|no, --tidy <in.srt> <out.srt> (1.27.0), --tracks <scratch file>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
   --count, --every, --pattern, --front, --motion full|reduced|off (tests run with animations Off unless
   given), --convert <src> <dst> <rotation> [from to].
 - Any run with a "--" option never contacts GitHub.

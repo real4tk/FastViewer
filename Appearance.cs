@@ -148,7 +148,9 @@ namespace FastViewer
         void UpdateSlotOpacity()
         {
             if (slots == null) return;
-            glassSlots = (seeThrough && !fullscreen && !mini) || miniClear;
+            // (1.27.0: also when the cover itself is see-through, e.g. a Custom look's background at 9%: it hid nothing, so a
+            // preloaded video and its black bars showed behind the file on screen)
+            glassSlots = (seeThrough && !fullscreen && !mini) || miniClear || BrushAlpha(cover.Background) < 0.999;
             cover.Visibility = glassSlots ? Visibility.Collapsed : Visibility.Visible;
             foreach (var s in slots) s.Host.Opacity = !glassSlots || s == shown ? 1 : HiddenOpacity;
         }

@@ -44,6 +44,7 @@ namespace FastViewer
                 boundsBeforeMini = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
                 mini = true;
                 WindowState = WindowState.Normal;
+                CloseSubEditor(true);
                 infoCol.Width = new GridLength(0);
                 chrome.CaptionHeight = 0;
                 stage.SetResourceReference(System.Windows.Controls.Panel.BackgroundProperty, "FullBg");

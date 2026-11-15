@@ -57,7 +57,7 @@ namespace FastViewer
                         var card = FindAll<Border>(page).FirstOrDefault(b => b.Child is Grid && FindAll<TextBlock>(b).Any(t => t.Text == name));
                         var g = card == null ? null : ((Grid)card.Child).Children[0] as Glyph;
                         bool flipped = g != null && g.LayoutTransform is ScaleTransform && ((ScaleTransform)g.LayoutTransform).ScaleX < 0;
-                        HuntLog(pageName + " page, '" + name + "': " + (g == null ? "NOT FOUND FAIL" : "arrow mirrored " + flipped + (flipped == (name == "Rotate left") ? " ok" : " FAIL")));
+                        HuntLog(pageName + " page, '" + name + "': " + (g == null ? "NOT FOUND FAIL" : "arrow mirrored " + flipped + (flipped == (name == "Rotate right") ? " ok" : " FAIL") /* 1.27.0: the Tabler icon turns left; mirrored = right */));
                         if (card != null && name == "Rotate left") { card.BringIntoView(); Settle(); Snap("settings_" + pageName.ToLowerInvariant() + "_rotate_left"); }
                     }
                 }
@@ -76,7 +76,7 @@ namespace FastViewer
                         RotateButton(true); int b = turn();
                         HuntLog("button (set to right): click -> " + a + ", right-click -> " + b + (a == 90 && b == 0 ? " ok" : " FAIL"));
                         rotateLeft = true; UpdateRotateButton();
-                        HuntLog("set to left, tip: " + tip() + "; arrow mirrored " + (F<Glyph>("RotateGlyph").LayoutTransform is ScaleTransform));
+                        HuntLog("set to left, tip: " + tip() + "; arrow mirrored " + (F<Glyph>("RotateGlyph").LayoutTransform is ScaleTransform) + " (1.27.0: mirrored = turns right)");
                         RotateButton(false); a = turn();
                         RotateButton(true); b = turn();
                         HuntLog("button (set to left): click -> " + a + ", right-click -> " + b + (a == 270 && b == 0 ? " ok" : " FAIL"));
@@ -470,11 +470,12 @@ namespace FastViewer
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     lastCaptionResult = null;
                     MakeCaptions();
-                    Until(() => !converting && lastCaptionResult != null, 3600000, delegate
+                    Until(() => !converting && lastCaptionResult != null, 4 * 3600000, delegate // (a whole film takes over an hour with the large model)
                     {
                         double seconds = shown.Video.NaturalDuration.HasTimeSpan ? shown.Video.NaturalDuration.TimeSpan.TotalSeconds : 0;
                         HuntLog(names[i] + ": " + lastCaptionResult + " in " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s for " + seconds.ToString("0.0") + " s");
                         File.WriteAllText(Path.Combine(snapDir, Path.GetFileNameWithoutExtension(names[i]) + ".txt"), HasSubs ? string.Join("\r\n", cues.Select(c => c.Text)) : "");
+                        if (HasSubs) File.WriteAllText(Path.Combine(snapDir, Path.GetFileNameWithoutExtension(names[i]) + ".srt"), SubtitleFile.ToSrt(cues)); // (1.27.0: with the times, for measuring)
                         After(300, delegate { one(i + 1); });
                     });
                 });

@@ -92,6 +92,16 @@ namespace FastViewer
                 case "away": HuntAway(); break;
                 case "convert": HuntConvert(); break;
                 case "rotleft": HuntRotateLeft(); break;
+                case "settingsplay": HuntSettingsPlay(); break;
+                case "welcome": HuntWelcome(); break;
+                case "deletenext": HuntDeleteNext(); break;
+                case "skipnumbers": HuntSkipNumbers(); break;
+                case "subedit": HuntSubEdit(); break;
+                case "customcard": HuntCustomCard(); break;
+                case "safetynet": HuntSafetyNet(); break;
+                case "settingsclear": HuntSettingsClear(); break;
+                case "handover": HuntHandOver(); break;
+                case "subeditfit": HuntSubEditFit(); break;
                 case "subs": HuntSubs(); break;
                 case "addons": HuntAddons(); break;
                 case "captions": HuntCaptions(); break;
@@ -1386,13 +1396,13 @@ namespace FastViewer
             });
             After(9800, () =>
             {
+                // (1.27.0: the "Speeds" chip buttons this step used to click left Settings in 1.25.0, so it crashed looking for
+                // them; the speeds are the slider row of the video menu now, all of them always.)
                 var chips = FindAll<Button>(F<FrameworkElement>("SettingsPage")).Where(b => b.Content is string && ((string)b.Content).EndsWith("x")).ToList();
-                HuntLog("speed buttons: " + string.Join(" ", chips.Select(b => b.Content + (b.Style == Application.Current.Resources["AccentButton"] ? "*" : ""))));
-                var five = chips.First(b => (string)b.Content == "5x");
-                five.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                chips.First(b => (string)b.Content == "1x").RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                HuntLog("after clicking 5x and 1x: " + string.Join(" ", chips.Select(b => b.Content + (b.Style == Application.Current.Resources["AccentButton"] ? "*" : ""))) +
-                    ", saved " + string.Join("", File.ReadAllLines(SettingsFile).Where(l => l.StartsWith("speeds="))));
+                SaveSettings();
+                bool line = File.Exists(SettingsFile) && File.ReadAllLines(SettingsFile).Any(l => l.StartsWith("speeds="));
+                HuntLog("Settings > Videos speed buttons: " + chips.Count + " (none since 1.25.0" + (chips.Count == 0 ? ")" : ") FAIL") + ", speeds= line saved " + line + (line ? " FAIL" : "") +
+                    ", the menu's speed row has " + Speeds.Count() + " stops: " + string.Join(" ", Speeds.Select(SpeedText)));
                 Snap("speed_settings");
                 HuntDone();
             });
@@ -1826,7 +1836,7 @@ namespace FastViewer
                 var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
                 enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
                 using (var f = File.Create(Path.Combine(snapDir, "skip_" + lookId + "_" + (Looks.Light ? "light" : "dark") + ".png"))) enc.Save(f);
-                HuntLog("skip buttons " + lookId + ": back '" + F<TextBlock>("BackText").Text + "', forward '" + F<TextBlock>("FwdText").Text + "', " + w.ToString("0") + "x" + h.ToString("0"));
+                HuntLog("skip buttons " + lookId + ": back '" + F<SkipNumber>("BackText").Text + "', forward '" + F<SkipNumber>("FwdText").Text + "', " + w.ToString("0") + "x" + h.ToString("0"));
                 HuntDone();
             });
         }

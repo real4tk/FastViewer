@@ -138,7 +138,7 @@ namespace FastViewer
                 // (A chorus does repeat a line, so it takes four in a row before a fifth is left out.)
                 if (cues.Count >= 4 && cues.Skip(cues.Count - 4).All(x => x.Text == c.Text)) return;
                 cues.Add(c);
-                if (onCue != null) onCue(c);
+                if (onCue != null) onCue(new Cue { From = Math.Max(c.From, c.To - ReadingTime(c.Text)), To = c.To, Text = c.Text }); // (shown while writing: no longer than its reading time)
             }, cancel, true, delegate
             {
                 if (seconds <= 0) return;
@@ -152,7 +152,88 @@ namespace FastViewer
                     : said.Count > 0 ? said[said.Count - 1] : "it stopped with error " + code;
                 throw new Exception(why);
             }
-            return cues;
+            return Tidy(cues); // (1.27.0: repeated blocks, labels, reading time)
+        }
+
+        // ---------------------------------------------------------------- tidying (1.27.0)
+
+        // How long a line may stay: 1.5 s plus 60 ms a character (about 16 a second, a usual reading speed), 7 s at most.
+        public static double ReadingTime(string text)
+        {
+            return Math.Min(MaxShown, 1.5 + 0.06 * (text ?? "").Length);
+        }
+        public const double MaxShown = 7;
+
+        static readonly Regex Label = new Regex(@"^[^\p{Ll}]*\p{Lu}[^\p{Ll}]*\p{Lu}[^\p{Ll}]*\p{Lu}[^\p{Ll}]*$", RegexOptions.Compiled); // ТЕЛЕФОННЫЙ ЗВОНОК, PHONE RINGS
+        static string Plain(string text) { return new string((text ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray()); }
+
+        // What Whisper wrote, made fit to show (Measured on a full film, see FEATURES.md 1.27.0):
+        // 1. a block of 2-10 lines written twice in a row (it went over the same sound again) keeps only the second
+        //    copy, which is re-timed over the time both took when its own times are made-up even steps;
+        // 2. the same sound label (all capitals) again within 5 s becomes one line;
+        // 3. a line ends when the next begins, and after its reading time at the latest (a line stayed up to 30 s);
+        //    a very short line gets up to 1.2 s when nothing follows at once.
+        public static List<Cue> Tidy(List<Cue> raw, List<string> notes = null)
+        {
+            var c = raw.Where(x => x != null && x.To > x.From && !string.IsNullOrWhiteSpace(x.Text))
+                       .OrderBy(x => x.From).Select(x => new Cue { From = x.From, To = x.To, Text = x.Text.Trim() }).ToList();
+            // 1. repeated blocks
+            for (int i = 0; i < c.Count; i++)
+                for (int k = Math.Min(10, (c.Count - i) / 2); k >= 2; k--)
+                {
+                    bool same = true;
+                    for (int j = 0; j < k && same; j++) same = Plain(c[i + j].Text) == Plain(c[i + k + j].Text) && Plain(c[i + j].Text).Length > 0;
+                    if (!same || c[i + k].From - c[i + k - 1].To > 30) continue;
+                    double first = c[i].From;
+                    var kept = c.GetRange(i + k, k);
+                    if (notes != null) notes.Add("block of " + k + " at " + first.ToString("0.0") + " s written twice, kept the copy at " + kept[0].From.ToString("0.0") + " s");
+                    c.RemoveRange(i, k);
+                    if (MadeUpSteps(kept))
+                    {
+                        // The second copy is where the words really are (Whisper wrote them early first, then again as it got
+                        // there: the film at 49:08, said 49:18-49:30). Its own steps are made up, so its lines are spread by
+                        // reading time from where that copy starts up to the next line. (1.27.0 test build: spread over both
+                        // copies, which put them 10 s early.)
+                        double from = kept[0].From, to = i + k < c.Count ? c[i + k].From : kept[k - 1].To;
+                        double want = kept.Sum(x => ReadingTime(x.Text));
+                        double scale = to > from && want > to - from ? (to - from) / want : 1;
+                        double at = from;
+                        foreach (var x in kept)
+                        {
+                            x.From = at;
+                            x.To = at + ReadingTime(x.Text) * scale;
+                            at = x.To;
+                        }
+                    }
+                    k = 0; i = Math.Max(-1, i - 2); // look again from a little before (blocks can come three times)
+                    break;
+                }
+            // 2. the same sound label again and again
+            for (int i = c.Count - 1; i > 0; i--)
+                if (Label.IsMatch(c[i].Text) && Plain(c[i].Text) == Plain(c[i - 1].Text) && c[i].From - c[i - 1].To < 5)
+                {
+                    c[i - 1].To = Math.Max(c[i - 1].To, c[i].To);
+                    c.RemoveAt(i);
+                }
+            // 3. how long each line stays
+            for (int i = 0; i < c.Count; i++)
+            {
+                double next = i + 1 < c.Count ? c[i + 1].From : double.MaxValue;
+                double read = ReadingTime(c[i].Text);
+                if (c[i].To - c[i].From > read) c[i].From = c[i].To - read; // too long: Whisper starts such a line early, in the quiet before it (the end is right more often: on the film 11.9% instead of 14.0% of the spoken lines without text)
+                double to = c[i].To;
+                if (to - c[i].From < 1.2) to = Math.Max(to, Math.Min(c[i].From + Math.Min(1.2, read), next)); // (a word or two still gets read)
+                c[i].To = Math.Min(to, Math.Max(next, c[i].From + 0.3));
+            }
+            return c;
+        }
+
+        // Times Whisper falls back to when it lost its place: lines back to back in whole seconds.
+        static bool MadeUpSteps(List<Cue> lines)
+        {
+            int even = lines.Count(x => Math.Abs((x.To - x.From) - Math.Round(x.To - x.From)) < 0.005);
+            bool touching = lines.Zip(lines.Skip(1), (a, b) => Math.Abs(b.From - a.To) < 0.005).All(t => t);
+            return touching && even * 2 >= lines.Count;
         }
 
         static double At(Match m, int g)
@@ -181,7 +262,13 @@ namespace FastViewer
                     if (reader.GetNativeMediaType(i, 0, out native) < 0) break;
                     Guid major;
                     native.GetGUID(ref G.MF_MT_MAJOR_TYPE, out major);
+                    int nativeChannels;
+                    if (native.GetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, out nativeChannels) < 0) nativeChannels = 0;
                     Marshal.ReleaseComObject(native);
+                    // 5.1 / 7.1 (a film): the voices are in the centre channel, so mono is made here from the centre and a
+                    // little of the front left and right (1.27.0; Windows' own mix buried them under music and effects: on a
+                    // film's hard parts 17% of the spoken lines got no text, 4% this way).
+                    bool surround = outChannels == 1 && (nativeChannels == 6 || nativeChannels == 8);
                     if (major != G.MFMediaType_Audio || reader.SetStreamSelection(i, true) < 0) continue;
                     IMFMediaType want, got = null;
                     MFCreateMediaType(out want);
@@ -198,10 +285,10 @@ namespace FastViewer
                         exact.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Audio);
                         exact.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFAudioFormat_PCM);
                         exact.SetUINT32(ref G.MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-                        exact.SetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, outChannels);
+                        exact.SetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, surround ? nativeChannels : outChannels);
                         exact.SetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, Rate);
-                        exact.SetUINT32(ref G.MF_MT_AUDIO_BLOCK_ALIGNMENT, 2 * outChannels);
-                        exact.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, Rate * 2 * outChannels);
+                        exact.SetUINT32(ref G.MF_MT_AUDIO_BLOCK_ALIGNMENT, 2 * (surround ? nativeChannels : outChannels));
+                        exact.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, Rate * 2 * (surround ? nativeChannels : outChannels));
                         if (reader.SetCurrentMediaType(i, IntPtr.Zero, exact) >= 0 && reader.GetCurrentMediaType(i, out gotExact) >= 0) got = gotExact;
                         else if (reader.SetCurrentMediaType(i, IntPtr.Zero, want) < 0 || reader.GetCurrentMediaType(i, out got) < 0) { reader.SetStreamSelection(i, false); continue; }
                         got.GetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, out channels);
@@ -270,6 +357,17 @@ namespace FastViewer
                                 // Mono out: every channel; stereo out: left ones left, right ones right (mono sound on both).
                                 long sum = 0;
                                 int count = 0;
+                                if (outChannels == 1 && (channels == 6 || channels == 8)) // centre + 0.3 x (front left + front right)
+                                {
+                                    for (int f = a; f < b; f++)
+                                    {
+                                        int o = f * channels * 2;
+                                        int left = (short)(bytes[o] | (bytes[o + 1] << 8)), right = (short)(bytes[o + 2] | (bytes[o + 3] << 8)), centre = (short)(bytes[o + 4] | (bytes[o + 5] << 8));
+                                        sum += centre + (3 * (left + right)) / 10;
+                                        count++;
+                                    }
+                                }
+                                else
                                 for (int f = a; f < b; f++)
                                     for (int c = 0; c < channels; c++)
                                     {
@@ -277,7 +375,7 @@ namespace FastViewer
                                         sum += (short)(bytes[(f * channels + c) * 2] | (bytes[(f * channels + c) * 2 + 1] << 8));
                                         count++;
                                     }
-                                int value = count == 0 ? 0 : (int)(sum / count);
+                                int value = count == 0 ? 0 : (int)Math.Max(short.MinValue, Math.Min(short.MaxValue, sum / count));
                                 int blockIndex = (int)(at / Block), offset = (int)(at % Block) * outChannels + oc;
                                 while (mix.Count <= blockIndex) mix.Add(new short[Block * outChannels]);
                                 int mixed = mix[blockIndex][offset] + value;

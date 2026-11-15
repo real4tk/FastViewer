@@ -524,4 +524,59 @@
         </ControlTemplate>
       </Setter.Value>
     </Setter>
-  </Style></ResourceDictionary>
+  </Style>
+
+  <!-- 1.27.0: a line in the subtitle editor (SubEditor.cs): hover and selection as soft fills, the selected one with an
+       accent mark on the left, like a selected item in the Settings side menu. -->
+  <Style x:Key="SubLine" TargetType="ListBoxItem">
+    <Setter Property="OverridesDefaultStyle" Value="True"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ListBoxItem">
+          <Grid Margin="0,1">
+            <Border x:Name="Fill" Background="Transparent" CornerRadius="{DynamicResource Radius.Control}"/>
+            <Border x:Name="Mark" Width="3" Height="16" HorizontalAlignment="Left" CornerRadius="1.5" Background="{DynamicResource Accent}" Opacity="0"/>
+            <ContentPresenter Margin="12,6,8,6"/>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Fill" Property="Background" Value="{DynamicResource HoverFill}"/>
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Fill" Property="Background" Value="{DynamicResource ControlFill}"/>
+              <Setter TargetName="Mark" Property="Opacity" Value="1"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- 1.27.0: the - and + beside a time in the subtitle editor (hold to repeat) -->
+  <Style x:Key="SubStep" TargetType="RepeatButton">
+    <Setter Property="OverridesDefaultStyle" Value="True"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RepeatButton">
+          <Border x:Name="Box" Background="{DynamicResource ControlFill}" BorderBrush="{DynamicResource ControlEdge}" BorderThickness="1"
+                  CornerRadius="{DynamicResource Radius.Control}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Box" Property="Background" Value="{DynamicResource HoverFill}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Box" Property="Opacity" Value="0.7"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+</ResourceDictionary>

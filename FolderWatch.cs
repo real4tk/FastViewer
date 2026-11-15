@@ -69,6 +69,16 @@ namespace FastViewer
             catch { return; }
             list.Sort((a, b) => Ui.StrCmpLogicalW(Path.GetFileName(a), Path.GetFileName(b)));
             ApplyOrder(list);
+            if (order == 0 && !shuffled)
+            {
+                // "Same as File Explorer": until Explorer answers, the files already known keep the order they had (it
+                // was Explorer's); new ones go in by name. Before 1.27 the list fell back to name order for a moment.
+                var present = new HashSet<string>(list, StringComparer.OrdinalIgnoreCase);
+                var kept = files.Where(present.Contains).ToList();
+                var known = new HashSet<string>(kept, StringComparer.OrdinalIgnoreCase);
+                foreach (var f in list) if (!known.Contains(f)) kept.Add(f);
+                list = kept;
+            }
             ApplyRescan(list, current);
             if (order != 0) return;
 
@@ -81,6 +91,7 @@ namespace FastViewer
                 try { sorted = ExplorerOrder.Sort(folder, snapshot); }
                 catch { }
                 if (sorted == null) return;
+                sorted = sorted.Where(File.Exists).ToList(); // (a file deleted while Explorer was asked doesn't come back)
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     if (token == openToken && string.Equals(folder, watchedFolder, StringComparison.OrdinalIgnoreCase))
@@ -110,14 +121,28 @@ namespace FastViewer
             }
             if (list.SequenceEqual(files, StringComparer.OrdinalIgnoreCase)) return;
             int oldIndex = index;
+            var old = files;
             files = list;
             if (files.Count == 0)
             {
-                message.Text = "No photos or videos in this folder";
+                ShowWelcome(); // (1.27.0: the welcome screen; it keeps watching the folder, so a new file still shows)
                 return;
             }
             int at2 = current == null ? -1 : files.FindIndex(f => string.Equals(f, current, StringComparison.OrdinalIgnoreCase));
-            index = at2 >= 0 ? at2 : Math.Min(oldIndex, files.Count - 1); // the file on screen was deleted elsewhere: show the next one
+            if (at2 < 0 && current != null)
+            {
+                // The file on screen was deleted elsewhere: the next one that is still there in the order you were going
+                // through, else the one before (1.27.0; before, the same number in the new list, which after a re-sort by
+                // name was a random file of the folder).
+                var here = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
+                int was = old.FindIndex(f => string.Equals(f, current, StringComparison.OrdinalIgnoreCase));
+                if (was < 0) was = Math.Min(oldIndex, old.Count - 1);
+                string pick = null;
+                for (int k = was + 1; k < old.Count && pick == null; k++) if (here.Contains(old[k])) pick = old[k];
+                for (int k = was - 1; k >= 0 && pick == null; k--) if (here.Contains(old[k])) pick = old[k];
+                if (pick != null) at2 = files.FindIndex(f => string.Equals(f, pick, StringComparison.OrdinalIgnoreCase));
+            }
+            index = at2 >= 0 ? at2 : Math.Min(oldIndex, files.Count - 1);
             ShowIndex(index, lastDir); // also gets the (possibly new) neighbours ready
             if (gridOpen) FillGrid(false);
             if (snapDir != null) testLog.Add("folder changed: " + files.Count + " files, now on " + Path.GetFileName(files[index]));

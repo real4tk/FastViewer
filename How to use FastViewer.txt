@@ -1,4 +1,4 @@
-FastViewer 1.24.0 - a fast photo, video and music viewer for Windows 10 and 11
+FastViewer 1.27.0 - a fast photo, video and music viewer for Windows 10 and 11
 ======================================================================
 
 No install needed: FastViewer.exe is the whole program.
@@ -15,7 +15,10 @@ See "What's new.txt" for what changed in each version.
 3. To open your videos with it when you double-click them:
    right-click a video -> Open with -> Choose another app -> More apps ->
    "Look for another app on this PC" -> pick FastViewer.exe -> tick "Always use this app".
-   (Or open FastViewer -> "..." -> Settings -> "Show FastViewer in Open with" -> Add.)
+   (Or start FastViewer.exe on its own: the welcome screen has "Make FastViewer my default viewer",
+   which opens Windows' Default apps; pick FastViewer for Photo viewer and Video player there.)
+   Started without a file, FastViewer also shows the files you opened last: click one to open it,
+   right-click it to take it off the list ("Clear recent" empties the list).
 
 Mini player
   Ctrl + M (or the button left of "Open with") shows just the video in a small
@@ -61,6 +64,10 @@ Subtitles and automatic captions
   Captions in Discord: Discord doesn't show subtitle files, so the text has to be part of the video.
   In "Send to Discord" tick "Burn in captions" (shown when the video has captions or subtitles), or
   use video "..." -> Subtitles -> Save a copy with captions for a normal copy with the text drawn in.
+  Editing subtitles: video "..." -> Subtitles -> Edit subtitles (Ctrl + E). Click a line to go there, type to
+  change it, - and + move its start or end (0.1 s), "Now" sets it to this moment, "Shift all" moves every line
+  (subtitles a bit early or late), Add line here / Delete / Merge with next, Ctrl + Z undoes. "Save as..."
+  makes a new .srt; your original only changes when you click Save and then "Replace ...?".
 
 Smoother video
   Video "..." -> Make smoother (2x or 4x the frames) saves a smoother copy next to the original, made
@@ -87,6 +94,7 @@ Handy keys
   Ctrl + T             trim: save part of a video as a new file, a GIF or a Discord-sized copy
   C                    crop a photo or video
   S                    subtitles on / off
+  Ctrl + E             edit subtitles
   Ctrl + Shift + C     copy the video frame on screen (paste it in Discord, Paint...)
   Up / Down            volume (up to 200%)
   Ctrl + R             rotate 90 degrees (also the rotate button at the top)
