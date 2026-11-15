@@ -91,6 +91,10 @@ namespace FastViewer
                 case "subSize": subSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "captionLang": captionLanguage = Array.IndexOf(Whisper.LanguageCodes, v) >= 0 ? v : "auto"; break;
                 case "discordBurn": discordBurn = v == "1"; break;
+                case "soundMix": SoundMixing.On = v != "0"; break;
+                case "soundVol": SoundMixing.LoadVolumes(v); break;
+                case "soundChoice": soundChoice = Math.Max(0, Math.Min(16, int.Parse(v, CultureInfo.InvariantCulture))); break;
+                case "keepSpeed": keepSpeed = v == "1"; break;
                 case "discordMb": { int mb = int.Parse(v, CultureInfo.InvariantCulture); discordMb = mb == 50 || mb == 500 ? mb : 20; } break;
                 default:
                     if (LoadCustomOption(key, v)) { } // the custom look (CustomLook.cs)
@@ -146,6 +150,10 @@ namespace FastViewer
                 "gridSort=" + gridSort.ToString(CultureInfo.InvariantCulture),
                 "discordMb=" + discordMb.ToString(CultureInfo.InvariantCulture),
                 "discordBurn=" + (discordBurn ? "1" : "0"),
+                "soundMix=" + (SoundMixing.On ? "1" : "0"),
+                "soundVol=" + SoundMixing.VolumesLine,
+                "soundChoice=" + soundChoice.ToString(CultureInfo.InvariantCulture),
+                "keepSpeed=" + (keepSpeed ? "1" : "0"),
                 "subs=" + (subsOn ? "1" : "0"),
                 "subSize=" + subSize.ToString(CultureInfo.InvariantCulture),
                 "captionLang=" + captionLanguage,

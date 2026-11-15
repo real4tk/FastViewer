@@ -498,7 +498,7 @@ namespace FastViewer
                     int pw, ph, found = VideoConverter.SoundTracks(name);
                     double sec;
                     VideoConverter.Probe(name, out pw, out ph, out sec);
-                    return pw + "x" + ph + " " + sec.ToString("0.00") + " s, " + found + " sound tracks" + (found == tracks ? "" : " FAIL");
+                    return pw + "x" + ph + " " + sec.ToString("0.00") + " s, " + found + " sound tracks" + (found == tracks || (SoundMixing.On && tracks >= 2 && found == 1) ? "" : " FAIL");
                 };
                 HuntLog("two.mp4: " + facts(file) + ", " + cues.Count + " lines from " + Path.GetFileName(cuesFrom) + "; video menu: " + string.Join(" | ", VideoMenuItem("subtitles").OfType<MenuItem>().SelectMany(m => m.Items.OfType<MenuItem>()).Select(m => m.Header)));
                 string copy = Path.Combine(snapDir, "out captions.mp4"), discord = Path.Combine(snapDir, "out discord.mp4"), tall = Path.Combine(snapDir, "out tall.mp4");

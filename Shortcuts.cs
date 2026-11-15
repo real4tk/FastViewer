@@ -139,7 +139,7 @@ namespace FastViewer
             { "InfoCloseBtn", "Close file info", "info" }, { "MiniExitBtn", "Back to the full window", "mini" }, { "MiniVolBtn", "Mute (scroll for volume)", "mute" }, { "MiniCloseBtn", "Close", "close" },
             { "SettingsBackBtn", "Back (Esc)", "" }, { "GridBackBtn", "Back (Esc)", "" }, { "ToastClose", "Close message", "" },
             { "TrimPlayBtn", "Play the part between the handles", "play" }, { "TrimSaveBtn", "Save the part between the handles as a new video (Enter)", "" }, { "TrimCancelBtn", "Leave without saving (Esc)", "" },
-            { "TrimGifBtn", "Save the part between the handles as a GIF", "" }, { "TrimShareBtn", "Make a small copy for Discord and copy it, ready to paste", "" },
+            { "TrimGifBtn", "Save the part between the handles as a GIF", "" }, { "TrimSoundBtn", "How loud each sound track is, here and in what you save", "" }, { "TracksBtn", "Sound tracks: which ones you hear", "" }, { "TrimShareBtn", "Make a small copy for Discord and copy it, ready to paste", "" },
             { "CropSaveBtn", "Keep only the part in the frame; the original goes to the Recycle Bin (Enter)", "" }, { "CropCopyBtn", "Save the part in the frame as a new file", "" }, { "CropCancelBtn", "Leave without cropping (Esc)", "" },
             { "CropRatioBtn", "Hold a shape while dragging", "" }, { "CropResetBtn", "Back to the whole picture", "" },
             { "SubBtn", "Subtitles", "subtitles" },

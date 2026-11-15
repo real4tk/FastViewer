@@ -82,12 +82,123 @@ namespace FastViewer
             OnClick("TrimShareBtn", ShowDiscordMenu);
         }
 
+        // ---------------------------------------------------------------- Keep speed (1.26.0)
+        // Watching at another speed than 1x: Save clip, Make GIF and Send to Discord can save it at that speed
+        // (settings line keepSpeed=). The choice only shows while the speed isn't 1x.
+        internal bool keepSpeed;
+
+        bool OtherSpeed { get { return Math.Abs(speed - 1) > 0.001; } }
+        internal double ExportSpeed { get { return keepSpeed && OtherSpeed ? speed : 1; } }
+
+        // The ticked "Keep speed (1.25x)" item for a trim bar menu, after a line; nothing at 1x. Ticking keeps the
+        // menu there (it opens again), so the rest can be picked next.
+        void AddKeepSpeed(List<Control> items, string button, Action again)
+        {
+            if (!OtherSpeed) return;
+            items.Add(new Separator());
+            var keep = Item("Keep speed (" + SpeedText(speed) + ")", keepSpeed ? "" : null, delegate
+            {
+                keepSpeed = !keepSpeed;
+                SaveSettings();
+                Dispatcher.BeginInvoke(new Action(delegate { if (trimming) { ClosingOwnMenu(F<Button>(button)); again(); } }), System.Windows.Threading.DispatcherPriority.Background);
+            });
+            keep.ToolTip = "Saves it as fast as you are watching it now, sound included (the pitch changes with the speed, as it does here).";
+            System.Windows.Automation.AutomationProperties.SetName(keep, "Keep speed, " + SpeedText(speed) + ", " + (keepSpeed ? "on" : "off"));
+            items.Add(keep);
+        }
+
+        // Save clip is one click at 1x; at another speed it first offers the choice.
+        void SaveClipClicked()
+        {
+            if (!OtherSpeed) { SaveTrim(); return; }
+            var items = new List<Control> { Item(keepSpeed ? "Save clip at " + SpeedText(speed) : "Save clip at normal speed", null, SaveTrim, "Enter") };
+            AddKeepSpeed(items, "TrimSaveBtn", SaveClipClicked);
+            ShowMenu("TrimSaveBtn", PlacementMode.Top, items.ToArray());
+        }
+
+        // Test (--hunt <out> --case keepspeed, with --settings; folder with clip.mp4, a few seconds with sound): the
+        // choice is only there at another speed, is remembered, and the GIF, the clip and the Discord copy come out
+        // that much shorter while the Discord copy still fits its size.
+        void HuntKeepSpeed()
+        {
+            var seen = new List<string>();
+            Func<Action, string> menu = open =>
+            {
+                var hook = huntMenuHook;
+                string text = "no menu";
+                huntMenuHook = (m, b) => { text = string.Join(" | ", m.Items.OfType<MenuItem>().Select(i => i.Header + (i.Icon != null ? " (ticked)" : ""))); seen.Clear(); seen.AddRange(m.Items.OfType<MenuItem>().Select(i => i.Header.ToString())); };
+                open();
+                huntMenuHook = hook;
+                return text;
+            };
+            Func<string> line = () => File.ReadAllLines(SettingsFile).FirstOrDefault(l => l.StartsWith("keepSpeed=")) ?? "no line";
+            string gif = Path.Combine(snapDir, "out.gif"), clip = Path.Combine(snapDir, "out clip.mp4"), file = null;
+            double length = 0;
+            HuntOpen("clip.mp4", () =>
+            {
+                if (playing) TogglePlay();
+                file = shown.File;
+                StartTrim();
+                length = TrimLength;
+                string at1 = menu(ShowGifMenu) + " // " + menu(ShowDiscordMenu);
+                HuntLog("at 1x: " + at1 + (at1.Contains("Keep speed") ? " FAIL" : ""));
+            });
+            After(2500, () =>
+            {
+                SetSpeed(1.25);
+                string gifMenu = menu(ShowGifMenu), discord = menu(ShowDiscordMenu), save = menu(SaveClipClicked);
+                HuntLog("at 1.25x, not ticked: GIF: " + gifMenu + " // Discord: " + discord + " // Save clip: " + save + ", saves at " + ExportSpeed + "x" +
+                    (gifMenu.Contains("Keep speed (1.25x)") && discord.Contains("Keep speed (1.25x)") && save.Contains("Keep speed (1.25x)") && save.Contains("normal speed") && ExportSpeed == 1 ? "" : " FAIL"));
+                keepSpeed = true;
+                SaveSettings(true);
+                gifMenu = menu(ShowGifMenu); save = menu(SaveClipClicked);
+                HuntLog("ticked: GIF: " + gifMenu + " // Save clip: " + save + ", saves at " + ExportSpeed + "x, " + line() +
+                    (gifMenu.Contains("Keep speed (1.25x) (ticked)") && save.Contains("Save clip at 1.25x") && ExportSpeed == 1.25 && line() == "keepSpeed=1" ? "" : " FAIL"));
+                EndTrim();
+                lastShareResult = null;
+                RunGif(file, gif, TimeSpan.Zero, TimeSpan.FromSeconds(length), 320, ExportSpeed);
+            });
+            After(2600, () => Until(() => !converting && lastShareResult != null, 180000, () =>
+            {
+                HuntLog("GIF of " + length.ToString("0.00") + " s at 1.25x: " + lastShareResult + "; " + GifFacts(gif) + " (should play " + (length / 1.25).ToString("0.00") + " s)");
+                RunConversion(file, clip, null, null, "Saving clip at " + SpeedText(ExportSpeed), new ConvertOptions { Speed = ExportSpeed });
+                Until(() => !converting, 180000, () =>
+                {
+                    int pw, ph;
+                    double sec;
+                    VideoConverter.Probe(clip, out pw, out ph, out sec);
+                    HuntLog("clip at 1.25x: " + sec.ToString("0.00") + " s, " + VideoConverter.SoundTracks(clip) + " sound track(s)" + (Math.Abs(sec - length / 1.25) < 0.15 ? "" : " FAIL"));
+                    lastShareResult = null;
+                    ShareToDiscord(file, null, null, 1, shown.Video.NaturalVideoWidth, shown.Video.NaturalVideoHeight, 1 / shown.FrameSeconds, true, length, ExportSpeed);
+                    Until(() => !converting && lastShareResult != null, 240000, () =>
+                    {
+                        lock (shareLog) foreach (var l in shareLog) HuntLog("  " + l);
+                        string made = Path.Combine(Path.GetTempPath(), "FastViewer", "Discord", Path.GetFileName(file));
+                        double dsec = 0;
+                        long bytes = File.Exists(made) ? new FileInfo(made).Length : 0;
+                        if (bytes > 0) VideoConverter.Probe(made, out pw, out ph, out dsec);
+                        HuntLog("Discord copy in 1 MB at 1.25x: " + lastShareResult + "; " + bytes + " bytes, " + dsec.ToString("0.00") + " s" +
+                            (bytes > 0 && bytes <= 990000 && Math.Abs(dsec - length / 1.25) < 0.15 ? "" : " FAIL"));
+                        if (bytes > 0) File.Copy(made, Path.Combine(snapDir, "out discord.mp4"), true);
+                        SetSpeed(1);
+                        HuntLog("back at 1x: saves at " + ExportSpeed + "x, still remembered " + keepSpeed + (ExportSpeed == 1 && keepSpeed ? "" : " FAIL"));
+                        HuntDone();
+                    });
+                });
+            }));
+        }
+
         void ShowGifMenu()
         {
-            ShowMenu("TrimGifBtn", PlacementMode.Top,
-                Item("Small GIF (320 pixels)", null, delegate { MakeGif(320); }),
-                Item("Medium GIF (480 pixels)", null, delegate { MakeGif(480); }),
-                Item("Large GIF (640 pixels)", null, delegate { MakeGif(640); }));
+            string at = ExportSpeed == 1 ? "" : " at " + SpeedText(speed);
+            var items = new List<Control>
+            {
+                Item("Small GIF (320 pixels)" + at, null, delegate { MakeGif(320); }),
+                Item("Medium GIF (480 pixels)" + at, null, delegate { MakeGif(480); }),
+                Item("Large GIF (640 pixels)" + at, null, delegate { MakeGif(640); })
+            };
+            AddKeepSpeed(items, "TrimGifBtn", ShowGifMenu);
+            ShowMenu("TrimGifBtn", PlacementMode.Top, items.ToArray());
         }
 
         void ShowDiscordMenu()
@@ -110,6 +221,7 @@ namespace FastViewer
                 System.Windows.Automation.AutomationProperties.SetName(burn, "Burn in captions, " + (discordBurn ? "on" : "off"));
                 items.Add(burn);
             }
+            AddKeepSpeed(items, "TrimShareBtn", ShowDiscordMenu);
             ShowMenu("TrimShareBtn", PlacementMode.Top, items.ToArray());
         }
 
@@ -185,7 +297,7 @@ namespace FastViewer
             if (converting) { ShowToast("Already saving a video, one moment...", null, null, 3, null); return; }
             var from = loopA.Value;
             var to = loopB.Value;
-            if ((to - from).TotalSeconds > 60.05)
+            if ((to - from).TotalSeconds / ExportSpeed > 60.05)
             {
                 ShowToast("A GIF can be a minute long at most (longer ones get huge): move the handles closer together.", null, null, 6, null);
                 return;
@@ -201,10 +313,10 @@ namespace FastViewer
             };
             if (dlg.ShowDialog(this) != true) return;
             EndTrim();
-            RunGif(s.File, dlg.FileName, from, to, side);
+            RunGif(s.File, dlg.FileName, from, to, side, ExportSpeed);
         }
 
-        void RunGif(string source, string target, TimeSpan from, TimeSpan to, int side)
+        void RunGif(string source, string target, TimeSpan from, TimeSpan to, int side, double keep = 1)
         {
             int turn;
             rotations.TryGetValue(source, out turn); // the way it's shown
@@ -216,7 +328,7 @@ namespace FastViewer
             {
                 // Twice through the part: first to pick the colours, then to write the pictures with them.
                 var colours = new GifColours();
-                var o = new ConvertOptions { MaxLong = side, MaxFps = 15 };
+                var o = new ConvertOptions { MaxLong = side, MaxFps = 15, Speed = keep };
                 o.Frame = (px, w, h, time) => colours.Add(px, w * h);
                 VideoConverter.Convert(source, null, from, to, turn, p => progress(null, p * 0.3), cancel, o);
                 if (cancel.Cancelled) return;
@@ -277,15 +389,16 @@ namespace FastViewer
             double fps = s.FrameSeconds > 0 ? 1 / s.FrameSeconds : 30;
             bool sound = s.Video.HasAudio;
             EndTrim();
-            ShareToDiscord(file, from, to, megabytes, w, h, fps, sound, length);
+            ShareToDiscord(file, from, to, megabytes, w, h, fps, sound, length, ExportSpeed);
         }
 
-        void ShareToDiscord(string source, TimeSpan? from, TimeSpan? to, int megabytes, int w, int h, double fps, bool sound, double length)
+        void ShareToDiscord(string source, TimeSpan? from, TimeSpan? to, int megabytes, int w, int h, double fps, bool sound, double length, double keep = 1)
         {
             // Just under the size, counted in steps of 1000: it then fits whether Discord counts in 1000s or 1024s
             // (20 MB -> at most 19.8 million bytes, which File Explorer shows as 18.9 MB).
             long ceiling = megabytes * 990000L;
-            double seconds = ((to ?? TimeSpan.FromSeconds(length)) - (from ?? TimeSpan.Zero)).TotalSeconds;
+            double seconds = ((to ?? TimeSpan.FromSeconds(length)) - (from ?? TimeSpan.Zero)).TotalSeconds / keep; // (how long the copy plays: at another speed, shorter or longer)
+            if (keep != 1) fps = Math.Min(fps * keep, Math.Max(fps, 60)); // (as Convert does)
             long sourceSize = new FileInfo(source).Length;
             int turn;
             rotations.TryGetValue(source, out turn);
@@ -294,7 +407,9 @@ namespace FastViewer
 
             // The whole video, already small enough, an ordinary .mp4 that's shown the way it's stored: nothing to do.
             var painter = discordBurn ? MakePainter(source, from) : null; // captions drawn into the picture
-            if (painter == null && from == null && sourceSize <= ceiling && Path.GetExtension(source).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+            int soundTracks = sound ? SoundMixing.TracksSaved(source) : 1; // (several tracks are mixed into one: Tracks.cs)
+            bool mixing = sound && soundTracks == 1 && VideoConverter.SoundTracks(source) >= 2; // Discord would play only the first track
+            if (painter == null && !mixing && keep == 1 && from == null && sourceSize <= ceiling && Path.GetExtension(source).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
                 && turn == VideoInfo.Rotation(source) && VideoInfo.VideoCodec(source) == "avc1")
             {
                 lastShareResult = "as is, " + sourceSize + " bytes";
@@ -305,7 +420,7 @@ namespace FastViewer
             }
 
             var plan = SharePlan.Make(ceiling, seconds, w, h, fps, sound, length > 0 ? sourceSize * 8.0 / length : 0,
-                                      sound ? VideoConverter.SoundTracks(source) : 1);
+                                      soundTracks);
             if (plan == null)
             {
                 lastShareResult = "too long";
@@ -333,7 +448,7 @@ namespace FastViewer
                 double video = plan.VideoBitrate;
                 for (int attempt = 1; attempt <= 4; attempt++)
                 {
-                    var o = new ConvertOptions { VideoBitrate = (int)video, AudioBitrate = plan.AudioBitrate, MaxShort = plan.MaxShort, MaxFps = plan.MaxFps };
+                    var o = new ConvertOptions { VideoBitrate = (int)video, AudioBitrate = plan.AudioBitrate, MaxShort = plan.MaxShort, MaxFps = plan.MaxFps, Speed = keep };
                     if (painter != null) { painter.Painted = painter.Lines = 0; o.Paint = painter.Paint; }
                     string label = attempt == 1 ? null : "Fitting it once more (try " + attempt + ")";
                     VideoConverter.Convert(source, temp, from, to, turn, p => progress(label, p), cancel, o);

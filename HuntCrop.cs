@@ -179,7 +179,7 @@ namespace FastViewer
                     int pw, ph, found = VideoConverter.SoundTracks(name);
                     double sec;
                     VideoConverter.Probe(name, out pw, out ph, out sec);
-                    return pw + "x" + ph + " " + sec.ToString("0.00") + " s, " + found + " sound tracks" + (found == tracks ? "" : " FAIL");
+                    return pw + "x" + ph + " " + sec.ToString("0.00") + " s, " + found + " sound tracks" + (found == tracks || (SoundMixing.On && tracks >= 2 && found == 1) ? "" : " FAIL");
                 };
                 HuntLog("two.mp4: " + facts(file) + (tracks >= 2 ? "" : " (the test needs 2 or more) FAIL"));
                 RunConversion(file, clip, from, to, "Saving clip");

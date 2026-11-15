@@ -5,6 +5,61 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.26.0  (14 Nov 2026)
+  New
+  - Clips with several sound tracks (Medal: game and microphone apart) now sound right. Windows' player only
+    plays one track of a video, for a Medal clip the microphone, which is why the game was so quiet. FastViewer
+    now plays these clips' sound itself: game and mic together, in step with the picture. A new button next to
+    the speaker (only there for such a video) lets you hear both, only the game or only the mic.
+  - Volume up to 200%. The volume slider now goes past 100% (the small mark in the middle); the keys and the
+    mouse wheel go there too. Handy for quiet clips. Loud parts are rounded off instead of crackling.
+  - Everything you save from such a clip (Save clip, Send to Discord, Crop, compatible copy, copy with captions)
+    gets ONE sound track with game and mic mixed, so Discord and every other player play all of it. "Sound" in
+    the trim bar has a volume for each (0 to 200%, remembered, and you hear the change at once in "Play
+    selection": while trimming you always hear what will be saved, also when the track button was set to only
+    the game or only the mic). "Keep the tracks separate" in the same menu saves them the old way.
+  - Keep speed. Watching at another speed than 1x (say 1.25x)? Make GIF, Send to Discord and Save clip now
+    have "Keep speed (1.25x)" in their menu: ticked, what you save plays at that speed, sound included, with
+    the same pitch you hear in FastViewer. It only shows while the speed isn't 1x and is remembered. Save clip
+    opens a small menu for it at another speed (Enter still saves right away); at 1x it is one click as before.
+    A Discord copy still fits its size. Faster never gets more pictures a second than the original (or 60).
+  - "Make a playable copy" for videos and songs whose sound is missing its description (seen in videos saved
+    from VK: they play in Windows' Photos app but not in FastViewer, Movies & TV or many other players). The
+    message now says exactly that, and the button makes a copy next to the original with the missing piece
+    filled in. Nothing is converted: picture and sound are the very same bytes, so it takes a moment and loses
+    no quality. Such files usually don't say how long they are either; the copy does, so its time bar works.
+  - Speed changes without a gap. At any speed other than 1x FastViewer plays the sound itself for every
+    video, so going from one speed to another no longer drops the sound for half a second: it just gets
+    faster or slower. Back at 1x, Windows' player takes the sound over again after two seconds. (For a
+    moment after a change the sound can be a fraction of a second ahead of the picture, because Windows'
+    player stands still briefly; it settles by itself.)
+  - Repeat without a gap: FastViewer's own sound (Medal clips, other speeds, over 100%) goes on from the end
+    straight into the start, together with the picture, instead of catching up or starting late. It never
+    bends the pitch to stay in step (at most 0.4%, which can't be heard); a larger difference is closed with
+    a 10 ms crossfade. At other speeds Windows' player stands still for a moment after starting over: the
+    sound then steps back into place once, in a few milliseconds.
+  Fixed
+  - Changing the speed quickly (dragging the speed slider, holding a key) could freeze the video on one frame
+    for good, with later speeds ignored: Windows' player locks up when its speed is set many times in a row.
+    A single change now goes to it at once; while you drag, the video simply plays on and takes the speed
+    you end on in one step, about a third of a second after you stop. Should a picture ever stand still for
+    two seconds while it is meant to play, FastViewer gets it going again, without ever moving the video to
+    another place. A video that gets stuck just before its end is taken as ended, so Repeat goes on.
+  - The sound can no longer stay away. If FastViewer's own sound fails for any reason it starts over by
+    itself; if it stops answering it is replaced; and while it is away Windows' player sounds instead.
+    Closing with the X (FastViewer stays ready in the background) now also ends everything about the sound,
+    so the next file always starts fresh.
+  - A file Windows' player silently gave up on (the VK videos above) could leave the previous file on screen
+    for good. FastViewer now notices and says what is wrong with it.
+  - Clips cut in Medal's own editor: their second and third sound track were saved almost half a second late.
+  Good to know
+  - Videos with one sound track, at 1x and 100% or less, play exactly as before, and switching between files
+    is as fast as in 1.25.0 (measured back to back, also in a folder of Medal clips).
+  - At other speeds than 1x the sound changes pitch (higher when faster), for every video.
+  - Which track is the game and which the mic is taken from the order Medal uses. FastViewer works out by
+    listening that a clip's first track is Medal's own mix of the others and leaves that one out.
+
+
 1.25.0  (11 Nov 2026)
   New
   - Captions burned into the video, for Discord (which doesn't show subtitle files). In Send to Discord (trim

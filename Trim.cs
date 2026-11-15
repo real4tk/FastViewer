@@ -34,7 +34,7 @@ namespace FastViewer
         void InitTrim()
         {
             OnClick("TrimPlayBtn", PlaySelection);
-            OnClick("TrimSaveBtn", SaveTrim);
+            OnClick("TrimSaveBtn", SaveClipClicked);
             OnClick("TrimCancelBtn", EndTrim);
             var bar = F<FrameworkElement>("TrimBar");
             bar.MouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e) { e.Handled = true; }; // not a click on the video
@@ -114,6 +114,7 @@ namespace FastViewer
             Motion.Show(bar, 0, 12);
             bar.UpdateLayout();
             LoadFilmstrip(s);
+            FindTrimSound(s);
             PlaceTrim();
             ShowOverlay();
         }
@@ -137,13 +138,20 @@ namespace FastViewer
             var bar = F<FrameworkElement>("TrimBar");
             bar.Width = Math.Max(260, Math.Min(900, stage.ActualWidth - 32));
             bool narrow = bar.Width < 720;
-            F<FrameworkElement>("TrimHint").Visibility = bar.Width < 880 ? Visibility.Collapsed : Visibility.Visible;
+            // Sound (Tracks.cs): one more button, for a video with tracks to balance. The hint makes room for it; a
+            // very narrow window has none (the remembered volumes still count).
+            bool sound = trimLayout != null && trimLayout.Sources.Length >= 2 && bar.Width >= 370;
+            F<FrameworkElement>("TrimSoundBtn").Visibility = sound ? Visibility.Visible : Visibility.Collapsed;
+            F<FrameworkElement>("TrimHint").Visibility = bar.Width < 880 || sound ? Visibility.Collapsed : Visibility.Visible;
+            F<FrameworkElement>("TrimSoundText").Visibility = bar.Width < 800 ? Visibility.Collapsed : Visibility.Visible;
+            F<FrameworkElement>("TrimSoundIcon").Margin = new Thickness(0, 0, bar.Width < 800 ? 0 : 8, 0);
             F<FrameworkElement>("TrimPlayText").Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
             F<FrameworkElement>("TrimPlayIcon").Margin = new Thickness(0, 0, narrow ? 0 : 8, 0);
             F<TextBlock>("TrimGifText").Text = narrow ? "GIF" : "Make GIF";
             F<FrameworkElement>("TrimShareText").Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
             F<FrameworkElement>("TrimShareIcon").Margin = new Thickness(0, 0, narrow ? 0 : 8, 0);
-            F<FrameworkElement>("TrimIcon").Visibility = bar.Width < 440 ? Visibility.Collapsed : Visibility.Visible;
+            F<FrameworkElement>("TrimText").Visibility = sound && bar.Width < 400 ? Visibility.Collapsed : Visibility.Visible; // (the times under the handles still say it)
+            F<FrameworkElement>("TrimIcon").Visibility = bar.Width < (sound ? 480 : 440) ? Visibility.Collapsed : Visibility.Visible;
         }
 
         // Puts the handles, the dimmed parts, the playhead and the times where they belong.

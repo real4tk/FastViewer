@@ -9,7 +9,7 @@ using System.Text;
 
 namespace FastViewer
 {
-    static class VideoInfo
+    static partial class VideoInfo
     {
         // Clockwise degrees (0, 90, 180 or 270) the video needs to be turned to look right.
         public static int Rotation(string file)
@@ -146,7 +146,8 @@ namespace FastViewer
 
         // How much of a track's start players skip, in seconds: the first "edit list" entry of the
         // track (handler "vide" or "soun"). Phones use it to hide pre-roll; encoders for start-up delay.
-        public static double EditStart(string file, string handler)
+        // (nth: which of the file's tracks of that kind, 0 = the first. Medal's editor gives its sound tracks different skips.)
+        public static double EditStart(string file, string handler, int nth = 0)
         {
             try
             {
@@ -161,6 +162,7 @@ namespace FastViewer
                         long trak = pos + header, trakEnd = pos + size;
                         pos += size;
                         if (type != "trak" || Handler(fs, trak, trakEnd) != handler) continue;
+                        if (nth-- > 0) continue;
                         long edts, edtsEnd, elst, elstEnd, mdia, mdiaEnd, mdhd, mdhdEnd;
                         if (!FindChild(fs, trak, trakEnd, "edts", out edts, out edtsEnd)) return 0;
                         if (!FindChild(fs, edts, edtsEnd, "elst", out elst, out elstEnd)) return 0;

@@ -222,6 +222,7 @@ namespace FastViewer
             LetGoOfFiles();
 
             Hide();
+            EndOwnSound(); // (the sound thread goes too: the next file starts with a fresh one, SoundPlay.cs)
             ShowTray();
             if (!toldAboutBackground) // the first time only: closing didn't quit, so say where FastViewer went
             {
@@ -267,6 +268,7 @@ namespace FastViewer
             titleText.Text = "";
             message.Text = EmptyMessage();
             F<FrameworkElement>("MessageBtn").Visibility = Visibility.Collapsed;
+            F<FrameworkElement>("MessageFixBtn").Visibility = Visibility.Collapsed;
             UpdateControls();
             UpdateFacts();   // no file: no details or zoom from the last one
             UpdateZoomUi();

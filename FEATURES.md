@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.25.0)
+# FastViewer: complete feature list (version 1.26.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -156,7 +156,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Make compatible copy: re-encodes to a standard H.264/AAC .mp4 that plays everywhere, upright.
   (Trim and compatible copy use Windows' Media Foundation; progress and Cancel in a message;
   closing the window while saving finishes the save first.)
-- Every video save keeps all sound tracks in the file's order (1.22.0; Save clip, compatible copy, Send to Discord, Crop):
+- Since 1.26.0 every video save mixes several sound tracks into one (see "Sound" below); what follows is how the tracks are told apart, and what "Keep the tracks separate" still does. Every video save keeps all sound tracks in the file's order (1.22.0; Save clip, compatible copy, Send to Discord, Crop):
   Convert.cs encodes each sound stream as its own AAC track. Windows hands an MP4/MOV's sound streams out in an order of
   its own (Windows 10: last track first) and its stream numbers say nothing, so VideoConverter.FileOrder matches streams to
   tracks: a second reader delivers the undecoded sound packets and their sizes are compared with each track's own size
@@ -464,6 +464,162 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - More tests: --case captionsall (captions for every file in the folder through the app, text to <out>\<name>.txt, for
   scoring), --case addons --pattern real also fetches Vocals and WhisperLarge; --speechwav <video> <wav> [rate channels].
 
+## Sound: several tracks, volume over 100%, files that won't play (1.26.0)
+- What Medal clips hold (measured on the user's clips, 120 newest: 32 with 2 sound tracks, 44 with 3, 44 with 4): track 1
+  is Medal's own ready mix (exactly track 2 x 1.00 + track 3 x 0.25 in a raw clip), track 2 the game, track 3 the
+  microphone; 2-track clips are the ready mix + the game (same sound), 4-track ones add silent tracks. Clips cut in Medal's
+  editor have the same tracks with different skipped starts (edit lists: 21 ms for track 1, 243 ms for the others).
+  Windows' player (MediaElement) plays one track, for an .mp4 the last (the microphone).
+- SoundLayout (Tracks.cs, SoundMixing.Layout, VideoConverter.FindLayout): Count, MixTrack (the track that is the others
+  mixed, -1 if none), Sources (the tracks that make up the sound), Names ("Game", "Mic" for sources 1 and 2 when track 1 is
+  the mix, else "Track n"), Streams (Windows' stream number per track, via FileOrder), Offsets (seconds to add to each
+  track's time stamps to get the picture's clock: 2 x (the picture's skipped start - the track's own)). Found by listening:
+  the first 12 s of every track at 8 kHz mono (Listen), then MixFit: least squares of track 1 against the others, each
+  moved up to 25 ms to line up; under 6% of its energy left = it is the mix. With the file's order unknown (MKV...) every
+  track is tried. Remembered per file, size and date in memory and in %LOCALAPPDATA%\FastViewer\tracks.txt ("count|mix|
+  streams|offsets|file <key>", 5000 at most; tests keep nothing unless --tracks <file>). Takes 0.1-0.3 s the first time.
+- Saving (Convert.cs): ConvertOptions.KeepTracks = every track on its own; otherwise SoundMixing.For(file) gives a volume
+  per track (the mix track 0, each source its Sound volume; two tracks with the same sound: just one) and TrackMixer adds
+  the decoded tracks (all asked for as 48 kHz stereo 16-bit) by time, in floats, and hands out pieces every track has
+  reached; over full scale bends over smoothly (Limit: tanh above 26000) instead of clipping. Tracks with volume 0 aren't
+  decoded. One AAC track is written. Each track's own skipped start is used (before 1.26 every track got the first one's:
+  tracks 2 and 3 of a Medal edit came out 0.44 s late). Send to Discord counts one sound track in its plan and doesn't take
+  the "already small enough, copied as it is" shortcut for a file with several tracks. Settings lines soundMix= (1 = mix),
+  soundVol= (percent per source, 0-200), soundChoice=. Test hook: --convert <src> <dst> <rot> <from> <to> [keep | volumes].
+  Checked with ffmpeg + a least-squares fit: saved sound = 0.99 x game + 0.99 x mic (residual -72 dB), 0/200 -> 1.99 x mic.
+- Trim bar > Sound (TrimSoundBtn, only for a video with 2+ sources, hidden under 370 px of bar; the hint makes room, its
+  word goes under 800): a row per source (SoundRow: slider 0-200 in steps of 5, the number is a button back to 100%, wheel
+  and arrow keys work) and "Keep the tracks separate" (tick; rows greyed). Test: --case sound (with --settings; folder
+  with clip.mp4 = three tracks, the first the mix, and one.mp4).
+- Playing (SoundPlay.cs): the picture stays in the MediaElement, exactly as before. FastViewer plays the sound itself only
+  when it has to (OwnSound): a file with 2+ sources, or volume over 100%; the MediaElement is silenced then (IsMuted, also
+  at every place that used to set it). SoundPlayer = one thread: a source reader with only the heard tracks (48 kHz
+  stereo), TrackMixer (volumes of the moment), SpeakerOut (waveOut, about 0.1 s queued; waveOutGetPosition says what was
+  heard). The window tells it 30 times a second (soundTimer, only while own sound is on) where the picture is
+  (MediaElement.Position + a Stopwatch stamp), whether it plays, the speed and the volume (SoundWish). The player keeps
+  "heard" = expected: within 8 ms nothing, up to 120 ms a nudge of at most 3% in how fast it reads (resampled, linear),
+  beyond that (a jump, another speed) it starts again from where the picture is (no second start for 350 ms). A picture
+  that stands still for 120 ms (looking for the place after a jump) has its sound wait. It starts only once the picture is
+  on screen (revealing != slot), so opening is never slowed. Other speeds are plain resampling: the pitch changes.
+  Volume 0-200% (MaxVolume 2; the slider's middle mark is 100% and a drag catches on it); over 100% goes through Limit.
+  LearnSound: each loaded video's track count (VideoInfo.SoundTrackCount, read from the MP4's track list) and, for 2+,
+  its layout are found by one BelowNormal thread: the wanted file at once, the neighbours 0.6 s after the last switch.
+  Track button TracksBtn (E9E9, next to the speaker, only for 2+ sources, accent-coloured when not everything is heard):
+  "Game and mic" / "Only game" / "Only mic" (soundChoice). Hearing everything uses the Sound volumes, so the trim bar's
+  sliders are heard at once. Tests run silent (SoundWish.Silent). Test: --case ownsound (folder with clip.mp4 = a real
+  Medal clip, one.mp4): first sound 44-53 ms after the clip shows, 8-25 ms from the picture while playing, one restart
+  after a jump, own sound off for a one-track video at 100% or less.
+- While trimming, HeardGains ignores soundChoice: you hear every source at its Sound volume, i.e. what will be saved
+  (round 2: with the track button on "Only game" the sliders did nothing). Every track at 0 is silence, not an error.
+  SoundPlayer.Level = running loudness of the mix (tests). Test: --case trimsound (with --settings; two.mp4 with a 440
+  and an 880 Hz track): slider changes measured 0.5 s later as 1.41 x / 2.24 x / 1.00 x one track.
+- Keep speed (round 2; Share.cs keepSpeed, settings line keepSpeed=, ExportSpeed = the viewing speed when ticked and
+  not 1x, else 1): AddKeepSpeed puts a line and the ticked item "Keep speed (1.25x)" into the GIF and Discord menus
+  (ticking reopens the menu); Save clip (SaveClipClicked) is one click at 1x and at another speed opens a menu "Save
+  clip at 1.25x" / "Save clip at normal speed" + the item; Enter saves at once. ConvertOptions.Speed: a picture's time
+  is divided by the speed; pictures a second = min(original x speed, max(original, 60)), then MaxFps as usual, and a
+  picture is kept when it lands in a new slot of that rate (others left out evenly); Paint (burned captions) still
+  gets the original time, Frame (GIF) the new one. Sound: every kept track goes through a TrackMixer (one mixer per
+  track when they stay separate) and SoundStretch reads the mixed pieces at the speed's pace with straight lines
+  between samples, the place between two samples carried from piece to piece: the same plain resampling as the player,
+  so the same pitch. Send to Discord plans with the new length and rate and skips the "copied as it is" shortcut; the
+  GIF's one-minute limit counts the new length; a kept-speed clip is named "(clip 1.25x)". Test hook: --convert ...
+  [keep | volumes | -] [speed]. Checked: two.mp4 6 s at 1.25x -> 4.80 s, tones 440/880 -> 550/1100 Hz; 0.5x with
+  separate tracks -> 12 s, two tracks, 220 Hz; 2x of a 30-a-second clip -> 60 a second. Test: --case keepspeed (with
+  --settings; clip.mp4): menus at 1x / 1.25x, the setting, GIF 4.84 s, clip 4.82 s, Discord copy in 1 MB 970606 bytes.
+- Speed changes (round 3, SoundPlay.cs). Found with --case speedstorm: (a) Windows' player (MediaElement) locks up for
+  good when SpeedRatio is set every ~12 ms (picture frozen, later speeds ignored; also in 1.25.0, where the menu's speed
+  slider made it reachable); (b) the sound thread ended on an exception (a jump Windows refused near the end of a clip,
+  0xC00D36E5) and was never started again, and closing with the X only hides the window (ready in the background), so it
+  stayed dead; (c) every speed change restarted the sound (up to 0.77 s of silence). Now:
+  SetSpeed -> ApplySpeedSoon: the MediaElement gets a speed at most every 250 ms, the last one asked for always arrives.
+  WatchPicture (rateTimer, 0.4 s, only while a video plays): picture still for 0.8 s (not at the end, not scrubbing or
+  revealing, not within 0.6 s of a speed change) -> WakePicture (Pause, same Position, Play, SpeedRatio); a third time in
+  a row -> ReopenPicture (Close, Source again, SeekOnOpen); moving at over 1.4 x or (up to 2x) under 0.7 x of the set
+  speed twice -> the speed is set again (via a slightly different value, the same number is ignored). pictureRate (what
+  the picture really does) is what the sound follows when it is clearly not the set speed.
+  OwnSound is also true at any speed other than 1x, and for that file after it went back to 1x (soundSpeedFile): the
+  sound's speed changes inside SoundPlayer without stopping (runSpeed follows the wish; "handed" remembers frames and
+  picture-seconds of what was given to the speakers, so "heard" stays right across speeds). For 2.5 s after a change,
+  and until it is within 30 ms again (at most 9 s), the sound may be up to 0.5 s off before it starts again and the nudge
+  goes up to 20% (the MediaElement stands still 0.1-0.8 s at a change, which puts the sound ahead); a picture standing
+  still counts as stuck only after 1.2 s then. Pieces from the mixer are about 60 ms of heard sound at any speed.
+  SoundPlayer.Step runs inside a try: any error -> LetGo (reader and speakers released), 250 ms, again (Failures,
+  Trouble). Hand gives up after 1.5 s of speakers taking nothing. Sounding = real sound handed over in the last 0.35 s;
+  BeatAge = seconds since the thread went round. TellSound: BeatAge over 2 s -> the thread is abandoned and a new
+  SoundPlayer made (soundRecoveries); own sound away for 1.5 s while the picture plays -> the MediaElement is unmuted
+  until it returns (soundFallback); the MediaElement is silenced when own sound is there, at once for 2+ tracks.
+  EndOwnSound (from GoToBackground after Hide): timers stopped, player quit, all of this state cleared.
+  Test: --case speedstorm --pattern <file> (310 changes in 8 bursts, one every 600 down to 12 ms, as slider / keys /
+  back to 1x; then the picture paused behind FastViewer's back, the sound thread ended, EndOwnSound). Before: frozen from
+  burst 5 on, sound thread dead. After, normal clip and Medal clip: every burst ends at the set speed with sound, no
+  silence, restarts of 5-27 ms (0.27 s once, at the test's own jump), nothing woken or replaced; the forced failures: picture woken
+  once and moving again within 3 s, thread replaced once with Windows' player sounding meanwhile.
+- Round 4 (replaces parts of the round 3 text above; this is how it is now). The user's findings: a fast slider drag
+  stopped the video (every speed given to the MediaElement makes it stand still 0.1-0.8 s and start again from where it
+  was; four a second plus the watchdog's "same Position" wake meant it never got anywhere), and after a loop the sound
+  sped up and slowed down within half a second (the sound followed pictureRate, a wrong reading at a loop, and that also
+  switched on the 20% catch-up).
+  ApplySpeedSoon: a change with none in the 400 ms before goes to the MediaElement at once; in a run of changes only
+  the one that is still standing 140 ms after the last (speedApplies counts them: 0 during a 6 s drag, 1 after).
+  WatchPicture: off while SpeedChanging (asked or applied within 2 s, or one pending) and for 2.5 s after it acted;
+  still means under 5% of the set speed for 2 s; WakePicture = Play again (second time Pause + Play), never a Position;
+  third time ReopenPicture; "faster than set by 1.4 x" -> speed set again, at most twice per speed; the "slower than
+  set" repair and the sound following pictureRate are gone (the sound follows SpeedRatio only).
+  OwnSound at 1x only for the 2 s a speed change counts as going on (soundSpeedFile + SpeedChanging); after that Windows'
+  player has the sound again (no own sound at 1x and 100% for a one-track file, as before round 3).
+  Starting in step: TellSound lets the sound go (soundGo) only after the place moved on three ticks in a row at a
+  steady pace (0.6-1.5 x of what the speed makes likely); a jump (back, or over 0.25 s too far) or standing still
+  (0.12 s; 1.2 s around a speed change) stops it at once. After a loop (OnVideoEnded sets soundLoopTick) the MediaElement
+  moves its clock on by about 65 ms some 0.3 s in, every time: the sound waits for that step (at most 0.6 s) and begins
+  about 0.44 s into the loop. SoundPlayer: the first sound after a start drops whole pieces until one reaches the picture.
+  Staying in step: outside the moments after a speed change the reading pace is bent by at most 0.4% (MaxNudge); 25 ms
+  or more off -> a sliver of at most 30 ms is left out (skipLeft) or played twice, at most every 200 ms, with a 3 ms
+  glide at the joint (smooth; Splices counts them). Render makes a stretch of a piece for the speakers. Trace (tests):
+  how far off every 50 ms after each start.
+  Round 4b: WatchPicture also wakes a frozen picture while the speed is being changed (still 2 s; waking only says
+  play), the "faster than set" repair waits for the change to end; "at the end" = the last max(1.5 s, 0.75 x speed),
+  where standing still 0.8 s counts as ended (Windows' player sometimes stalls there after a speed change and never
+  says it ended: 2 of 8 drag runs on a 20 s clip). Known: a 11 s clip at 5x with Repeat is silent for up to 1.4 s after
+  each loop (the sound waits for the picture to settle; the clip loops every 2.2 s).
+  Round 5 (loops): the sound loops by itself. The window counts the picture's clock on across loops (soundLoopBase,
+  NoteLoop once per loop: OnVideoEnded or TellSound seeing position 0 at the end, which Windows' player shows just before
+  MediaEnded) and sends LoopLength/LoopBase/Looping; the end (last 0.5 x speed s) and the first second after a loop never
+  stop the sound. SoundPlayer wraps its reading at LoopLength (atWrap, wrapBase), keeps the next loop's first piece
+  (held) until the picture's clock moves past the loop start, then aligns it (pendingLead). Pieces never cross the wrap
+  (TrackMixer.Position). Within 1.2 s after that a drift over 0.11 s re-syncs at once (other speeds: the picture stands
+  still 0.12-0.17 s after moving for an instant); otherwise splices are 10 ms equal-power crossfades (CrossFade).
+  The soundLoopTick wait of round 4 is gone. Measured, 6 loops each: user's clip 1x no gap/no re-sync (12 crossfades
+  for Windows' ~70 ms clock step), 0.75x / 1.5x one re-sync per loop (gaps 7-8 ms), Medal 1x perfect, 1.25x / 2x gaps
+  11-12 ms; all within 13-60 ms after. A StartPlayback-free loop restart was tried: no difference.
+  Tests: --case speeddrag --pattern <file> (6 s of slider dragging, a change every 16 ms, then let go at 1.5x, then
+  eight single steps, then back to 1x): the video never went back, stood still 0-124 ms, was at the last speed 0.35 s
+  after letting go, single steps arrive at once; 3.5 s back at 1x the sound is Windows' player's (FastViewer's for a
+  Medal clip). --case loopsound --pattern <file> (Repeat on, volume 120% so own sound plays at 1x; six loops, two
+  jumps): the user's 11 s HE-AAC clip: 9-19 ms off at worst, no restarts, no slivers, pace bent 0.10-0.19%. (Before the
+  step was waited for: 80 ms off after each loop, two slivers.) That clip is also the first real HE-AAC file tested: it
+  plays in Windows' player and through FastViewer's own sound.
+- Measured against 1.25.0 back to back (--selftest 150, old and new taking turns, 6-7 rounds; folder of 4 real Medal
+  clips of 54-190 MB + 1 video + 3 photos): switches median 6 ms / p90 13 ms in both; first open 532 vs 528 ms with the
+  layouts remembered, 560 vs 564 ms without. Ordinary folder: median 2 vs 1 ms, p90 10 ms both. (Before the sound waited
+  for the picture and the neighbours' analysis waited for quiet, first open of a Medal clip was 60-100 ms slower.)
+- Sound that stops a file from playing (SoundFix.cs): VideoInfo.SoundProblem reads each sound track's description: an
+  mp4a entry whose esds has no AudioSpecificConfig (the user's VK download: AAC-LC 44.1 kHz stereo, fragmented, written
+  by Lavf; Windows refuses the whole file, Photos and ffmpeg guess), rare AAC kinds Windows 10 can't decode (Main, SSR,
+  LTP, LD, ELD, xHE-AAC), Opus / DTS / Dolby Digital Plus / AC-4 / TrueHD in an MP4. FriendlyError names it. The missing
+  description is fixable: the same descriptors written with short lengths leave room for the 2 config bytes (AAC-LC, rate
+  and channels from the sample entry) inside the same box, so nothing in the file moves. "Make a playable copy"
+  (MessageFixBtn, accent, next to "Open with another app"): copies the file to "<name> (playable).<ext>", writes those
+  bytes and, when the header says length 0 in a file made of pieces, the length worked out from the pieces (LengthPatch:
+  tfdt + trun of each moof), checks it (description reads back, Windows finds the sound), keeps the date + 10 ms, then
+  shows the copy. Streams are byte-identical (ffmpeg -c copy md5 equal). Also for .m4a. WatchForSilentFailure: Windows'
+  player sometimes never reports that it gave up on such a file (the old file stayed on screen for good): a video or song
+  still not open 0.7 s after it was asked for gets its sound description read off the window's thread and, if that is
+  the problem, counts as failed. Test: --case soundfix (scratch folder with broken.mp4, broken.m4a, good.mp4).
+- Not done / not verified: playing such a file without making a copy (the picture's player is still Windows' own);
+  HE-AAC: one real file tested in round 4 (plays both ways); the real sound and lip-sync can only be
+  judged by ear on the user's PC (tests measure clocks, silently).
+
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -529,11 +685,12 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,
   keys, dialog, rotate, loop, sizes, ghost, positions, saveclose, trim (drags, keys, play selection, saving), rates (every animation simulated at 60/144/240/500 Hz), toggles (menu buttons close their menu, keys undo themselves), scrub (fast time bar drags, the dot's smoothness), custom (the custom look end to end, with --settings), showcase (pictures of an example custom look), wheel (very fast switching through videos with the controls showing: delay per press, frame times, frame grabs), minivol (mini player volume number), tips (the tips switch, with --settings), miniclear (folder with a see-through PNG, a photo and a video: the mini player measured over white and black is fully clear around the PNG, normal for the rest, and no Windows frame in mini/full screen), preloadghost (every look: the window drawn with and without the hidden preloaded players must be pixel-identical, on a see-through PNG, photos and paused videos, in the window and the mini player), squishall (presses all ~220 buttons in the window and every Settings page: each must shrink and end exactly where it started; --look Glass --motion full), skipicons (saves the skip buttons at 4x per look), rotsave (1.20.0, scratch folder with plain.jpg 400x200 red square top-left, photo.png, photo.bmp; makes tag1.jpg, tag6.jpg and a 4000x3000 sideways phone.jpg with an embedded preview itself: rotates each with saving on, checks the file decoded fresh, orientation tag, date, Windows' thumbnail, Explorer's cache at 96 and 256 (Thumbs.FromCache; plain.jpg and photo.png skip the rebuild for comparison) and the reopened window), showmigrate (old Show lines -> new choice, what each choice lets through), taskbar, vturn (1.21.0, run twice with --rotations: video turns remembered and saved into MP4s at 90/180/270, Explorer thumbnail, date, playing position, leftovers), gridsearch (1.21.0), menus (1.21.0, also icons_<look>.png of the menu icons), switches (1.21.0), cover (1.20.0, scratch copies only: changes the cover of an ID3 2.3 song with a cover, a 2.4 song without, an untagged MP3 and a locked one; logs the cover read back by its own ID3 reader and by Windows, tags, playing position, leftover temp files, the music menu and Show music files; check the sound with ffmpeg -map 0:a -c copy -f md5 before/after), music (1.20.0: music shows at once, plays, tags/cover, 0.25x/5x on music and video, Copy frame logged, speed stepping, Speeds buttons saved; folder with song.mp3 (tagged, cover), plain.wav, clip.mp4, photo.jpg; use --settings), squish (Liquid Glass button squish frame by frame for taps of 0-278 ms, plus each Custom motion style's timing and curve; use --look Glass --motion full), share, crop, tracks (1.22.0, see Videos),
   away (1.23.0, see Polish release), convert, subs, addons, captions, smooth (1.24.0, see their section), burn, videomenu, captionsall (1.25.0),
+  sound, soundfix, ownsound, trimsound, keepspeed, speedstorm, speeddrag, loopsound (1.26.0, see Sound),
   overlap, audit (--pattern
   full|sizes|scales|contrast: renders every screen in all four looks and checks overlaps, clipped text, contrast,
   screen-reader names, Tab order), ux, updatemsg, motion (every animation's frame times and idle CPU).
 - Options: --preload n, --look <Id>, --strip, --grab-always, --settings <scratch.ini>,
-  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --addons, --addon-source, --vocals, --gpu, --frameboost, --speechwav <video> <wav>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
+  --positions <scratch file>, --rotations <scratch file>, --real-bin (crop tests use the real Recycle Bin), --addons, --addon-source, --vocals, --gpu, --frameboost, --speechwav <video> <wav>, --own-sound-off (sound as before 1.26), --own-sound-aloud, --tracks <scratch file>, --update-feed <local json or "refused">, --update-page <file>, --update-test,
   --count, --every, --pattern, --front, --motion full|reduced|off (tests run with animations Off unless
   given), --convert <src> <dst> <rotation> [from to].
 - Any run with a "--" option never contacts GitHub.

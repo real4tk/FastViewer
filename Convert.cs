@@ -4,6 +4,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace FastViewer
@@ -24,6 +25,9 @@ namespace FastViewer
         public double[] Crop;         // the part to keep: x, y, width, height, each 0..1 of the picture as shown; null = all
         public Action<int[], int, int, long> Frame; // instead of a file: each picture (pixels, width, height, time in 100 ns)
         public Action<int[], int, int, long> Paint; // draws on each finished picture before it's saved (burned-in captions): pixels, width, height, time in 100 ns
+        public double Speed;          // play it this many times as fast (0 or 1: as it is); the sound changes pitch with it, as in the viewer
+        public bool KeepTracks;       // every sound track saved as its own track, whatever the Sound setting says
+        public int OutSoundTracks;    // filled in: the sound tracks that were written
         public int OutWidth, OutHeight; // filled in: the size that was made
         public double OutFps;
     }
@@ -132,7 +136,21 @@ namespace FastViewer
                 long outRate = Pack((int)(rate >> 32), (int)(rate & 0xFFFFFFFF) * every);
                 o.OutWidth = ow;
                 o.OutHeight = oh;
-                o.OutFps = fps / every;
+                // Another speed (Keep speed): the pictures get earlier or later times and the sound is stretched to match, with
+                // the pitch it has when played at that speed. Faster never means more pictures a second than the original
+                // had (or 60): the extra ones are left out evenly.
+                double speedBy = o.Speed > 0 && Math.Abs(o.Speed - 1) > 0.001 ? o.Speed : 1, outFps = fps / every;
+                bool sped = speedBy != 1;
+                long tick = 0, lastSlot = -1;
+                if (sped)
+                {
+                    every = 1;
+                    outFps = Math.Min(fps * speedBy, Math.Max(fps, 60));
+                    if (o.MaxFps > 0 && outFps > o.MaxFps * 1.2) outFps /= Math.Max(1, Math.Round(outFps / o.MaxFps));
+                    outRate = Pack((int)Math.Round(outFps * 1000), 1000);
+                    tick = (long)(1e7 / outFps);
+                }
+                o.OutFps = outFps;
 
                 // The sound: the first track, or all of them. The reader reports samples by the file's own stream number.
                 var audioStreams = new System.Collections.Generic.List<int>();
@@ -156,6 +174,29 @@ namespace FastViewer
                 var inOrder = FileOrder(source, audioFound, cancel);
                 LastInfo += ", sound streams " + string.Join("/", audioFound) + (inOrder == null ? " (Windows' order)" : " -> the file's order " + string.Join("/", inOrder));
                 if (inOrder != null) audioFound = inOrder;
+                // Several tracks become one (Tracks.cs): each at its own volume, the left-out ones not even decoded.
+                TrackMixer mixer = null;
+                var mixGain = new System.Collections.Generic.Dictionary<int, double>();
+                var mixSlot = new System.Collections.Generic.Dictionary<int, int>(); // the file's stream number -> the mixer's track
+                double[] gains = null;
+                if (gains == null && !o.KeepTracks && audioFound.Count >= 2) gains = SoundMixing.For(source, cancel);
+                if (gains != null && audioFound.Count >= 2)
+                {
+                    var kept = new System.Collections.Generic.List<int>();
+                    for (int k = 0; k < audioFound.Count; k++)
+                        if (k < gains.Length && gains[k] > 0) { kept.Add(audioFound[k]); mixGain[audioFound[k]] = gains[k]; }
+                    audioFound = kept;
+                    if (kept.Count > 1 || (kept.Count == 1 && Math.Abs(gains.First(g => g > 0) - 1) > 0.001)) mixer = new TrackMixer();
+                    LastInfo += ", mixed " + string.Join("/", gains.Select(g => (g * 100).ToString("0")));
+                }
+                // At another speed every track goes through a mixer (one each when they stay separate): that is where it is stretched.
+                bool perTrack = sped && mixer == null && o.Frame == null;
+                var mixers = new System.Collections.Generic.List<TrackMixer>();
+                var mixOuts = new System.Collections.Generic.List<int>();   // the writer's stream of each mixer
+                var stretch = new System.Collections.Generic.List<SoundStretch>();
+                var mixOf = new System.Collections.Generic.Dictionary<int, int>(); // the file's stream number -> its mixer
+                if (mixer != null) mixers.Add(mixer);
+                if (sped) LastInfo += ", speed " + speedBy.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
                 foreach (int i in audioFound)
                 {
                     if (reader.SetStreamSelection(i, true) < 0) continue;
@@ -164,9 +205,25 @@ namespace FastViewer
                     a.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Audio);
                     a.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFAudioFormat_PCM);
                     a.SetUINT32(ref G.MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+                    if (mixer != null || perTrack)
+                    {
+                        // Every track in the same shape, so they can be added up.
+                        a.SetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, 2);
+                        a.SetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, TrackMixer.Rate);
+                        a.SetUINT32(ref G.MF_MT_AUDIO_BLOCK_ALIGNMENT, 4);
+                        a.SetUINT32(ref G.MF_MT_AUDIO_AVG_BYTES_PER_SECOND, TrackMixer.Rate * 4);
+                    }
                     bool ok = reader.SetCurrentMediaType(i, IntPtr.Zero, a) >= 0 && reader.GetCurrentMediaType(i, out ain) >= 0;
                     int channels = 0, sampleRate = 0;
-                    if (ok)
+                    if (ok && (mixer != null || perTrack))
+                    {
+                        ain.GetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, out channels);
+                        ain.GetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, out sampleRate);
+                        ok = channels == 2 && sampleRate == TrackMixer.Rate;
+                        if (ok && perTrack) { mixers.Add(new TrackMixer()); mixOf[i] = mixers.Count - 1; mixSlot[i] = mixers[mixers.Count - 1].AddTrack(1); }
+                        else if (ok) { mixOf[i] = 0; mixSlot[i] = mixer.AddTrack(mixGain[i]); }
+                    }
+                    else if (ok)
                     {
                         ain.GetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, out channels);
                         ain.GetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, out sampleRate);
@@ -204,7 +261,7 @@ namespace FastViewer
                     MFCreateMediaType(out vo);
                     vo.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Video);
                     vo.SetGUID(ref G.MF_MT_SUBTYPE, ref G.MFVideoFormat_H264);
-                    vo.SetUINT32(ref G.MF_MT_AVG_BITRATE, o.VideoBitrate > 0 ? o.VideoBitrate : (int)Math.Min(40e6, Math.Max(2e6, ow * (double)oh * fps / every * 0.12)));
+                    vo.SetUINT32(ref G.MF_MT_AVG_BITRATE, o.VideoBitrate > 0 ? o.VideoBitrate : (int)Math.Min(40e6, Math.Max(2e6, ow * (double)oh * outFps * 0.12)));
                     vo.SetUINT32(ref G.MF_MT_INTERLACE_MODE, 2); // progressive
                     vo.SetUINT64(ref G.MF_MT_FRAME_SIZE, Pack(ow, oh));
                     vo.SetUINT64(ref G.MF_MT_FRAME_RATE, outRate);
@@ -223,7 +280,7 @@ namespace FastViewer
                     vi.SetUINT32(ref G.MF_MT_DEFAULT_STRIDE, ow * 4); // we hand over pictures top row first
                     Check(writer.SetInputMediaType(vs, vi, IntPtr.Zero), "setting up the video encoder input");
 
-                    for (int k = 0; k < audioStreams.Count; k++)
+                    for (int k = 0; k < (mixer != null ? Math.Min(1, audioStreams.Count) : audioStreams.Count); k++)
                     {
                         IMFMediaType ao;
                         MFCreateMediaType(out ao);
@@ -236,8 +293,10 @@ namespace FastViewer
                         int aus;
                         Check(writer.AddStream(ao, out aus), "setting up the AAC sound encoder");
                         Check(writer.SetInputMediaType(aus, audioIn[k], IntPtr.Zero), "setting up the sound encoder input");
-                        audioOut[audioStreams[k]] = aus;
+                        if (mixer != null || perTrack) { mixOuts.Add(aus); stretch.Add(sped ? new SoundStretch { Speed = speedBy } : null); }
+                        else audioOut[audioStreams[k]] = aus;
                     }
+                    o.OutSoundTracks = mixer != null ? Math.Min(1, audioStreams.Count) : audioStreams.Count;
                     Check(writer.BeginWriting(), "starting to write");
                 }
 
@@ -250,6 +309,10 @@ namespace FastViewer
                 // So a sample's real time is its stamp minus twice the skip; anything before 0 is dropped.
                 long firstVideo = (long)(2 * VideoInfo.EditStart(source, "vide") * 1e7);
                 long firstAudio = (long)(2 * VideoInfo.EditStart(source, "soun") * 1e7);
+                // Each sound track has its own skip (a clip cut in Medal's editor: 21 ms for the first, 243 ms for the others).
+                var audioSkip = new System.Collections.Generic.Dictionary<int, long>();
+                if (inOrder != null)
+                    for (int k = 1; k < inOrder.Count; k++) audioSkip[inOrder[k]] = (long)(2 * VideoInfo.EditStart(source, "soun", k) * 1e7);
                 LastInfo += ", skip video " + firstVideo / 20000 + " ms / sound " + firstAudio / 20000 + " ms";                if (start > 0) Seek(reader, start);
 
                 bool videoDone = false;
@@ -270,10 +333,30 @@ namespace FastViewer
                     {
                         if (isVideo) videoDone = true; else audioDone.Add(index);
                     }
+                    if (mixers.Count > 0 && writer != null && mixOuts.Count > 0)
+                    {
+                        int track;
+                        if ((flags & 0x20) != 0 && mixSlot.TryGetValue(index, out track))
+                        {
+                            // The decoder found out more about the sound once it started (some AAC has twice the samples its header says).
+                            IMFMediaType now;
+                            if (reader.GetCurrentMediaType(index, out now) >= 0)
+                            {
+                                int nowCh, nowHz;
+                                now.GetUINT32(ref G.MF_MT_AUDIO_NUM_CHANNELS, out nowCh);
+                                now.GetUINT32(ref G.MF_MT_AUDIO_SAMPLES_PER_SECOND, out nowHz);
+                                mixers[mixOf[index]].Shape(track, nowCh, nowHz);
+                                Marshal.ReleaseComObject(now);
+                            }
+                        }
+                        foreach (int ended in audioDone) if (mixSlot.TryGetValue(ended, out track)) mixers[mixOf[ended]].End(track);
+                        for (int k = 0; k < mixOuts.Count; k++) WriteMixed(writer, mixOuts[k], mixers[k], false, stretch[k]);
+                    }
                     if (sample == null) continue;
                     try
                     {
-                        time -= isVideo ? firstVideo : firstAudio; // both tracks start at 0
+                        long ownSkip;
+                        time -= isVideo ? firstVideo : audioSkip.TryGetValue(index, out ownSkip) ? ownSkip : firstAudio; // every track starts at 0
                         if (time > end)
                         {
                             if (isVideo) videoDone = true; else audioDone.Add(index);
@@ -283,13 +366,22 @@ namespace FastViewer
                         long newTime = time - start;
                         if (isVideo)
                         {
-                            if (frameNo++ % every != 0) continue; // left out for a lower frame rate
+                            long outTime = newTime;
+                            if (sped)
+                            {
+                                outTime = (long)(newTime / speedBy);
+                                long slot = (outTime + tick / 2) / tick;
+                                if (slot <= lastSlot) continue; // faster than the pictures a second it may have: left out
+                                lastSlot = slot;
+                            }
+                            else if (frameNo++ % every != 0) continue; // left out for a lower frame rate
                             long d;
                             bool timed = sample.GetSampleDuration(out d) >= 0;
                             if (writer != null && o.Paint == null && rotation == 0 && !bottomUp && ow == w && oh == h && ax == 0 && ay == 0 && cx == 0 && cy == 0)
                             {
-                                sample.SetSampleTime(newTime);
-                                if (timed && every > 1) sample.SetSampleDuration(d * every);
+                                sample.SetSampleTime(outTime);
+                                if (sped) sample.SetSampleDuration(tick);
+                                else if (timed && every > 1) sample.SetSampleDuration(d * every);
                                 Check(writer.WriteSample(vs, sample), "writing the video");
                             }
                             else
@@ -303,12 +395,13 @@ namespace FastViewer
                                 Turn(sample, inPx, cutPx, w, h, ax, ay, aw, ah, cw, ch, cx, cy, rotation, bottomUp);
                                 if (outPx != cutPx) scaler.Shrink(cutPx, cw, ch, outPx, ow, oh);
                                 if (o.Paint != null) o.Paint(outPx, ow, oh, newTime);
-                                if (o.Frame != null) o.Frame(outPx, ow, oh, newTime);
+                                if (o.Frame != null) o.Frame(outPx, ow, oh, outTime);
                                 else
                                 {
                                     var made = MakeSample(outPx, ow, oh);
-                                    made.SetSampleTime(newTime);
-                                    if (timed) made.SetSampleDuration(d * every);
+                                    made.SetSampleTime(outTime);
+                                    if (sped) made.SetSampleDuration(tick);
+                                    else if (timed) made.SetSampleDuration(d * every);
                                     Check(writer.WriteSample(vs, made), "writing the video");
                                     Marshal.ReleaseComObject(made);
                                 }
@@ -318,6 +411,11 @@ namespace FastViewer
                         else
                         {
                             int aus;
+                            if (mixers.Count > 0)
+                            {
+                                if (writer != null && mixOuts.Count > 0 && mixSlot.TryGetValue(index, out aus)) mixers[mixOf[index]].Add(aus, newTime, sample);
+                                continue;
+                            }
                             if (writer == null || !audioOut.TryGetValue(index, out aus)) continue;
                             sample.SetSampleTime(newTime);
                             Check(writer.WriteSample(aus, sample), "writing the sound");
@@ -325,6 +423,7 @@ namespace FastViewer
                     }
                     finally { Marshal.ReleaseComObject(sample); }
                 }
+                if (writer != null) for (int k = 0; k < mixOuts.Count; k++) WriteMixed(writer, mixOuts[k], mixers[k], true, stretch[k]);
                 if (writer != null) Check(writer.DoFinalize(), "finishing the file");
                 progress(1);
             }

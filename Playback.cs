@@ -39,6 +39,7 @@ namespace FastViewer
             OnClick("ToastClose", delegate { HideToast(null); });
             InitTrim();
             InitShare();
+            InitSound();
             InitCrop();
             InitSubtitles();
             toastTimer.Tick += delegate { HideToast(null); };
@@ -270,12 +271,13 @@ namespace FastViewer
             var s = shown;
             if (s == null || !loopA.HasValue || !loopB.HasValue) return;
             if (playing) TogglePlay();
-            string target = AskSaveVideo(s.File, " (clip)");
+            double keep = ExportSpeed; // the speed it is watched at, when "Keep speed" is ticked (Share.cs)
+            string target = AskSaveVideo(s.File, keep == 1 ? " (clip)" : " (clip " + SpeedText(keep) + ")");
             if (target == null) return;
             var from = loopA.Value;
             var to = loopB.Value;
             EndTrim();
-            RunConversion(s.File, target, from, to, "Saving clip");
+            RunConversion(s.File, target, from, to, keep == 1 ? "Saving clip" : "Saving clip at " + SpeedText(keep), new ConvertOptions { Speed = keep });
         }
 
         void MakeCompatibleCopy()

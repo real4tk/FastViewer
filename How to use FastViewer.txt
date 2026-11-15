@@ -32,6 +32,18 @@ Trimming a video
   "Make GIF" saves that part as an animated GIF. "Send to Discord" makes it fit in 20, 50 or 500 MB
   and copies it: paste it into a chat with Ctrl + V.
 
+Sound: game clips, loudness, files that won't play
+  A clip with several sound tracks (Medal: game and microphone apart) plays with all of them together.
+  The button next to the speaker (only there for such a clip) picks both, only the game or only the mic.
+  The volume goes up to 200%: the mark in the middle of the slider is 100%.
+  Anything you save from such a clip gets one mixed sound track, so Discord plays all of it. "Sound" in
+  the trim bar sets how loud each track is (you hear it at once); "Keep the tracks separate" saves them
+  as they were.
+  Watching at another speed? "Keep speed" in the Make GIF, Send to Discord and Save clip menus saves it
+  at that speed, sound included.
+  "Can't open this file" with "Make a playable copy": the file's sound is missing its description (videos
+  saved from VK). The button makes a repaired copy next to it, without converting anything.
+
 Cropping a photo or video
   C (or "..." -> Crop) puts a frame over the picture. Drag its corners or sides, or drag inside it to
   move it; Shape keeps it square, 16:9 and so on. "Save a copy" makes a new file; "Save" keeps only
@@ -76,7 +88,7 @@ Handy keys
   C                    crop a photo or video
   S                    subtitles on / off
   Ctrl + Shift + C     copy the video frame on screen (paste it in Discord, Paint...)
-  Up / Down            volume
+  Up / Down            volume (up to 200%)
   Ctrl + R             rotate 90 degrees (also the rotate button at the top)
   Ctrl + Shift + R     rotate the other way (or right-click the rotate button)
   Ctrl + M             mini player

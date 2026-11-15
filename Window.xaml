@@ -81,6 +81,9 @@
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
         <Button x:Name="MessageOpenBtn" Style="{StaticResource AccentButton}" Height="34" MinWidth="120" Content="Open a file" Visibility="Collapsed"/>
         <!-- A file FastViewer can't open: offer another app -->
+        <!-- Its sound has no description, which a copy can get (SoundFix.cs) -->
+        <Button x:Name="MessageFixBtn" Style="{StaticResource AccentButton}" Height="34" MinWidth="120" Margin="0,0,8,0"
+                Content="Make a playable copy" Visibility="Collapsed"/>
         <Button x:Name="MessageBtn" Style="{StaticResource Outlined}" Height="34" MinWidth="120"
                 Content="Open with another app" Visibility="Collapsed"/>
       </StackPanel>
@@ -163,9 +166,15 @@
               <TextBlock x:Name="FwdText" FontSize="8.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,3,0,0"/>
             </Grid>
           </Button>
-          <Button x:Name="VolBtn" Grid.Column="3" Style="{StaticResource Transport}" ToolTip="Mute (M). Point at it for the volume slider">
-            <fv:Glyph x:Name="VolIcon" Code="&#xE995;"/>
-          </Button>
+          <StackPanel Grid.Column="3" Orientation="Horizontal">
+            <Button x:Name="VolBtn" Style="{StaticResource Transport}" ToolTip="Mute (M). Point at it for the volume slider">
+              <fv:Glyph x:Name="VolIcon" Code="&#xE995;"/>
+            </Button>
+            <!-- Which sound tracks are heard (SoundPlay.cs): only there for a video with two or more -->
+            <Button x:Name="TracksBtn" Style="{StaticResource Transport}" ToolTip="Sound tracks" Visibility="Collapsed">
+              <fv:Glyph x:Name="TracksIcon" Code="&#xE9E9;"/>
+            </Button>
+          </StackPanel>
           <TextBlock x:Name="PosText" Grid.Column="4" FontSize="12" Margin="8,0,10,0" VerticalAlignment="Center" Text="00:00"/>
           <!-- A-B loop / trim part: a light capsule behind the time bar -->
           <Border x:Name="LoopRange" Grid.Column="5" Height="14" CornerRadius="7" VerticalAlignment="Center" HorizontalAlignment="Left"
@@ -195,7 +204,11 @@
             <Button x:Name="MuteBtn" Style="{StaticResource Transport}" ToolTip="Mute (M)">
               <fv:Glyph x:Name="MuteIcon" Code="&#xE995;"/>
             </Button>
-            <Slider x:Name="Vol" Style="{StaticResource FluentSlider}" Width="140" Minimum="0" Maximum="100" Margin="6,0"/>
+            <!-- 0 to 200%: the small mark is 100%, where Windows' own player stops (above it FastViewer plays the sound itself, SoundPlay.cs) -->
+            <Grid Margin="6,0">
+              <Border Width="2" Height="14" CornerRadius="1" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource TextDim}" Opacity="0.55" IsHitTestVisible="False"/>
+              <Slider x:Name="Vol" Style="{StaticResource FluentSlider}" Width="160" Minimum="0" Maximum="200"/>
+            </Grid>
             <TextBlock x:Name="VolText" Width="30" FontSize="13" Foreground="{DynamicResource TextMain}" FontFamily="{DynamicResource Font.Ui}"
                        VerticalAlignment="Center" TextAlignment="Right" Margin="2,0,8,0"/>
           </StackPanel>
@@ -266,6 +279,13 @@
               <StackPanel Orientation="Horizontal">
                 <fv:Glyph x:Name="TrimShareIcon" Code="&#xE724;" Size="12" Margin="0,0,8,0"/>
                 <TextBlock x:Name="TrimShareText" Text="Send to Discord" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <!-- Tracks.cs: only for a video with two or more sound tracks to balance -->
+            <Button x:Name="TrimSoundBtn" Style="{StaticResource Filled}" Height="30" Margin="6,0,0,0" Visibility="Collapsed">
+              <StackPanel Orientation="Horizontal">
+                <fv:Glyph x:Name="TrimSoundIcon" Code="&#xE767;" Size="12" Margin="0,0,8,0"/>
+                <TextBlock x:Name="TrimSoundText" Text="Sound" VerticalAlignment="Center"/>
               </StackPanel>
             </Button>
             <Button x:Name="TrimCancelBtn" Style="{StaticResource Subtle}" Height="30" Margin="6,0,0,0" Content="Cancel"/>

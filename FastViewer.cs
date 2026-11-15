@@ -66,8 +66,18 @@ namespace FastViewer
                     TimeSpan? from = args.Length >= 6 ? TimeSpan.FromSeconds(double.Parse(args[4], CultureInfo.InvariantCulture)) : (TimeSpan?)null;
                     TimeSpan? to = args.Length >= 6 ? TimeSpan.FromSeconds(double.Parse(args[5], CultureInfo.InvariantCulture)) : (TimeSpan?)null;
                     var sw = Stopwatch.StartNew();
-                    VideoConverter.Convert(args[1], args[2], from, to, int.Parse(args[3]), delegate { }, new CancelFlag());
-                    File.WriteAllText(log, "OK in " + sw.ElapsedMilliseconds + " ms; " + VideoConverter.LastInfo);
+                    // A 7th word: "keep" (every sound track on its own) or the volume of each source, e.g. "100,25" (Tracks.cs)
+                    var o = new ConvertOptions { KeepTracks = args.Length >= 7 && args[6] == "keep" };
+                    if (args.Length >= 7 && !o.KeepTracks) SoundMixing.LoadVolumes(args[6]);
+                    if (args.Length >= 8) o.Speed = double.Parse(args[7], CultureInfo.InvariantCulture); // an 8th word: the speed
+                    if (Environment.GetEnvironmentVariable("FASTVIEWER_MIXLOG") != null) TrackMixer.DebugLog = new List<string>();
+                    VideoConverter.Convert(args[1], args[2], from, to, int.Parse(args[3]), delegate { }, new CancelFlag(), o);
+                    long took = sw.ElapsedMilliseconds;
+                    if (TrackMixer.DebugLog != null) File.WriteAllLines(args[2] + ".mix.log", TrackMixer.DebugLog);
+                    sw.Restart();
+                    var layout = SoundMixing.Layout(args[1]);
+                    File.WriteAllText(log, "OK in " + took + " ms; " + VideoConverter.LastInfo + "; sound tracks written " + o.OutSoundTracks + "; layout: " + layout.Count +
+                        " tracks, ready mix " + (layout.MixTrack + 1) + ", sources " + string.Join("/", layout.Names) + " (" + layout.How + ", " + sw.ElapsedMilliseconds + " ms when asked again)");
                 }
                 catch (Exception ex) { File.WriteAllText(log, "ERROR " + ex.Message); }
                 return;
@@ -362,6 +372,7 @@ namespace FastViewer
 
         bool playing, loop, muted, slideshow;
         double volume = 0.8, speed = 1;
+        internal const double MaxVolume = 2; // 200%
 
         readonly Grid root;
         readonly WindowChrome chrome;
@@ -419,6 +430,9 @@ namespace FastViewer
                 if (args[i] == "--selftest" && i + 1 < args.Length) selfTestInterval = int.Parse(args[++i]);
                 else if (args[i] == "--snap" && i + 1 < args.Length) snapDir = args[++i];
                 else if (args[i] == "--front") testInFront = true;
+                else if (args[i] == "--own-sound-off") ownSoundOff = true;     // sound as before 1.26, for comparing
+                else if (args[i] == "--own-sound-aloud") ownSoundAloud = true; // a test that is meant to be heard
+                else if (args[i] == "--tracks" && i + 1 < args.Length) soundStoreOverride = args[++i]; // tests: where what was found about sound tracks is kept
                 else if (args[i] == "--update-feed" && i + 1 < args.Length) updateFeed = args[++i];
                 else if (args[i] == "--update-test") updateTestAccept = true;
                 else if (args[i] == "--update-page" && i + 1 < args.Length) updatePage = args[++i];
@@ -589,6 +603,8 @@ namespace FastViewer
             OnClick("DialogOk", ConfirmDelete);
             OnClick("DialogCancel", HideDeleteDialog);
             OnClick("MessageBtn", OpenWith);
+            OnClick("MessageFixBtn", MakePlayableCopy);
+            InitOwnSound();
             // The file name sits in the title bar: it moves the window (and double-click maximizes) like the rest of it.
             titleText.MouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e)
             {
@@ -621,7 +637,13 @@ namespace FastViewer
             seek.LostMouseCapture += delegate { if (!seek.IsMouseCaptureWithin && Mouse.LeftButton != MouseButtonState.Pressed) EndScrub(); };
             scrubTimer.Tick += delegate { scrubTimer.Stop(); if (scrubbing) ScrubTo(scrubTarget, true); };
             vol.Value = volume * 100;
-            vol.ValueChanged += delegate { if (!settingSlider) SetVolume(vol.Value / 100); };
+            vol.ValueChanged += delegate
+            {
+                if (settingSlider) return;
+                // Dragging past the middle catches on 100% (a little over is rarely what's meant).
+                if (Math.Abs(vol.Value - 100) <= 4 && vol.Value != 100 && Mouse.LeftButton == MouseButtonState.Pressed) { vol.Value = 100; return; }
+                SetVolume(vol.Value / 100);
+            };
             zoomSlider.Minimum = 0;
             zoomSlider.Maximum = Math.Log(MaxZoom);
             zoomSlider.ValueChanged += delegate { if (!settingSlider) SetZoom(Math.Exp(zoomSlider.Value), StageCenter()); };
@@ -964,6 +986,8 @@ namespace FastViewer
             Title = name + " - FastViewer";
             TryShow();
             RequestStripUpdate();
+            WatchForSilentFailure();
+            SoundWanted(files[index]); // (its sound tracks are looked at before its neighbours')
         }
 
         // Returns the slot holding `file`, loading it into a free slot if needed.
@@ -999,6 +1023,7 @@ namespace FastViewer
             s.Error = null;
             s.IsAudio = IsAudioFile(file);
             s.IsVideo = IsVideoFile(file) || s.IsAudio;
+            if (s.IsVideo) LearnSound(file); // (in the background: how many sound tracks it has, SoundPlay.cs)
             ResetZoom(s);
             // Phones store some videos sideways with a "turn me" note; Windows ignores it, so apply it here.
             if (!s.IsAudio && !rotations.ContainsKey(file))
@@ -1229,6 +1254,7 @@ namespace FastViewer
             {
                 s.Video.Position = TimeSpan.Zero;
                 StartPlayback(s, true);
+                NoteLoop(s); // (SoundPlay.cs: FastViewer's own sound loops by itself and counts the picture's clock on)
             }
             else if (playNextAtEnd && files.Count > 1 && (wrapAround || index < files.Count - 1))
             {
@@ -1270,8 +1296,8 @@ namespace FastViewer
                 Reveal(c);
                 if (autoplay)
                 {
-                    c.Video.Volume = volume;
-                    c.Video.IsMuted = muted;
+                    c.Video.Volume = Math.Min(1, volume);
+                    c.Video.IsMuted = muted || OwnSound(c);
                     c.Video.Play();
                     c.Video.SpeedRatio = speed;
                 }
@@ -1312,8 +1338,8 @@ namespace FastViewer
                 catch { c.Poster.Source = null; }
             }
             c.Poster.Visibility = c.Poster.Source != null ? Visibility.Visible : Visibility.Collapsed;
-            c.Video.Volume = volume;
-            c.Video.IsMuted = muted;
+            c.Video.Volume = Math.Min(1, volume);
+            c.Video.IsMuted = muted || OwnSound(c);
             c.Video.Play();
             c.Video.SpeedRatio = speed;
             revealing = c;
@@ -1561,6 +1587,13 @@ namespace FastViewer
             var messageBtn = F<FrameworkElement>("MessageBtn");
             if (c.Failed && messageBtn.Visibility != Visibility.Visible) Motion.Enter(F<FrameworkElement>("MessagePanel"), 8); // rises in with the file
             messageBtn.Visibility = c.Failed ? Visibility.Visible : Visibility.Collapsed;
+            bool fixable = false; // a copy with the sound's missing description filled in would play (SoundFix.cs)
+            if (c.Failed && c.IsVideo && c.Error != null && c.Error.StartsWith("The sound in this file is AAC, but"))
+            {
+                var trouble = VideoInfo.SoundProblem(c.File);
+                fixable = trouble != null && trouble.Fixable;
+            }
+            F<FrameworkElement>("MessageFixBtn").Visibility = fixable ? Visibility.Visible : Visibility.Collapsed;
             UpdateControls();
             UpdateFacts();
             UpdateZoomUi();
@@ -1619,7 +1652,7 @@ namespace FastViewer
 
         void SetVolume(double v)
         {
-            volume = Math.Max(0, Math.Min(1, v));
+            volume = Math.Max(0, Math.Min(MaxVolume, Math.Round(v * 100) / 100)); // over 100%: FastViewer plays the sound itself (SoundPlay.cs)
             if (volume > 0) muted = false;
             ApplyAudio();
             ShowVolumeFeedback();
@@ -1663,8 +1696,8 @@ namespace FastViewer
         {
             if (shown != null && shown.IsVideo)
             {
-                shown.Video.Volume = volume;
-                shown.Video.IsMuted = muted;
+                shown.Video.Volume = Math.Min(1, volume);
+                shown.Video.IsMuted = muted || OwnSound(shown);
             }
             UpdateControls();
         }
@@ -1678,7 +1711,8 @@ namespace FastViewer
         void SetSpeed(double s)
         {
             speed = s;
-            if (shown != null && shown.IsVideo && playing) shown.Video.SpeedRatio = speed;
+            ApplySpeedSoon(); // (SoundPlay.cs: Windows' player gets it at most four times a second, or it locks up)
+            UpdateOwnSound(); // (at another speed FastViewer plays the sound itself: no gap at the change)
         }
 
         // The volume slider opens when the mouse rests on the speaker and closes a moment after it has left both
@@ -1777,6 +1811,7 @@ namespace FastViewer
         void UpdateControls()
         {
             UpdateTaskbarButtons();
+            UpdateOwnSound(); // (SoundPlay.cs: FastViewer's own sound for what is on screen, or none)
             bool isVideo = shown != null && shown.IsVideo && !shown.Failed;
             // A small mini player has no room for the control bar; play/pause stays in the middle.
             transport.Visibility = isVideo && !trimming && !cropping && !(mini && stage.ActualWidth < 420) ? Visibility.Visible : Visibility.Collapsed;
@@ -2032,6 +2067,8 @@ namespace FastViewer
                     : "Windows couldn't read this photo (" + raw + ")";
             bool? complete = VideoInfo.LooksComplete(file);
             if (complete == false) return "This video file is damaged or incomplete (for example a download that didn't finish).";
+            var sound = VideoInfo.SoundProblem(file); // the sound can stop Windows from playing a file whose picture is fine (SoundFix.cs)
+            if (sound != null) return sound.Cause;
             if (complete == true)
             {
                 string codec = VideoInfo.VideoCodec(file);
@@ -2963,7 +3000,7 @@ namespace FastViewer
         {
             switch (key)
             {
-                case "volume": if (!sync) volume = Clamp(double.Parse(v, NumberStyles.Float, CultureInfo.InvariantCulture), 0, 1, 0.8); break;
+                case "volume": if (!sync) volume = Clamp(double.Parse(v, NumberStyles.Float, CultureInfo.InvariantCulture), 0, MaxVolume, 0.8); break;
                 case "muted": if (!sync) muted = v == "1"; break;
                 case "loop": loop = v == "1"; break;
                 default: LoadOption(key, v); break;
