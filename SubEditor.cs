@@ -21,7 +21,9 @@ namespace FastViewer
         bool subEditOpen, subDirty, subConfirmSave;
         string subEditVideo;
         ListBox subList;
-        TextBox subTextBox;
+        TextBox subTextBox, subEnBox;   // the chosen line's text; its English (1.28.0, while the subtitles have English)
+        TextBlock subEnLabel;
+        bool SubTyping { get { return (subTextBox != null && subTextBox.IsKeyboardFocusWithin) || (subEnBox != null && subEnBox.IsKeyboardFocusWithin); } }
         TextBlock subFromText, subToText, subSourceText, subShiftText;
         Button subSaveBtn, subUndoBtn, subMergeBtn, subDeleteBtn;
         FrameworkElement subLineEditor;
@@ -49,6 +51,25 @@ namespace FastViewer
             else OpenSubEditor();
         }
 
+        // 1.28.0: in a see-through Custom look the pane's own colour (Panels) keeps at least 85% cover, so the look's text
+        // colour stays readable over a bright video or desktop behind it (like Settings, which keeps 55%).
+        const double SubEditLeastCover = 0.85;
+
+        void UpdateSubEditCover()
+        {
+            var pane = F<Border>("SubEditPanel");
+            var bg = Application.Current.Resources["PanelBg"] as SolidColorBrush;
+            if (pane == null) return;
+            var text = Application.Current.Resources["TextMain"] as SolidColorBrush;
+            Func<Color, double> light = x => (0.2126 * x.R + 0.7152 * x.G + 0.0722 * x.B) / 255;
+            bool clash = bg != null && text != null && Math.Abs(light(bg.Color) - light(text.Color)) < 0.4;
+            if (bg == null || (!clash && bg.Color.A / 255.0 * bg.Opacity >= SubEditLeastCover)) { pane.SetResourceReference(Border.BackgroundProperty, "PanelBg"); return; }
+            var c = bg.Color;
+            if (clash) c = light(text.Color) > 0.5 ? Color.FromRgb(0x20, 0x20, 0x20) : Color.FromRgb(0xF3, 0xF3, 0xF3); // (white text on a white panel: dark behind it)
+            c.A = (byte)Math.Round(255 * Math.Max(SubEditLeastCover, bg.Color.A / 255.0 * bg.Opacity));
+            pane.Background = new SolidColorBrush(c);
+        }
+
         void OpenSubEditor()
         {
             var s = shown;
@@ -64,6 +85,7 @@ namespace FastViewer
                 SetCues(s.File, new List<Cue>(), "new");
             }
             if (!subsOn) { subsOn = true; SaveSettings(); UpdateSubButton(); }
+            UpdateSubEditCover();
             subEditOpen = true;
             subEditVideo = s.File;
             subUndo.Clear();
@@ -83,7 +105,7 @@ namespace FastViewer
             if (!subEditOpen) return;
             subEditOpen = false;
             subFollow.Stop();
-            if (Keyboard.FocusedElement is TextBox && subTextBox != null && subTextBox.IsKeyboardFocusWithin) Keyboard.Focus(this);
+            if (Keyboard.FocusedElement is TextBox && SubTyping) Keyboard.Focus(this);
             PlaceSubEditor(false);
             PlaceBars();
             if (subDirty && subEditVideo != null && cues != null)
@@ -173,6 +195,16 @@ namespace FastViewer
             subTextBox.TextChanged += delegate { SubTextEdited(); };
             subTextBox.GotKeyboardFocus += delegate { SubSnapshot(); }; // one undo step per edit of a line's text
             editor.Children.Add(subTextBox);
+            subEnLabel = SecondaryText("English");
+            subEnLabel.Margin = new Thickness(2, 6, 0, 2);
+            editor.Children.Add(subEnLabel);
+            subEnBox = new TextBox { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 64, Padding = new Thickness(8, 6, 8, 6) };
+            subEnBox.Style = (Style)Application.Current.Resources["SettingsTextBox"];
+            subEnBox.VerticalContentAlignment = VerticalAlignment.Top;
+            System.Windows.Automation.AutomationProperties.SetName(subEnBox, "English of the line");
+            subEnBox.TextChanged += delegate { SubEnglishEdited(); };
+            subEnBox.GotKeyboardFocus += delegate { SubSnapshot(); };
+            editor.Children.Add(subEnBox);
             editor.Children.Add(TimeRow("Start", out subFromText, true));
             editor.Children.Add(TimeRow("End", out subToText, false));
             var actions = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
@@ -195,6 +227,9 @@ namespace FastViewer
 
             // The lines
             subList = new ListBox { Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0) };
+            // 1.28.0: the rows are the list's own items, so their text takes its colour from the list (not the row's style):
+            // without this it was Windows' black, hard to read on every dark look.
+            subList.SetResourceReference(Control.ForegroundProperty, "TextMain");
             subList.ItemContainerStyle = (Style)Application.Current.Resources["SubLine"];
             ScrollViewer.SetHorizontalScrollBarVisibility(subList, ScrollBarVisibility.Disabled);
             VirtualizingStackPanel.SetIsVirtualizing(subList, true);
@@ -349,6 +384,10 @@ namespace FastViewer
             bool has = i >= 0 && cues != null && i < cues.Count;
             subFilling = true;
             subTextBox.Text = has ? cues[i].Text : "";
+            bool english = cues != null && cues.Any(c => !string.IsNullOrEmpty(c.En));
+            subEnLabel.Visibility = subEnBox.Visibility = english ? Visibility.Visible : Visibility.Collapsed;
+            subEnBox.Text = has && english ? cues[i].En ?? "" : "";
+            subEnBox.IsEnabled = has;
             subFilling = false;
             subTextBox.IsEnabled = subDeleteBtn.IsEnabled = has;
             subMergeBtn.IsEnabled = has && i + 1 < cues.Count;
@@ -368,7 +407,7 @@ namespace FastViewer
         // While the video plays, the line being said is the chosen one (not while you type, or just after picking one).
         void SubFollowVideo()
         {
-            if (!subEditOpen || cues == null || subTextBox.IsKeyboardFocusWithin || (DateTime.UtcNow - subUserPicked).TotalSeconds < 3 || !playing) return;
+            if (!subEditOpen || cues == null || SubTyping || (DateTime.UtcNow - subUserPicked).TotalSeconds < 3 || !playing) return;
             int i = CueAt(Position());
             if (i < 0 || i == SubSel) return;
             subFilling = true;
@@ -393,7 +432,7 @@ namespace FastViewer
         void SubSnapshot()
         {
             if (cues == null) return;
-            subUndo.Add(cues.Select(c => new Cue { From = c.From, To = c.To, Text = c.Text }).ToList());
+            subUndo.Add(cues.Select(c => new Cue { From = c.From, To = c.To, Text = c.Text, En = c.En }).ToList());
             if (subUndo.Count > 200) subUndo.RemoveAt(0);
             if (subUndoBtn != null) subUndoBtn.IsEnabled = true;
         }
@@ -407,6 +446,15 @@ namespace FastViewer
             if (i < 0 || i >= cues.Count) return;
             cues[i].Text = subTextBox.Text.Replace("\r\n", "\n").Trim('\n');
             RefreshSubRow(i);
+            SubChanged(-2);
+        }
+
+        void SubEnglishEdited()
+        {
+            if (subFilling) return;
+            int i = SubSel;
+            if (i < 0 || i >= cues.Count) return;
+            cues[i].En = subEnBox.Text.Replace("\r\n", "\n").Trim('\n');
             SubChanged(-2);
         }
 
@@ -469,6 +517,7 @@ namespace FastViewer
             var b = cues[i + 1];
             string joined = (a.Text + " " + b.Text).Trim();
             a.Text = joined.Length > 42 && !a.Text.Contains("\n") && !b.Text.Contains("\n") ? a.Text.Trim() + "\n" + b.Text.Trim() : joined; // two lines when long
+            if (!string.IsNullOrEmpty(a.En) || !string.IsNullOrEmpty(b.En)) a.En = ((a.En ?? "") + " " + (b.En ?? "")).Trim();
             a.To = Math.Max(a.To, b.To);
             cues.RemoveAt(i + 1);
             SubChanged(i);
@@ -522,6 +571,7 @@ namespace FastViewer
             {
                 if (file) WriteSrt(cuesFrom);
                 else Whisper.Keep(subEditVideo, cues);
+                Translator.Keep(subEditVideo, file ? cuesFrom : "auto", cues); // 1.28.0: the English keeps up with the edits
                 SavedSubs(file ? cuesFrom : "auto");
                 ShowToast(file ? "Saved " + Path.GetFileName(cuesFrom) : "Captions kept", null, null, 3, "done");
             }
@@ -545,6 +595,7 @@ namespace FastViewer
             try
             {
                 WriteSrt(target);
+                Translator.Keep(subEditVideo, target, cues);
                 SavedSubs(target);
                 chosenSubs[subEditVideo] = target; // from now on this video shows them
                 ShowToast("Saved " + Path.GetFileName(target), null, null, 3, "done");
@@ -585,7 +636,7 @@ namespace FastViewer
         int HandleSubEditKey(KeyEventArgs e)
         {
             if (!subEditOpen) return 0;
-            bool typing = subTextBox != null && subTextBox.IsKeyboardFocusWithin;
+            bool typing = SubTyping;
             if (e.Key == Key.Escape) { if (typing) Keyboard.Focus(this); else CloseSubEditor(true); return 1; }
             if (typing) return 2;
             if (subList != null && subList.IsKeyboardFocusWithin)

@@ -316,9 +316,38 @@ namespace FastViewer
         bool always;
         internal static double SegoeStroke = 1.0;
 
+        // 1.28.0: the skip buttons as they are on the video bar (circle arrow with the seconds inside), for Settings and the
+        // menus. The code alone shows the current amount; with digits after it (SkipBack + "5") that fixed number.
+        internal const string SkipBack = "", SkipForward = "";
+        static string skipBackText = "10", skipForwardText = "30";
+        static readonly List<WeakReference> skipGlyphs = new List<WeakReference>();
+        static readonly Geometry BackArc = Frozen("M4.07,7 A8,8 0 1 0 11,3"), BackHead = Frozen("M7.4,3 L11.2,0.4 L11.2,5.6 Z"),
+            FwdArc = Frozen("M17.93,7 A8,8 0 1 1 11,3"), FwdHead = Frozen("M14.6,3 L10.8,0.4 L10.8,5.6 Z");
+        static Geometry Frozen(string data) { var g = Geometry.Parse(data); g.Freeze(); return g; }
+        bool IsSkip { get { var c = Code; return !string.IsNullOrEmpty(c) && (c[0] == SkipBack[0] || c[0] == SkipForward[0]); } }
+
+        // The amounts changed (Settings > Videos): every skip icon on screen shows the new one.
+        internal static void SetSkips(int back, int forward)
+        {
+            skipBackText = back.ToString(CultureInfo.InvariantCulture);
+            skipForwardText = forward.ToString(CultureInfo.InvariantCulture);
+            lock (skipGlyphs)
+            {
+                skipGlyphs.RemoveAll(w => !w.IsAlive);
+                foreach (var w in skipGlyphs) { var g = w.Target as Glyph; if (g != null) g.InvalidateVisual(); }
+            }
+        }
+
         void Hook()
         {
             var c = Code;
+            if (IsSkip)
+            {
+                ClearValue(ShapeProperty);
+                always = true;
+                if (c.Length == 1) lock (skipGlyphs) skipGlyphs.Add(new WeakReference(this));
+                return;
+            }
             always = !string.IsNullOrEmpty(c) && Always.ContainsKey(c);
             if (string.IsNullOrEmpty(c)) ClearValue(ShapeProperty);
             else if (always) SetValue(ShapeProperty, Always[c]);
@@ -332,6 +361,27 @@ namespace FastViewer
             var c = Code;
             if (string.IsNullOrEmpty(c)) return;
             double s = Size, w = ActualWidth, h = ActualHeight;
+            if (IsSkip)
+            {
+                // The video bar's 22 x 22 drawing (line 1.6), as big as the line icons are drawn here.
+                bool back = c[0] == SkipBack[0];
+                string number = c.Length > 1 ? c.Substring(1) : back ? skipBackText : skipForwardText;
+                double k = s * 1.3 / 22;
+                dc.PushTransform(new TranslateTransform((w - 22 * k) / 2, (h - 22 * k) / 2));
+                dc.PushTransform(new ScaleTransform(k, k));
+                dc.DrawGeometry(null, new Pen(Foreground, 1.6) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }, back ? BackArc : FwdArc);
+                dc.DrawGeometry(Foreground, null, back ? BackHead : FwdHead);
+                var digits = new SkipNumber { Text = number, FontFamily = (FontFamily)GetValue(TextElement.FontFamilyProperty) }.Outline();
+                if (digits != null)
+                {
+                    dc.PushTransform(new TranslateTransform(11, 11));
+                    dc.DrawGeometry(Foreground, null, digits);
+                    dc.Pop();
+                }
+                dc.Pop();
+                dc.Pop();
+                return;
+            }
             var shape = GetValue(ShapeProperty) as Geometry;
             if (shape != null)
             {

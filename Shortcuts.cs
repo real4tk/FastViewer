@@ -185,8 +185,8 @@ namespace FastViewer
         static readonly Dictionary<string, string> ActionIcons = new Dictionary<string, string>
         {
             { "next", "" }, { "previous", "" }, { "first", "" }, { "last", "" }, { "shuffle", "" },
-            { "grid", "" }, { "strip", "" }, { "play", "" }, { "skipBack", "" }, { "skipForward", "" },
-            { "back5", "" }, { "forward5", "" }, { "frameBack", "" }, { "frameForward", "" },
+            { "grid", "" }, { "strip", "" }, { "play", "" }, { "skipBack", Glyph.SkipBack }, { "skipForward", Glyph.SkipForward },
+            { "back5", Glyph.SkipBack + "5" }, { "forward5", Glyph.SkipForward + "5" }, { "frameBack", "" }, { "frameForward", "" },
             { "loopA", "\uE892" }, { "loopB", "\uE893" }, { "loopStop", "" }, { "repeat", "" }, { "volumeUp", "" },
             { "volumeDown", "" }, { "mute", "" }, { "speedDown", "" }, { "speedUp", "" }, { "speedNormal", "" },
             { "trim", "" }, { "crop", "" }, { "saveFrame", "" }, { "compatible", "\uE895" }, { "rotate", Glyph.RotateLeft }, { "saveRotation", "" },

@@ -99,6 +99,12 @@ namespace FastViewer
                 case "subedit": HuntSubEdit(); break;
                 case "customcard": HuntCustomCard(); break;
                 case "safetynet": HuntSafetyNet(); break;
+                case "errorreport": HuntErrorReport(); break;
+                case "translate": HuntTranslate(); break;
+                case "inforows": HuntInfoRows(); break;
+                case "skiprows": HuntSkipRows(); break;
+                case "pkcaptions": HuntParakeetCaptions(); break;
+                case "lookcheck": HuntLookCheck(); break;
                 case "settingsclear": HuntSettingsClear(); break;
                 case "handover": HuntHandOver(); break;
                 case "subeditfit": HuntSubEditFit(); break;

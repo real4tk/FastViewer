@@ -61,6 +61,8 @@ Subtitles and automatic captions
   Songs and videos with music: captions understand singing better than before. For the best result,
   "Better quality captions" in the same place downloads a much larger (slower) Whisper model once
   (547 MB). Made captions before? Video "..." -> Subtitles -> Make the captions again.
+  Faster captions: "Faster captions (Parakeet)" in the same place (about 760 MB once) writes captions about 6 times
+  faster, for 25 European languages (other languages still use Whisper, by itself). "Caption engine" lets you choose.
   Captions in Discord: Discord doesn't show subtitle files, so the text has to be part of the video.
   In "Send to Discord" tick "Burn in captions" (shown when the video has captions or subtitles), or
   use video "..." -> Subtitles -> Save a copy with captions for a normal copy with the text drawn in.
@@ -68,6 +70,11 @@ Subtitles and automatic captions
   change it, - and + move its start or end (0.1 s), "Now" sets it to this moment, "Shift all" moves every line
   (subtitles a bit early or late), Add line here / Delete / Merge with next, Ctrl + Z undoes. "Save as..."
   makes a new .srt; your original only changes when you click Save and then "Replace ...?".
+  English under the subtitles (for learning a language): video "..." -> Subtitles -> Translate to English.
+  It starts at the line you're watching; the English shows under the original as each line is done.
+  "Show original" / "Show English" in the same menu switch either off. One-time download of about
+  1.2 GB (Settings -> Videos -> English translation); a film takes about a minute with a good graphics
+  card, about 6 minutes on the processor. Burned-in captions and the subtitle editor show both.
 
 Smoother video
   Video "..." -> Make smoother (2x or 4x the frames) saves a smoother copy next to the original, made
@@ -117,6 +124,9 @@ In Settings, "More" behind an explanation shows the rest of it.
 Each file you open from File Explorer while FastViewer is open gets a window of its own.
 Music (.mp3 .m4a .wav .flac ...) plays too, with its album cover, title and artist.
 Point at FastViewer's taskbar icon for Previous / Play-Pause / Next buttons.
+The Info pane (the (i) button at the bottom) shows a video's frame rate and video format (H.264, HEVC...).
+Something went wrong? Settings -> About -> Copy error report, then paste it into a message to whoever
+helps you with FastViewer. It holds no file names, and nothing is sent by itself.
 Right-click an MP3's music view to change its cover. Settings > Viewing > Show picks photos, videos and/or music.
 Rotating a video or photo is remembered; Settings > Viewing can save the turn into the file (JPEG, MP4, MOV: no quality lost).
 Playback speed (0.25x to 5x): the slider at the top of the video "..." menu; click the speed next to it for 1x.

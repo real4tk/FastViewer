@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.27.0)
+# FastViewer: complete feature list (version 1.28.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests), Report.cs (1.28.0: the error report), Translate.cs (1.28.0: English translation), Hunt128.cs (1.28.0 tests), Parakeet.cs (1.28.0: Parakeet captions);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -719,6 +719,90 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   at other speeds stays as it is. VK-style AAC without its description still needs "Make a playable copy": Windows' player
   (the picture) refuses the whole file, and playing it as it is would mean patching the user's file or a hidden copy.
 
+## English translation, error report, frame rate (1.28.0)
+- English translation (Translate.cs; video "..." > Subtitles > Translate to English / Finish the English translation, Show
+  original, Show English, Save English as a file...): every Cue has `En` beside `Text` (same timing). Add-on "Translate":
+  llama.cpp b12418 win-vulkan-x64 zip (llama-server.exe + llama-server-impl/llama/llama-common/mtmd/ggml*/libomp dlls; Unpack
+  patterns now take one * anywhere, Addons.cs Like) + tencent/Hy-MT2-1.8B-GGUF Q4_K_M at commit a0c709d9 (Apache 2.0, its
+  LICENSE.txt is part of the add-on; checked: no territory terms, unlike HY-MT1.5) = 1.17 GB. Translator.Run starts
+  llama-server hidden on 127.0.0.1 at a free port (--offline, --no-webui), in a kill-on-close job object so it never
+  outlives FastViewer; graphics card when GpuVerdict.Level >= 2 (-ngl 99, 8 slots), else processor (-ngl 0 -dev none,
+  4 slots, half the logical processors, below-normal priority); a card that fails (to start or halfway) hands over to the
+  processor. One line per request with Hy-MT2's own prompt, greedy (temperature 0, top_k 1), cache_prompt; Clean() drops
+  quotes it added, keeps the line count, caps runaways. Order: from the line being watched to the end, then the start;
+  each line shows when done (cueShown reset). Kept: Captions\<hash>.en.srt (automatic captions: the captions' hash; a
+  file: SHA1 of its path), written also after Cancel, Attach() puts it back by timing (0.05 s) when subtitles load
+  (FindSubtitles, UseSubtitleFile). On screen: SubTextEn under SubText in SubBox (#E6E6E6, regular, 0.88 size); subsOrig=
+  / subsEn= (one always on); Settings > Videos: add-on card + "Subtitles in two languages" dropdown. Burned in:
+  CaptionPainter(original, english) draws both. Subtitle editor: English box under the text (Undo, Merge, Save keep it;
+  Translator.Keep on Save / Save as).
+  Measured (film "Духless", 1150 lines of automatic captions): RTX 3060 Ti 62 s; Ryzen 5 5600X 6 threads 341 s (in the app
+  51 lines in 17.5 s with start-up). Tried and left out: 16 lines per request with delimiters (376 s, 5 groups came back
+  with the wrong count), the two lines before as context (CPU 726 s, quality mixed: 3 of 10 better, 2 worse), Q4_0 (no
+  gain), more slots or 12 threads (no gain), Tencent's 2-bit GGUF (needs unmerged llama.cpp PR 19357), Qwen3-0.6B (228 s
+  but 124 of 1150 lines echoed the instruction). Test: --case translate --addons <scratch> --addon-source <3 downloads>
+  [--translate-on gpu|cpu] (start file: a video with an .srt beside it).
+- Error report (Report.cs): Settings > About "Error report" card (count and date of the last 30 days' errors, Copy error
+  report), a toast after an error is written (at most every 5 min) and "FastViewer closed unexpectedly last time." once
+  (fatal errors now also go to errors.txt as "(closed)"; errors.seen remembers the one told). ErrorReport.Build: version,
+  Windows (registry; build >= 22000 = Windows 11), processor, screen, newest errors of 30 days grouped (same message and
+  FastViewer frame), at most 1900 characters inside ``` for one Discord message; Scrub(): FastViewer's folders by name,
+  any other path -> "<file .mp4>"/"<folder>", the user and PC name -> "<name>". Made on a pool thread, copied on the
+  window's. Test: --case errorreport --errors <file>.
+- Info pane: "Frame rate" and "Video format" under Dimensions, from a pool thread (cached per file). MP4/MOV:
+  VideoInfo.FrameRate reads the whole stts (variable when frames more than 1% off the usual length make up over 2%;
+  steady -> the usual frame length, snapped to 23.976/24/25/29.97/30/.../120/144 within 0.5%; variable -> "about 95.5 fps
+  (up to 120)" when the usual rate is over 2 off the average) and the stsd code (avc1 H.264, hvc1/hev1 HEVC, av01, vp09,
+  ProRes...). Other files (MKV, WebM, AVI, MPEG-TS named .mp4): VideoConverter.NativeVideo via Media Foundation (subtype
+  four-letter code, H.264 elementary stream GUID, MPEG-2), the rate from the first 120 stored frame times (mean of the
+  normal gaps, snapped). Test hook: --fps <video> <out.txt>; --case inforows.
+- Make smoother (Tools.cs): the new file gets the original's creation and modified dates minus 10 ms.
+- Captions in 2-minute pieces (cut at the quietest half second) were built and measured on the whole film, then taken
+  out: 58 instead of 42 spoken lines without text, 9 instead of 4 missed stretches (new ones near the cuts). Test hook:
+  --transcribe <wav> <out.srt> <language> (the installed add-on).
+
+- Parakeet captions (Parakeet.cs): add-on "Parakeet" = transcribe.cpp v0.4.2 windows-x86_64-cpu-vulkan.tar.gz (only
+  transcribe.dll, ggml.dll, ggml-base.dll, ggml-cpu-*.dll; Addons.cs now unpacks .tar.gz: UntarGz) + handy-computer/
+  parakeet-tdt-0.6b-v3-gguf Q8_0 at commit d8d8c32c (NVIDIA, CC BY 4.0) = 758 MB; card "Faster captions (Parakeet)" in
+  Settings > Videos (needs Automatic captions), "Caption engine" Automatic / Parakeet / Whisper (captionEngine= 0/1/2).
+  Parakeet.Choose: Whisper when chosen or not installed; Parakeet when chosen; Automatic: language set -> Parakeet if it's
+  one of its 25 (bg hr cs da nl en et fi fr de el hu it lv lt mt pl pt ro ru sk sl es sv uk), "auto" -> DetectLanguage
+  first: six 5 s bits (15%...90%; a video under 60 s: its first 30 s) put into one 30 s .wav, whisper-cli -dl with the
+  small model (about 3 s; p < 0.3 = not found -> Whisper as before), and the language found goes to Whisper too.
+  (whisper-cli -dl ignores -ot: it always listened to the film's first 30 s and said "en".) Whisper.Transcribe(...,
+  parakeet) runs the hidden "FastViewer.exe --parakeet <wav> <add-on folder> <threads>" with Helper.Run: Parakeet.Child
+  P/Invokes transcribe.dll (init_backends, open with backend CPU and n_threads, run with word timestamps; parameter structs
+  filled by their own _init, fields written at their offsets), cuts the sound into ~20 s pieces at the quietest half
+  second (15-25 s; sound up to 5 minutes in one go), groups words into lines like Whisper's -ml 84 -sow (pause > 0.8 s,
+  84 characters, sentence end after 20) and prints "[from --> to]  text" lines: the same reading, filters, live lines
+  and Tidy as Whisper; "E <reason>" when it fails. captionSteps names the engine and the language found.
+  Measured (whole film "Духless", Ryzen 5 5600X, 6 threads): 1.27 large Whisper 57.5 min, 4.7% of spoken lines without
+  text, 1.6% more than 3 s late, 4 missed stretches; Parakeet 2-min pieces 9.4 min, 10.1%, 1.9%, 15; 30 s 9.3 min, 5.9%,
+  1.4%, 5; 20 s 10.2 min, 5.5%, 1.1%, 5 (kept; median start 0.27 s against 0.33 s). Language found in 3.2 s (ru 0.99; the Dutch Medal clip nl 0.82; that 30 s
+  clip captioned in 7 s against about 69 s with the large model). Songs (9, lyrics known; raw output): small 43.7%,
+  large 24.0%, Parakeet 27.5% of the words wrong; Parakeet about 5.5 s per minute of sound against 37 (large) and 15
+  (small). Through the app (Tidy drops repeated choruses, so higher for every engine): large 26.6%, Parakeet 28.1%. The
+  child writes UTF-8 itself (Console.SetOut): the console code page had turned Cyrillic and accents into "?". Louder sound or
+  shorter pieces for songs didn't help. Tests: --case pkcaptions --addons <scratch with junctions to the real Whisper
+  folders> --addon-source <the 2 downloads> [--pattern engine] (speech.mp4 in the start folder); --transcribe <wav>
+  <out.srt> <language> <engine> <add-ons folder>.
+- Voice activity detection (whisper.cpp --vad, Silero 5.1.2) measured and left out: on 9 film stretches (121 spoken lines)
+  it left 29-42 lines without text (thresholds 0.5/0.35/0.2) against 18-25 without it, though 2-3x faster.
+- Skip icons (Looks.cs Glyph.SkipBack / SkipForward): the video bar's drawing (arc, arrowhead, SkipNumber digits) as a
+  Glyph code, with the current amount (Glyph.SetSkips from UpdateSkipButtons redraws them) or a fixed one after the code
+  (SkipBack + "5"); used in Settings > Buttons, Keyboard (also Back/Forward 5 s), Videos and the Hidden-buttons menu items.
+  The Buttons page's Rotate row has Glyph.RotateLeft, mirrored like RotateBtn. Test: --case skiprows [--look X].
+- Settings > About: "Credits" card (Whisper/whisper.cpp, Parakeet CC BY 4.0 with the link and "converted", transcribe.cpp,
+  Hy-MT2 Apache 2.0, llama.cpp, RIFE, FFmpeg, sherpa-onnx, Tabler Icons, Inter).
+- Round 2 (user's tests): (1) Subtitle editor rows were Windows' black on every dark look: the rows are the ListBox's own
+  items, so their text inherits from the list, not from SubLine's Foreground; subList now takes TextMain. The pane keeps
+  at least 85% of PanelBg in a see-through Custom look (UpdateSubEditCover; a neutral dark/light behind it when the panel
+  colour is as light as the text), English box 64 high. (2) Send to Discord (Share.cs): SwitchRow (menu row with the
+  ToggleSwitch at its end, the whole row flips it, menu stays open, saved at once) for "Burn in captions" and "Keep
+  speed" at the top; sizes "20 MB, Discord without Nitro" / "50 MB, Nitro Basic" / "500 MB, Nitro" as send rows (icon
+  E724, no tick). AddKeepSpeed (Make GIF) and Save clip use the same switch. Test: --case lookcheck [settings with a
+  look] (pictures editor_<look>.png, discord_<look>.png; logs the row text colour and the Burn switch).
+
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -749,7 +833,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   skip back/forward, slideshow speed), Keyboard (every action, two keys each, Reset all), Mouse,
   Speed (stay ready in the background, Preload, "Start even faster" = NGen with admin approval),
   Default app (add to "Open with", open Windows Default apps), Updates (automatic check on/off, Check now),
-  About (version and where the settings file is).
+  About (version, where the settings file is, Copy error report, screen rate).
 - Usable with the keyboard alone (Tab, Space/Enter, arrow keys in menus, Esc), with a focus ring; every
   control has a screen-reader name. In a shortcut box: press a key to set it, Delete removes it, Tab moves on.
 - Narrow windows: the side menu shows icons only and scrolls.

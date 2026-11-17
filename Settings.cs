@@ -88,8 +88,11 @@ namespace FastViewer
                 case "gridSize": gridSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "gridSort": gridSort = Math.Max(0, Math.Min(GridSortNames.Length - 1, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "subs": subsOn = v == "1"; break;
+                case "subsOrig": subsOriginal = v != "0"; break;
+                case "subsEn": subsEnglish = v != "0"; break;
                 case "subSize": subSize = Math.Max(0, Math.Min(2, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "captionLang": captionLanguage = Array.IndexOf(Whisper.LanguageCodes, v) >= 0 ? v : "auto"; break;
+                case "captionEngine": captionEngine = (int)Clamp(Num(v), 0, 2, 0); break;
                 case "discordBurn": discordBurn = v == "1"; break;
                 case "soundMix": SoundMixing.On = v != "0"; break;
                 case "soundVol": SoundMixing.LoadVolumes(v); break;
@@ -155,8 +158,11 @@ namespace FastViewer
                 "soundChoice=" + soundChoice.ToString(CultureInfo.InvariantCulture),
                 "keepSpeed=" + (keepSpeed ? "1" : "0"),
                 "subs=" + (subsOn ? "1" : "0"),
+                "subsOrig=" + (subsOriginal ? "1" : "0"),
+                "subsEn=" + (subsEnglish ? "1" : "0"),
                 "subSize=" + subSize.ToString(CultureInfo.InvariantCulture),
                 "captionLang=" + captionLanguage,
+                "captionEngine=" + captionEngine.ToString(CultureInfo.InvariantCulture),
                 "lastUpdateCheck=" + lastUpdateCheck.Ticks.ToString(CultureInfo.InvariantCulture),
                 "miniLong=" + miniLong.ToString(CultureInfo.InvariantCulture),
                 "miniLeft=" + miniLeft.ToString(CultureInfo.InvariantCulture),
@@ -286,6 +292,7 @@ namespace FastViewer
         {
             F<SkipNumber>("BackText").Text = skipBack.ToString(CultureInfo.InvariantCulture);
             F<SkipNumber>("FwdText").Text = skipForward.ToString(CultureInfo.InvariantCulture);
+            Glyph.SetSkips(skipBack, skipForward); // 1.28.0: the skip icons in Settings and the menus show the same amounts
             F<Button>("BackBtn").ToolTip = WithKey("Back " + skipBack + " seconds", KeyOf("skipBack"));
             F<Button>("FwdBtn").ToolTip = WithKey("Forward " + skipForward + " seconds", KeyOf("skipForward"));
             System.Windows.Automation.AutomationProperties.SetName(F<Button>("BackBtn"), "Back " + skipBack + " seconds");
@@ -390,6 +397,7 @@ namespace FastViewer
 
         void UpdateSettingsSeeThrough()
         {
+            if (subEditOpen) UpdateSubEditCover(); // 1.28.0: the subtitle editor's pane too (SubEditor.cs)
             var page = F<Panel>("SettingsPage");
             if (page == null) return;
             double clear = SettingsSeeThrough();
@@ -476,11 +484,11 @@ namespace FastViewer
                         idleTimer.Interval = TimeSpan.FromSeconds(hideDelay > 0 ? hideDelay : 2.5);
                     }));
             var skipLabels = SkipChoices.Select(s => s + " seconds").ToArray();
-            AddCard("", "Skip back",
+            AddCard(Glyph.SkipBack, "Skip back",
                 "How far the skip back button and the J key jump.",
                 Dropdown(skipLabels, () => Math.Max(0, Array.IndexOf(SkipChoices, skipBack)),
                     i => { skipBack = SkipChoices[i]; UpdateSkipButtons(); }));
-            AddCard("", "Skip forward",
+            AddCard(Glyph.SkipForward, "Skip forward",
                 "How far the skip forward button and the L key jump.",
                 Dropdown(skipLabels, () => Math.Max(0, Array.IndexOf(SkipChoices, skipForward)),
                     i => { skipForward = SkipChoices[i]; UpdateSkipButtons(); }));
@@ -551,6 +559,40 @@ namespace FastViewer
             AddCard("\uE946", "FastViewer " + version.ToString(3),
                 "A fast photo and video viewer. See \"What's new.txt\" for what changed in each version. " +
                 "Settings are saved in " + SettingsFile, null);
+            // 1.28.0: the error report (Report.cs), for sending to whoever looks after FastViewer.
+            var report = new Button { Content = "Copy error report", MinWidth = 120, Height = 32 };
+            report.Click += delegate { CopyErrorReport(); };
+            var reportCard = AddCard("", "Error report",
+                "Copies FastViewer's version, your Windows version and the last errors, without your file names or folders, " +
+                "so you can paste it into a message. Nothing is sent anywhere.", report);
+            settingsRefresh.Add(delegate
+            {
+                var desc = errorReportDesc = ((reportCard.Child as Grid).Children[1] as StackPanel).Children[1] as TextBlock;
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    string state;
+                    try
+                    {
+                        var all = ErrorReport.Read();
+                        var recent = all.Where(e => e.When >= DateTime.Now.AddDays(-30)).ToList();
+                        state = recent.Count == 0 ? "No errors in the last 30 days." : recent.Count + " error" + (recent.Count == 1 ? "" : "s") +
+                            " in the last 30 days, the last on " + recent.Last().When.ToString("d MMM 'at' HH:mm", System.Globalization.CultureInfo.InvariantCulture) + ".";
+                    }
+                    catch { state = ""; }
+                    Dispatcher.BeginInvoke(new Action(delegate
+                    {
+                        desc.Text = state + (state.Length > 0 ? " " : "") + "Copies FastViewer's version, your Windows version and the last errors, " +
+                            "without your file names or folders, so you can paste it into a message. Nothing is sent anywhere.";
+                    }));
+                });
+            });
+            // 1.28.0: what FastViewer is made with (the CC BY licence of the Parakeet model asks for this credit).
+            AddCard("\uE8F1", "Credits",
+                "Automatic captions: Whisper by OpenAI, run by whisper.cpp (MIT). Faster captions: the Parakeet TDT 0.6B v3 model by NVIDIA, " +
+                "licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0), used as the GGUF Q8_0 conversion by handy-computer " +
+                "(changed: converted and made smaller), run by transcribe.cpp (MIT). English translation: Hy-MT2-1.8B by Tencent " +
+                "(Apache 2.0), run by llama.cpp (MIT). Smoother video: RIFE by hzwer, run by rife-ncnn-vulkan (MIT), and FFmpeg. " +
+                "Voice isolation: sherpa-onnx (Apache 2.0). Rotate icon: Tabler Icons (MIT). Font: Inter (SIL Open Font License).", null);
             var screen = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
             screen.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
             AddCard("\uE7F4", "Screen", "Animations follow your screen's refresh rate (with several screens, the fastest one). " +

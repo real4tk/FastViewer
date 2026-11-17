@@ -5,6 +5,44 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.28.0  (15 Nov 2026)
+  New
+  - English translation of subtitles, for learning a language. Video "..." -> Subtitles -> Translate to English
+    translates the subtitles or automatic captions line by line into English, on this PC. It starts at the line
+    you're watching and each line shows as soon as it's done. The original shows on top and the English under it
+    (a little smaller); "Show original" and "Show English" in the same menu switch either off. The English is kept,
+    so next time it's just there (also when you stop halfway: then only the rest is translated). It goes into
+    "Burn in captions" and "Save a copy with captions" too, the subtitle editor has an English box for each line,
+    and "Save English as a file..." writes it as an .srt. This needs a one-time download of about 1.2 GB (the
+    translation model Hy-MT2 by Tencent, and llama.cpp to run it); after that it works without internet. With a
+    good graphics card a whole film takes about a minute, on the processor alone about 6 minutes.
+  - Faster captions (Parakeet). An optional extra download (about 760 MB) in Settings -> Videos: a newer speech
+    model by NVIDIA that writes captions about 6 times faster than the large Whisper model (a whole film in about
+    10 minutes instead of an hour), with better timing. It knows 25 European languages (English, Dutch, German,
+    French, Spanish, Russian, Ukrainian, Polish...); FastViewer first listens to a few seconds of the video to find
+    the language and uses Whisper for the others. "Caption engine" (Automatic / Parakeet / Whisper) picks it
+    yourself. On a film it misses a few more lines than the large Whisper model (5.5% against 4.7% of the spoken
+    lines); with music and songs the large model is still a little better.
+  - "Copy error report" in Settings -> About. When something goes wrong in FastViewer, it copies a short report
+    (FastViewer's and Windows' version and the last errors, without your file names or folders) that you can
+    paste into a message to whoever helps you with FastViewer. Right after an error a message offers the same,
+    and if FastViewer closed because of an error, it says so the next time it starts. Nothing is sent anywhere.
+  - The Info pane shows the frame rate ("60 fps"; for videos whose rate changes the average, e.g. "about 95.5 fps
+    (up to 120)") and the video format (H.264, HEVC, AV1, VP9...), under Dimensions.
+  Changed
+  - Make smoother: the new video gets the same dates as the original (10 ms earlier), so in a folder sorted by
+    date it sits right next to the original instead of at the top.
+  - Settings -> About lists the programs and models FastViewer uses (Credits).
+  - Send to Discord: "Burn in captions" (and "Keep speed" at another speed) are on/off switches at the top of the
+    menu, remembered for next time; each size ("20 MB, Discord without Nitro", "50 MB, Nitro Basic", "500 MB, Nitro")
+    starts sending right away. Make GIF and Save clip show "Keep speed" the same way.
+  Fixed
+  - Settings -> Buttons, Keyboard and Videos and the "..." menus: Skip back and Skip forward show the same icon as
+    the buttons on the video bar, with the number of seconds; Rotate shows the same arrow as its button.
+  - The subtitle editor's lines were drawn in black on dark looks (hard to read); they now take the look's text
+    colour like the rest of the pane. In a see-through Custom look the pane keeps enough of its colour behind the
+    text to stay readable over the video.
+
 1.27.0  (15 Nov 2026)
   New
   - Edit subtitles. Video "..." -> Subtitles -> Edit subtitles (or Ctrl+E) opens a pane on the right with every

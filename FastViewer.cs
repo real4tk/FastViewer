@@ -33,6 +33,7 @@ namespace FastViewer
         [STAThread]
         static void Main(string[] args)
         {
+            if (args.Length >= 4 && args[0] == "--parakeet") { Environment.ExitCode = Parakeet.Child(args); return; } // 1.28.0: the hidden Parakeet captions writer (Parakeet.cs)
             if (args.Length >= 4 && args[0] == "--isolate") { Environment.ExitCode = Vocals.Child(args); return; } // the hidden helper of voice isolation (Vocals.cs)
             if (SingleInstance.TryForward(args)) return; // a FastViewer waiting in the background shows the file
             Run(args);
@@ -55,6 +56,28 @@ namespace FastViewer
             if (args.Length >= 3 && args[0] == "--speechwav") // test: the sound of <video> as the .wav captions are made from
             {
                 try { File.WriteAllText(args[2] + ".log", "OK " + (args.Length >= 5 ? VideoConverter.SpeechWav(args[1], args[2], 0, null, null, int.Parse(args[3]), int.Parse(args[4])) : VideoConverter.SpeechWav(args[1], args[2], 0, null, null)).ToString(CultureInfo.InvariantCulture) + " s"); }
+                catch (Exception ex) { File.WriteAllText(args[2] + ".log", "ERROR " + ex); }
+                return;
+            }
+            if (args.Length >= 3 && args[0] == "--fps") // test: the Info pane's frame rate and video format of <video> into <out.txt>
+            {
+                File.WriteAllText(args[2], string.Join(" | ", VideoInfo.InfoRows(args[1])));
+                return;
+            }
+            if (args.Length >= 4 && args[0] == "--transcribe") // test: automatic captions of a speech <wav> into <out.srt>, language <code> (the installed add-on)
+            {
+                try
+                {
+                    var sw = Stopwatch.StartNew();
+                    double secs = new FileInfo(args[1]).Length / 32000.0;
+                    // [engine 0|1|2] [add-ons folder]: as the app chooses (Parakeet.Choose), with the add-ons found there
+                    if (args.Length >= 6) Addon.RootOverride = args[5];
+                    string lang = args[3], why = "";
+                    bool parakeet = args.Length >= 5 && Parakeet.Choose(int.Parse(args[4]), args[1], secs, ref lang, new CancelFlag(), out why);
+                    var cues = Whisper.Transcribe(args[1], secs, lang, p => { }, null, new CancelFlag(), parakeet);
+                    File.WriteAllText(args[2], SubtitleFile.ToSrt(cues), new System.Text.UTF8Encoding(true));
+                    File.WriteAllText(args[2] + ".log", "OK " + cues.Count + " lines in " + (int)sw.Elapsed.TotalSeconds + " s; " + why);
+                }
                 catch (Exception ex) { File.WriteAllText(args[2] + ".log", "ERROR " + ex); }
                 return;
             }
@@ -104,8 +127,19 @@ namespace FastViewer
                 if (testing) return;
                 LogUiError(e.Exception);
                 e.Handled = true;
+                // 1.28.0: a message offers the error report (Report.cs), in the window in front.
+                try
+                {
+                    var w = Application.Current.Windows.OfType<ViewerWindow>().FirstOrDefault(x => x.IsActive) ?? Application.Current.MainWindow as ViewerWindow;
+                    if (w != null) w.Dispatcher.BeginInvoke(new Action(delegate { w.OfferErrorReport(false); }));
+                }
+                catch { }
             };
-            AppDomain.CurrentDomain.UnhandledException += (o, e) => WriteCrash(e.ExceptionObject as Exception);
+            AppDomain.CurrentDomain.UnhandledException += (o, e) =>
+            {
+                WriteCrash(e.ExceptionObject as Exception);
+                if (!testing && e.IsTerminating) LogUiError(e.ExceptionObject as Exception, true); // offered at the next start
+            };
             app.Resources.MergedDictionaries.Add(Ui.Load<ResourceDictionary>("FastViewer.Theme.xaml")); // the window applies its look (Looks.cs)
             app.Run(new ViewerWindow(args));
         }
@@ -116,7 +150,7 @@ namespace FastViewer
 
         // errors.txt: when and what (at most 30 a minute, so an error that repeats every frame can't fill the disk;
         // over 1 MB the old part moves to errors.old.txt).
-        public static void LogUiError(Exception ex)
+        public static void LogUiError(Exception ex, bool closed = false)
         {
             try
             {
@@ -128,7 +162,7 @@ namespace FastViewer
                 if (File.Exists(file) && new FileInfo(file).Length > 1 << 20) File.Copy(file, Path.ChangeExtension(file, ".old.txt"), true);
                 if (File.Exists(file) && new FileInfo(file).Length > 1 << 20) File.Delete(file);
                 File.AppendAllText(file, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " FastViewer " + Assembly.GetExecutingAssembly().GetName().Version +
-                    " (kept running)" + Environment.NewLine + ex + Environment.NewLine + Environment.NewLine);
+                    (closed ? " (closed)" : " (kept running)") + Environment.NewLine + ex + Environment.NewLine + Environment.NewLine);
             }
             catch { }
         }
@@ -488,6 +522,7 @@ namespace FastViewer
                 else if (args[i] == "--vocals") Vocals.Offered = true;
                 else if (args[i] == "--addon-source" && i + 1 < args.Length) Addon.SourceOverride = args[++i];
                 else if (args[i] == "--gpu" && i + 1 < args.Length) GpuVerdict.Override = args[++i];
+                else if (args[i] == "--translate-on" && i + 1 < args.Length) Translator.ForceEngine = args[++i];
                 else if (args[i] == "--frameboost" && i + 1 < args.Length) Smooth.OwnOverride = args[++i];
                 else if (args[i] == "--preload" && i + 1 < args.Length) preloadOverride = int.Parse(args[++i]);
                 else if (args[i] == "--features" && i + 1 < args.Length) { snapDir = args[++i]; featureTest = true; }
@@ -797,6 +832,7 @@ namespace FastViewer
                 ApplyButtons();
                 if (!testMode) StartSingleInstance();
                 if (!testRun) Dispatcher.BeginInvoke(new Action(HideThumbnailBadge), DispatcherPriority.ApplicationIdle); // after the first picture
+                if (!testRun) Dispatcher.BeginInvoke(new Action(CheckClosedLastTime), DispatcherPriority.ApplicationIdle); // 1.28.0: "closed unexpectedly last time"
                 StartupUpdateCheck();
                 ApplyStretch();
                 UpdateSkipButtons();
@@ -2244,6 +2280,16 @@ namespace FastViewer
             Motion.FromTo(move, TranslateTransform.XProperty, move.X + dx, 0, ms, Motion.In);
         }
 
+        int infoTicket;
+        readonly Dictionary<string, string[]> frameRates = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase); // file -> { "60 fps", "HEVC (H.265)" } (null: unknown)
+
+        void MoveLastInfoRow(int to)
+        {
+            var row = infoList.Children[infoList.Children.Count - 1];
+            infoList.Children.RemoveAt(infoList.Children.Count - 1);
+            infoList.Children.Insert(Math.Min(to, infoList.Children.Count), row);
+        }
+
         void FillInfo()
         {
             infoList.Children.Clear();
@@ -2262,6 +2308,28 @@ namespace FastViewer
             int w, h;
             ContentSize(shown, out w, out h);
             if (w > 0) AddInfo("Dimensions", w + " x " + h);
+            if (shown != null && shown.IsVideo && !shown.IsAudio) // 1.28.0: frame rate, read on a pool thread (a film's frame table is no wait)
+            {
+                int at = infoList.Children.Count, ticket = ++infoTicket;
+                string[] known;
+                Action<string[]> add = delegate(string[] v)
+                {
+                    int place = Math.Min(at, infoList.Children.Count);
+                    if (v[0] != null) { AddInfo("Frame rate", v[0]); MoveLastInfoRow(place++); } // under Dimensions
+                    if (v[1] != null) { AddInfo("Video format", v[1]); MoveLastInfoRow(place); }
+                };
+                if (frameRates.TryGetValue(f, out known)) add(known);
+                else ThreadPool.QueueUserWorkItem(delegate
+                {
+                    var v = VideoInfo.InfoRows(f);
+                    Dispatcher.BeginInvoke(new Action(delegate
+                    {
+                        frameRates[f] = v;
+                        if (ticket != infoTicket || CurrentFile != f) return;
+                        add(v);
+                    }));
+                });
+            }
             if (shown != null && shown.IsVideo && shown.Video.NaturalDuration.HasTimeSpan)
                 AddInfo("Length", Fmt(shown.Video.NaturalDuration.TimeSpan));
         }

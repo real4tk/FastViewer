@@ -26,6 +26,15 @@ namespace FastViewer
         int[] box;                           // the line on screen, drawn once: its pixels (colour already multiplied by see-through)
         public int Painted, Lines;           // pictures that got text; different lines drawn (tests, and to tell when nothing fell inside the part)
 
+        readonly bool original = true, english;  // 1.28.0: which of the two languages (as on screen)
+
+        public CaptionPainter(IEnumerable<Cue> cues, double startSeconds, double size, FontFamily font, double radius, bool original = true, bool english = false)
+            : this(cues, startSeconds, size, font, radius)
+        {
+            this.original = original;
+            this.english = english;
+        }
+
         public CaptionPainter(IEnumerable<Cue> cues, double startSeconds, double size, FontFamily font, double radius)
         {
             this.cues = cues.OrderBy(c => c.From).ToList();
@@ -50,7 +59,14 @@ namespace FastViewer
             {
                 current = found;
                 box = null;
-                if (found >= 0) { Draw(cues[found].Text, w, h); Lines++; }
+                if (found >= 0)
+                {
+                    var c = cues[found];
+                    string en = english ? c.En : null;
+                    bool top = original || string.IsNullOrEmpty(en);
+                    if (!original && string.IsNullOrEmpty(en) && cues.Any(x => !string.IsNullOrEmpty(x.En))) { } // only English wanted: none for this line
+                    else { Draw(top ? c.Text : null, string.IsNullOrEmpty(en) ? null : en, w, h); Lines++; }
+                }
             }
             if (box == null) return;
             int x0 = Math.Max(0, (w - bw) / 2), y0 = Math.Max(0, h - bh - Math.Max(4, (int)(h * 0.045)));
@@ -75,7 +91,7 @@ namespace FastViewer
 
         // One line as a small picture, made with the same text engine the window uses (so every language and
         // emoji Windows can show comes out right). That engine wants a thread of its own kind.
-        void Draw(string text, int w, int h)
+        void Draw(string text, string en, int w, int h)
         {
             var thread = new Thread(delegate()
             {
@@ -84,20 +100,36 @@ namespace FastViewer
                     double f = Math.Max(12, size * Math.Min(h, w * 1.1)); // an upright phone video gets text sized for its width
                     double padX = f * 0.42, padTop = f * 0.14, padBottom = f * 0.22;
                     double room = Math.Max(40, w * 0.88 - 2 * padX);
-                    var ft = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                        new Typeface(font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal), f, Brushes.White, 1.0);
-                    ft.TextAlignment = TextAlignment.Center;
-                    ft.MaxTextWidth = room;
-                    ft.MaxLineCount = 4;
-                    ft.Trimming = TextTrimming.WordEllipsis;
-                    int width = Math.Min(w, (int)Math.Ceiling(ft.Width + 2 * padX)), height = Math.Min(h, (int)Math.Ceiling(ft.Height + padTop + padBottom));
+                    FormattedText ft = null, fe = null;
+                    if (text != null)
+                    {
+                        ft = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                            new Typeface(font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal), f, Brushes.White, 1.0);
+                        ft.TextAlignment = TextAlignment.Center;
+                        ft.MaxTextWidth = room;
+                        ft.MaxLineCount = 4;
+                        ft.Trimming = TextTrimming.WordEllipsis;
+                    }
+                    if (en != null) // the English under it, a little smaller and lighter (as on screen)
+                    {
+                        fe = new FormattedText(en, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                            new Typeface(font, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), f * 0.88, new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xE6)), 1.0);
+                        fe.TextAlignment = TextAlignment.Center;
+                        fe.MaxTextWidth = room;
+                        fe.MaxLineCount = 3;
+                        fe.Trimming = TextTrimming.WordEllipsis;
+                    }
+                    double gap = ft != null && fe != null ? f * 0.1 : 0;
+                    double textW = Math.Max(ft == null ? 0 : ft.Width, fe == null ? 0 : fe.Width), textH = (ft == null ? 0 : ft.Height) + gap + (fe == null ? 0 : fe.Height);
+                    int width = Math.Min(w, (int)Math.Ceiling(textW + 2 * padX)), height = Math.Min(h, (int)Math.Ceiling(textH + padTop + padBottom));
                     if (width < 2 || height < 2) return;
                     var visual = new DrawingVisual();
                     using (var dc = visual.RenderOpen())
                     {
                         double r = Math.Min(Math.Min(width, height) / 2.0, radius * f / 22);
                         dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)), null, new Rect(0, 0, width, height), r, r);
-                        dc.DrawText(ft, new Point((width - room) / 2, padTop)); // (centred text sits in the middle of its room)
+                        if (ft != null) dc.DrawText(ft, new Point((width - room) / 2, padTop)); // (centred text sits in the middle of its room)
+                        if (fe != null) dc.DrawText(fe, new Point((width - room) / 2, padTop + (ft == null ? 0 : ft.Height + gap)));
                     }
                     var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
                     bitmap.Render(visual);
@@ -129,7 +161,7 @@ namespace FastViewer
             object corner = TryFindResource("Radius.Control");
             double radius = corner is CornerRadius ? ((CornerRadius)corner).TopLeft : 4;
             return lastPainter = new CaptionPainter(cues.ToList(), from.HasValue ? from.Value.TotalSeconds : 0,
-                SubSizes[Math.Max(0, Math.Min(2, subSize))], font, radius);
+                SubSizes[Math.Max(0, Math.Min(2, subSize))], font, radius, subsOriginal, subsEnglish);
         }
 
         void SaveCopyWithCaptions()

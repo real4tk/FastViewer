@@ -189,7 +189,7 @@ namespace FastViewer
             new ButtonInfo("OpenBtn", "Open", "", "Top bar"),
             new ButtonInfo("DeleteBtn", "Delete", "", "Top bar"),
             new ButtonInfo("CopyBtn", "Copy", "", "Top bar"),
-            new ButtonInfo("RotateBtn", "Rotate", "", "Top bar"),
+            new ButtonInfo("RotateBtn", "Rotate", Glyph.RotateLeft, "Top bar"),
             new ButtonInfo("MiniBtn", "Mini player", "", "Top bar"),
             new ButtonInfo("OpenWithBtn", "Open with", "", "Top bar"),
             new ButtonInfo("SlideshowBtn", "Slideshow", "", "Bottom bar"),
@@ -201,8 +201,8 @@ namespace FastViewer
             new ButtonInfo("ZoomGroup", "Zoom slider", "", "Bottom bar"),
             new ButtonInfo("FullBtn", "Full screen", "", "Bottom bar"),
             new ButtonInfo("PlayBtn", "Play / pause", "", "Video controls"),
-            new ButtonInfo("BackBtn", "Skip back", "", "Video controls"),
-            new ButtonInfo("FwdBtn", "Skip forward", "", "Video controls"),
+            new ButtonInfo("BackBtn", "Skip back", Glyph.SkipBack, "Video controls"),
+            new ButtonInfo("FwdBtn", "Skip forward", Glyph.SkipForward, "Video controls"),
             new ButtonInfo("VolBtn", "Volume", "", "Video controls"),
             new ButtonInfo("LoopBtn", "Repeat", "", "Video controls"),
             new ButtonInfo("SubBtn", "Subtitles (CC, when a video has them)", "\uE7F0", "Video controls"),
@@ -284,8 +284,8 @@ namespace FastViewer
             else
             {
                 if (!Shown("PlayBtn")) items.Add(Item(playing ? "Pause" : "Play", playing ? "" : "", TogglePlay, KeyOf("play")));
-                if (!Shown("BackBtn")) items.Add(Item("Back " + skipBack + " seconds", "", delegate { SeekBy(-skipBack); }, KeyOf("skipBack")));
-                if (!Shown("FwdBtn")) items.Add(Item("Forward " + skipForward + " seconds", "", delegate { SeekBy(skipForward); }, KeyOf("skipForward")));
+                if (!Shown("BackBtn")) items.Add(Item("Back " + skipBack + " seconds", Glyph.SkipBack, delegate { SeekBy(-skipBack); }, KeyOf("skipBack")));
+                if (!Shown("FwdBtn")) items.Add(Item("Forward " + skipForward + " seconds", Glyph.SkipForward, delegate { SeekBy(skipForward); }, KeyOf("skipForward")));
                 if (!Shown("VolBtn"))
                 {
                     items.Add(Item(muted ? "Unmute" : "Mute", "", ToggleMute, KeyOf("mute")));
@@ -379,12 +379,19 @@ namespace FastViewer
                     AddSubheading(bar);
                 }
                 var id = info.Id;
-                AddCard(info.Glyph, info.Name, null, Toggle(() => Shown(id), v =>
+                var buttonCard = AddCard(info.Glyph, info.Name, null, Toggle(() => Shown(id), v =>
                 {
                     if (v) hiddenButtons.Remove(id);
                     else hiddenButtons.Add(id);
                     ApplyButtons();
                 }));
+                if (id == "RotateBtn") // 1.28.0: the same arrow as the button itself, which turns the way "The rotate button turns" says
+                {
+                    var rotateIcon = ((Grid)buttonCard.Child).Children[0] as Glyph;
+                    Action turn = delegate { rotateIcon.LayoutTransform = rotateLeft ? Transform.Identity : new ScaleTransform(-1, 1); };
+                    turn();
+                    settingsRefresh.Add(turn);
+                }
                 if (id == "Arrows")
                     AddCard("", "Play button in the middle",
                         "The big play/pause button over a video. \"Only when paused\" shows a play button on a paused video, like YouTube. " +

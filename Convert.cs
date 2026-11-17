@@ -1,10 +1,12 @@
-// FastViewer: saves videos with Windows' own video tools (Media Foundation), for "Make compatible copy"
+﻿// FastViewer: saves videos with Windows' own video tools (Media Foundation), for "Make compatible copy"
 // and "Trim". The result is a standard .mp4 (H.264 video, AAC sound) that plays and gets thumbnails
 // everywhere, stored upright and in normal (non-HDR) colours.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Runtime.InteropServices;
 
 namespace FastViewer
@@ -584,6 +586,84 @@ namespace FastViewer
                     Marshal.ReleaseComObject(sample);
                 }
             }
+            finally
+            {
+                if (reader != null) Marshal.ReleaseComObject(reader);
+                MFShutdown();
+            }
+        }
+
+        // 1.28.0, the Info pane for files that aren't MP4/MOV inside (MKV, WebM, AVI, a TS named .mp4): the frame rate the
+        // file states and the video format, as Windows reads them. False when it can't.
+        public static bool NativeVideo(string file, out double fps, out string format)
+        {
+            fps = 0;
+            format = null;
+            if (MFStartup(0x00020070, 0) < 0) return false;
+            IMFSourceReader reader = null;
+            try
+            {
+                if (MFCreateSourceReaderFromURL(file, null, out reader) < 0) return false;
+                IMFMediaType native;
+                if (reader.GetNativeMediaType(FIRST_VIDEO, 0, out native) < 0) return false;
+                long rate;
+                if (native.GetUINT64(ref G.MF_MT_FRAME_RATE, out rate) >= 0 && (rate & 0xFFFFFFFF) != 0) fps = (double)(rate >> 32) / (rate & 0xFFFFFFFF);
+                Guid sub;
+                if (native.GetGUID(ref G.MF_MT_SUBTYPE, out sub) >= 0)
+                {
+                    if (sub == new Guid("e06d8026-db46-11cf-b4d1-00805f6cbbea")) format = "MPEG-2";
+                    else if (sub == new Guid("3f40f4f0-5622-4ff8-b6d8-a17a584bee5e")) format = "H.264 (AVC)"; // (H.264 as a stream, in TS files)
+                    else
+                    {
+                        var b = sub.ToByteArray(); // the usual video formats are a four-letter code in the first 4 bytes
+                        string code = Encoding.ASCII.GetString(b, 0, 4).ToUpperInvariant();
+                        switch (code)
+                        {
+                            case "H264": case "AVC1": format = "H.264 (AVC)"; break;
+                            case "HEVC": case "H265": case "HVC1": format = "HEVC (H.265)"; break;
+                            case "AV01": format = "AV1"; break;
+                            case "VP90": format = "VP9"; break;
+                            case "VP80": format = "VP8"; break;
+                            case "MP4V": case "XVID": case "DIVX": case "DX50": format = "MPEG-4 Part 2"; break;
+                            case "MJPG": format = "Motion JPEG"; break;
+                            case "WMV3": format = "WMV 9"; break;
+                            case "WVC1": format = "VC-1"; break;
+                            case "H263": format = "H.263"; break;
+                            default: format = code.All(char.IsLetterOrDigit) ? code : null; break;
+                        }
+                    }
+                }
+                Marshal.ReleaseComObject(native);
+                // The stated rate isn't always right (an MKV said half): the times of the first frames, as stored (no
+                // decoding), tell the real one.
+                try
+                {
+                    reader.SetStreamSelection(ALL_STREAMS, false);
+                    reader.SetStreamSelection(FIRST_VIDEO, true);
+                    var times = new List<long>();
+                    for (int k = 0; k < 120; k++)
+                    {
+                        int index, flags; long time; IMFSample sample;
+                        if (reader.ReadSample(FIRST_VIDEO, 0, out index, out flags, out time, out sample) < 0 || (flags & 3) != 0) break;
+                        if (sample != null) { times.Add(time); Marshal.ReleaseComObject(sample); }
+                    }
+                    times = times.Distinct().OrderBy(t => t).ToList();
+                    if (times.Count >= 10)
+                    {
+                        // the usual gap between frames (frames stored out of order at the edges would bend an average)
+                        var gaps = times.Zip(times.Skip(1), (a, b) => b - a).OrderBy(g => g).ToList();
+                        double median = gaps[gaps.Count / 2];
+                        var usual = gaps.Where(g => g > median * 0.6 && g < median * 1.6).ToList(); // (WebM keeps whole milliseconds: 16, 17, 17...)
+                        double measured = 1e7 / usual.Average();
+                        double nearest = new[] { 23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 90, 100, 119.88, 120, 144, 165, 240 }.OrderBy(c => Math.Abs(measured - c)).First();
+                        if (Math.Abs(measured - nearest) < nearest * 0.005) measured = nearest;
+                        if (fps <= 0 || Math.Abs(fps - measured) > measured * 0.02) fps = measured; // the stated one when it agrees (23.976 stays exact)
+                    }
+                }
+                catch { }
+                return fps > 0 || format != null;
+            }
+            catch { return false; }
             finally
             {
                 if (reader != null) Marshal.ReleaseComObject(reader);

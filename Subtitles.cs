@@ -23,6 +23,7 @@ namespace FastViewer
     {
         public double From, To; // seconds
         public string Text;
+        public string En;       // 1.28.0: its English translation (Translate.cs), same timing
     }
 
     static class SubtitleFile
@@ -132,7 +133,7 @@ namespace FastViewer
         readonly Dictionary<string, string> chosenSubs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); // picked by hand, this session
         readonly DispatcherTimer subTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
         Border subBox;
-        TextBlock subText;
+        TextBlock subText, subTextEn;
         Glyph subIcon;
         TranslateTransform subLift;
         internal readonly List<string> subLog = new List<string>(); // tests
@@ -143,6 +144,7 @@ namespace FastViewer
         {
             subBox = F<Border>("SubBox");
             subText = F<TextBlock>("SubText");
+            subTextEn = F<TextBlock>("SubTextEn");
             subIcon = F<Glyph>("SubIcon");
             subLift = (TranslateTransform)F<FrameworkElement>("SubHolder").RenderTransform;
             OnClick("SubBtn", ToggleSubtitles);
@@ -178,6 +180,7 @@ namespace FastViewer
                         string made = Whisper.CaptionsFile(video);
                         if (made != null && File.Exists(made)) { list = Whisper.Tidy(SubtitleFile.Load(made)); from = "auto"; } // (1.27.0: captions made before are tidied too)
                     }
+                    if (list != null) Translator.Attach(list, video, from); // 1.28.0: the English made before
                 }
                 catch { list = null; }
                 if (list == null || list.Count == 0) return;
@@ -259,6 +262,7 @@ namespace FastViewer
             catch (Exception ex) { ShowToast("Couldn't read those subtitles: " + ex.Message, null, null, 6, "error"); return; }
             if (list.Count == 0) { ShowToast("No subtitles found in " + Path.GetFileName(file) + " (FastViewer reads .srt and .vtt).", null, null, 6, "error"); return; }
             chosenSubs[video] = file;
+            Translator.Attach(list, video, file);
             if (shown == null || shown.File != video) return;
             subsLookup++;
             if (!subsOn) { subsOn = true; SaveSettings(); }
@@ -296,7 +300,14 @@ namespace FastViewer
                 else { Motion.Set(subBox, OpacityProperty, 0); subBox.Visibility = Visibility.Collapsed; }
                 return;
             }
+            // 1.28.0: the original on top, its English under it; each can be switched off.
+            string en = cues[i].En;
+            bool showOriginal = subsOriginal || string.IsNullOrEmpty(en), showEnglish = subsEnglish && !string.IsNullOrEmpty(en);
+            if (!subsOriginal && !showEnglish && HasEnglish) { ShowCue(-1, animate); cueShown = i; return; } // (only English wanted, this line has none yet)
             subText.Text = cues[i].Text;
+            subText.Visibility = showOriginal ? Visibility.Visible : Visibility.Collapsed;
+            subTextEn.Text = showEnglish ? en : "";
+            subTextEn.Visibility = showEnglish ? Visibility.Visible : Visibility.Collapsed;
             if (snapDir != null) lock (subLog) if (subLog.Count < 300) subLog.Add("shows \"" + cues[i].Text.Replace("\n", " / ") + "\"");
             if (!first && subBox.Visibility == Visibility.Visible && !Motion.Busy(subBox)) return; // the next line simply takes its place
             SizeSubs();
@@ -312,6 +323,8 @@ namespace FastViewer
             if (h <= 0 || w <= 0) return;
             subText.FontSize = Math.Max(12, Math.Min(56, h * SubSizes[Math.Max(0, Math.Min(2, subSize))]));
             subText.MaxWidth = Math.Max(120, w * 0.82 - 24);
+            subTextEn.FontSize = Math.Round(subText.FontSize * 0.88, 1);
+            subTextEn.MaxWidth = subText.MaxWidth;
         }
 
         // The text keeps clear of the control bar: it glides up when the bar appears and back down when it goes.
@@ -339,6 +352,7 @@ namespace FastViewer
             if (HasSubs) list.Add(Item("Show subtitles", subsOn ? "" : null, ToggleSubtitles, KeyOf("subtitles")));
             list.Add(Item(HasSubs ? "Choose other subtitles..." : "Choose subtitles...", "", ChooseSubtitles));
             list.Add(Item(auto ? "Make the captions again" : "Make captions automatically", "", MakeCaptions, KeyOf("autoCaptions")));
+            list.AddRange(EnglishMenuItems()); // 1.28.0 (Translate.cs)
             if (auto) list.Add(Item("Save captions as a file...", "", SaveCaptionsAs));
             list.Add(Item(HasSubs ? "Edit subtitles..." : "Write subtitles...", "\uE70F", ToggleSubEditor, KeyOf("editSubs"))); // (1.27.0, SubEditor.cs)
             if (HasSubs && !s.IsAudio) list.Add(Item("Save a copy with captions...", "", SaveCopyWithCaptions, KeyOf("burnCaptions")));
@@ -355,6 +369,7 @@ namespace FastViewer
             AddCard("", "Subtitle size", null,
                 Dropdown(new[] { "Small", "Medium", "Large" }, () => subSize, i => { subSize = i; SizeSubs(); }));
             AddCaptionSettings();
+            AddTranslateSettings(); // 1.28.0
         }
     }
 }

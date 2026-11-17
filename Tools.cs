@@ -274,6 +274,14 @@ namespace FastViewer
                 }
                 if (code != 0 || !File.Exists(partFile) || new FileInfo(partFile).Length < 1000) throw new Exception("the new video couldn't be saved" + Last(errors));
                 File.Move(partFile, target);
+                // 1.28.0: the original's dates minus 10 ms, so in a folder sorted by date it sits right next to the original
+                // (just after it, newest first) instead of at the top as the newest file.
+                try
+                {
+                    File.SetCreationTimeUtc(target, File.GetCreationTimeUtc(source).AddMilliseconds(-10));
+                    File.SetLastWriteTimeUtc(target, File.GetLastWriteTimeUtc(source).AddMilliseconds(-10));
+                }
+                catch { }
                 progress("saving the video", 1);
                 return target;
             }

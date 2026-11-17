@@ -170,6 +170,12 @@ namespace FastViewer
                 return;
             }
             Verify(part, hash);
+            if (part.Url.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase)) // 1.28.0: transcribe.cpp ships its Windows build this way
+            {
+                UntarGz(temp, System.IO.Path.GetDirectoryName(target), part.Unpack);
+                System.IO.File.Delete(temp);
+                return;
+            }
             using (var zip = ZipFile.OpenRead(temp))
                 foreach (var e in zip.Entries)
                 {
@@ -180,9 +186,56 @@ namespace FastViewer
             System.IO.File.Delete(temp);
         }
 
+        // A .tar.gz: the regular files whose own name (no folders) matches, into `folder`. Tar = 512-byte headers (name at 0,
+        // size in octal at 124, type at 156, "ustar" prefix at 345), each file padded to 512 bytes.
+        static void UntarGz(string archive, string folder, string[] wanted)
+        {
+            using (var gz = new System.IO.Compression.GZipStream(System.IO.File.OpenRead(archive), System.IO.Compression.CompressionMode.Decompress))
+            {
+                var header = new byte[512];
+                var buffer = new byte[1 << 16];
+                while (ReadFully(gz, header, 512))
+                {
+                    if (header.All(b => b == 0)) break; // the end
+                    string name = Encoding.ASCII.GetString(header, 0, 100).TrimEnd('\0');
+                    string prefix = Encoding.ASCII.GetString(header, 345, 155).TrimEnd('\0');
+                    if (prefix.Length > 0) name = prefix + "/" + name;
+                    string octal = Encoding.ASCII.GetString(header, 124, 12).Trim('\0', ' ');
+                    long size = octal.Length == 0 ? 0 : Convert.ToInt64(octal, 8);
+                    char type = (char)header[156];
+                    string file = name.Replace('\\', '/').Split('/').Last();
+                    bool take = (type == '0' || type == '\0') && file.Length > 0 && wanted.Any(w => Like(file, w));
+                    Stream to = take ? (Stream)System.IO.File.Create(System.IO.Path.Combine(folder, file)) : Stream.Null;
+                    using (to)
+                    {
+                        long left = size;
+                        while (left > 0)
+                        {
+                            int n = gz.Read(buffer, 0, (int)Math.Min(buffer.Length, left));
+                            if (n <= 0) throw new InvalidDataException("the download is cut off");
+                            to.Write(buffer, 0, n);
+                            left -= n;
+                        }
+                    }
+                    long pad = (512 - size % 512) % 512;
+                    if (pad > 0 && !ReadFully(gz, new byte[pad], (int)pad)) break;
+                }
+            }
+        }
+
+        static bool ReadFully(Stream s, byte[] into, int count)
+        {
+            int got = 0;
+            while (got < count) { int n = s.Read(into, got, count - got); if (n <= 0) return false; got += n; }
+            return true;
+        }
+
         static bool Like(string name, string pattern)
         {
-            return pattern.StartsWith("*") ? name.EndsWith(pattern.Substring(1), StringComparison.OrdinalIgnoreCase) : name.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+            int star = pattern.IndexOf('*'); // one * anywhere: "*.dll", "ggml*.dll" (1.28.0)
+            if (star < 0) return name.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+            string head = pattern.Substring(0, star), tail = pattern.Substring(star + 1);
+            return name.Length >= head.Length + tail.Length && name.StartsWith(head, StringComparison.OrdinalIgnoreCase) && name.EndsWith(tail, StringComparison.OrdinalIgnoreCase);
         }
 
         void Verify(AddonPart part, string hash)

@@ -240,7 +240,10 @@
     <Grid x:Name="SubHolder" VerticalAlignment="Bottom" HorizontalAlignment="Center" IsHitTestVisible="False">
       <Grid.RenderTransform><TranslateTransform/></Grid.RenderTransform>
       <Border x:Name="SubBox" Background="#C0000000" CornerRadius="{DynamicResource Radius.Control}" Padding="12,4,12,6" Visibility="Collapsed" Opacity="0">
-        <TextBlock x:Name="SubText" Foreground="White" TextAlignment="Center" TextWrapping="Wrap" FontFamily="{DynamicResource Font.Ui}" FontWeight="SemiBold"/>
+        <StackPanel>
+          <TextBlock x:Name="SubText" Foreground="White" TextAlignment="Center" TextWrapping="Wrap" FontFamily="{DynamicResource Font.Ui}" FontWeight="SemiBold"/>
+          <TextBlock x:Name="SubTextEn" Foreground="#FFE6E6E6" TextAlignment="Center" TextWrapping="Wrap" FontFamily="{DynamicResource Font.Ui}" Margin="0,2,0,0" Visibility="Collapsed"/>
+        </StackPanel>
       </Border>
     </Grid>
 

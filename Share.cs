@@ -92,27 +92,26 @@ namespace FastViewer
 
         // The ticked "Keep speed (1.25x)" item for a trim bar menu, after a line; nothing at 1x. Ticking keeps the
         // menu there (it opens again), so the rest can be picked next.
+        // At another speed: "Keep speed" as a switch at the top of the menu (1.28.0; before, a ticked row at the bottom).
         void AddKeepSpeed(List<Control> items, string button, Action again)
         {
             if (!OtherSpeed) return;
-            items.Add(new Separator());
-            var keep = Item("Keep speed (" + SpeedText(speed) + ")", keepSpeed ? "" : null, delegate
-            {
-                keepSpeed = !keepSpeed;
-                SaveSettings();
-                Dispatcher.BeginInvoke(new Action(delegate { if (trimming) { ClosingOwnMenu(F<Button>(button)); again(); } }), System.Windows.Threading.DispatcherPriority.Background);
-            });
-            keep.ToolTip = "Saves it as fast as you are watching it now, sound included (the pitch changes with the speed, as it does here).";
-            System.Windows.Automation.AutomationProperties.SetName(keep, "Keep speed, " + SpeedText(speed) + ", " + (keepSpeed ? "on" : "off"));
-            items.Add(keep);
+            items.Insert(0, SwitchRow("Keep speed (" + SpeedText(speed) + ")", ")", () => keepSpeed, v => keepSpeed = v,
+                "Saves it as fast as you are watching it now, sound included (the pitch changes with the speed, as it does here)."));
+            items.Insert(1, new Separator());
         }
 
         // Save clip is one click at 1x; at another speed it first offers the choice.
         void SaveClipClicked()
         {
             if (!OtherSpeed) { SaveTrim(); return; }
-            var items = new List<Control> { Item(keepSpeed ? "Save clip at " + SpeedText(speed) : "Save clip at normal speed", null, SaveTrim, "Enter") };
-            AddKeepSpeed(items, "TrimSaveBtn", SaveClipClicked);
+            var items = new List<Control>
+            {
+                SwitchRow("Keep speed (" + SpeedText(speed) + ")", "\uE916", () => keepSpeed, v => keepSpeed = v,
+                    "Saves it as fast as you are watching it now, sound included (the pitch changes with the speed, as it does here)."),
+                new Separator(),
+                Item("Save clip", "\uE74E", SaveTrim, "Enter")
+            };
             ShowMenu("TrimSaveBtn", PlacementMode.Top, items.ToArray());
         }
 
@@ -203,26 +202,52 @@ namespace FastViewer
 
         void ShowDiscordMenu()
         {
-            Func<int, string, Control> size = (mb, who) =>
-                Item("Fit in " + mb + " MB (" + who + ")", discordMb == mb ? "" : null, delegate { SendToDiscord(mb); });
-            var items = new List<Control> { size(20, "Discord without Nitro"), size(50, "Nitro Basic"), size(500, "Nitro") };
+            // 1.28.0: the choices first, as on/off switches (remembered), then one row per size that sends right away.
+            var items = new List<Control>();
             if (HasSubs && shown != null && !shown.IsAudio)
+                items.Add(SwitchRow("Burn in captions", "\uE7F0", () => discordBurn, v => discordBurn = v,
+                    "Discord doesn't show subtitle files. On: the captions are drawn into the video itself."));
+            if (OtherSpeed)
+                items.Add(SwitchRow("Keep speed (" + SpeedText(speed) + ")", "\uE916", () => keepSpeed, v => keepSpeed = v,
+                    "Saves it as fast as you are watching it now, sound included (the pitch changes with the speed, as it does here)."));
+            if (items.Count > 0) items.Add(new Separator());
+            Func<int, string, Control> size = (mb, who) =>
             {
-                // Discord shows no subtitle files: ticked, the lines are drawn into the picture. Ticking keeps the menu
-                // there (it opens again), so the size can be picked next.
-                items.Add(new Separator());
-                var burn = Item("Burn in captions", discordBurn ? "\uE73E" : null, delegate
-                {
-                    discordBurn = !discordBurn;
-                    SaveSettings();
-                    Dispatcher.BeginInvoke(new Action(delegate { if (trimming) { ClosingOwnMenu(F<Button>("TrimShareBtn")); ShowDiscordMenu(); } }), System.Windows.Threading.DispatcherPriority.Background);
-                });
-                burn.ToolTip = "Discord doesn't show subtitle files. This draws the captions into the video itself.";
-                System.Windows.Automation.AutomationProperties.SetName(burn, "Burn in captions, " + (discordBurn ? "on" : "off"));
-                items.Add(burn);
-            }
-            AddKeepSpeed(items, "TrimShareBtn", ShowDiscordMenu);
+                var item = Item(mb + " MB, " + who, "\uE724", delegate { SendToDiscord(mb); });
+                System.Windows.Automation.AutomationProperties.SetName(item, "Send, at most " + mb + " MB (" + who + ")");
+                return item;
+            };
+            items.Add(size(20, "Discord without Nitro"));
+            items.Add(size(50, "Nitro Basic"));
+            items.Add(size(500, "Nitro"));
             ShowMenu("TrimShareBtn", PlacementMode.Top, items.ToArray());
+        }
+
+        // A menu row with an on/off switch at its right end, like the switches in Settings. Clicking anywhere on the row
+        // (or Space / Enter) flips it; the menu stays open and the choice is saved at once.
+        MenuItem SwitchRow(string text, string glyph, Func<bool> get, Action<bool> set, string tip)
+        {
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+            var sw = new CheckBox { Style = (Style)Application.Current.Resources["ToggleSwitch"], IsChecked = get(), IsHitTestVisible = false, Focusable = false,
+                Margin = new Thickness(24, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(sw, 1);
+            grid.Children.Add(sw);
+            var row = new MenuItem { Header = grid, StaysOpenOnClick = true, Icon = new Glyph { Code = glyph, Size = 16 } };
+            Action flip = delegate
+            {
+                bool on = !get();
+                set(on);
+                sw.IsChecked = on;
+                SaveSettings();
+                System.Windows.Automation.AutomationProperties.SetName(row, text + ", " + (on ? "on" : "off"));
+            };
+            row.Click += delegate { flip(); };
+            System.Windows.Automation.AutomationProperties.SetName(row, text + ", " + (get() ? "on" : "off"));
+            if (showTips) row.ToolTip = tip;
+            return row;
         }
 
         static string SizeText(long bytes)

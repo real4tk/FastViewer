@@ -4,6 +4,8 @@
 // Windows' player ignores that, so FastViewer reads it here and turns the video itself.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Text;
 
@@ -83,6 +85,132 @@ namespace FastViewer
             }
             catch { }
             return 1 / 30.0;
+        }
+
+        // 1.28.0, for the Info pane: frames a second of the video track (MP4/MOV), the average over all its frames, and
+        // whether it changes along the way (phones and game recorders: "variable frame rate"). 0 when it can't be read.
+        public static double FrameRate(string file, out bool variable, out string format) { double usual; return FrameRate(file, out variable, out format, out usual); }
+
+        public static double FrameRate(string file, out bool variable, out string format, out double usual)
+        {
+            variable = false;
+            format = null;
+            usual = 0;
+            try
+            {
+                using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    long moov, moovEnd;
+                    if (!FindChild(fs, 0, fs.Length, "moov", out moov, out moovEnd)) return 0;
+                    long pos = moov, size, header;
+                    string type;
+                    while (ReadHeader(fs, pos, moovEnd, out size, out type, out header))
+                    {
+                        if (type == "trak" && IsVideoTrack(fs, pos + header, pos + size))
+                        {
+                            long mdia, mdiaEnd, mdhd, mdhdEnd, minf, minfEnd, stbl, stblEnd, stts, sttsEnd;
+                            if (!FindChild(fs, pos + header, pos + size, "mdia", out mdia, out mdiaEnd)) return 0;
+                            if (!FindChild(fs, mdia, mdiaEnd, "mdhd", out mdhd, out mdhdEnd)) return 0;
+                            fs.Position = mdhd;
+                            int version = fs.ReadByte();
+                            var b = new byte[8];
+                            fs.Position = mdhd + 4 + (version == 1 ? 16 : 8);
+                            fs.Read(b, 0, 4);
+                            double timescale = Int(b, 0);
+                            if (!FindChild(fs, mdia, mdiaEnd, "minf", out minf, out minfEnd)) return 0;
+                            if (!FindChild(fs, minf, minfEnd, "stbl", out stbl, out stblEnd)) return 0;
+                            long stsd, stsdEnd;
+                            if (FindChild(fs, stbl, stblEnd, "stsd", out stsd, out stsdEnd) && stsdEnd - stsd >= 16)
+                            {
+                                var t = new byte[4];
+                                fs.Position = stsd + 12; // version/flags, entry count, first entry's size: its type
+                                fs.Read(t, 0, 4);
+                                format = FormatName(System.Text.Encoding.ASCII.GetString(t));
+                            }
+                            if (!FindChild(fs, stbl, stblEnd, "stts", out stts, out sttsEnd)) return 0;
+                            fs.Position = stts + 4;
+                            fs.Read(b, 0, 4);
+                            long entries = Math.Min((long)Int(b, 0), (sttsEnd - stts - 8) / 8);
+                            if (timescale <= 0 || entries <= 0) return 0;
+                            var table = new byte[entries * 8];
+                            if (fs.Read(table, 0, table.Length) != table.Length) return 0;
+                            double frames = 0, ticks = 0;
+                            var counts = new Dictionary<long, double>(); // frames per frame length
+                            for (long i = 0; i < entries; i++)
+                            {
+                                double count = Int(table, (int)(i * 8));
+                                long delta = (long)Int(table, (int)(i * 8 + 4));
+                                if (count <= 0 || delta <= 0) continue;
+                                frames += count;
+                                ticks += count * delta;
+                                double had;
+                                counts.TryGetValue(delta, out had);
+                                counts[delta] = had + count;
+                            }
+                            if (frames < 2 || ticks <= 0) return 0;
+                            // Variable: frames whose length is more than 1% off the usual one make up over 2% of the video
+                            // (an odd last frame, or a few at the start, don't count).
+                            long usual_ = counts.OrderByDescending(kv => kv.Value).First().Key;
+                            double off = counts.Where(kv => Math.Abs(kv.Key - usual_) > usual_ * 0.01).Sum(kv => kv.Value);
+                            variable = off > frames * 0.02;
+                            usual = timescale / usual_;
+                            return frames * timescale / ticks;
+                        }
+                        pos += size;
+                    }
+                }
+            }
+            catch { }
+            return 0;
+        }
+
+        // The video format by the code in the file (what Windows' own Properties calls it, roughly).
+        static string FormatName(string code)
+        {
+            switch (code)
+            {
+                case "avc1": case "avc3": return "H.264 (AVC)";
+                case "hvc1": case "hev1": return "HEVC (H.265)";
+                case "av01": return "AV1";
+                case "vp09": return "VP9";
+                case "vp08": return "VP8";
+                case "mp4v": return "MPEG-4 Part 2";
+                case "s263": case "h263": return "H.263";
+                case "mjpa": case "mjpb": case "jpeg": return "Motion JPEG";
+                case "apch": case "apcn": case "apcs": case "apco": case "ap4h": case "ap4x": return "Apple ProRes";
+                case "dvh1": case "dvhe": return "HEVC (H.265), Dolby Vision";
+                case "dva1": case "dvav": return "H.264 (AVC), Dolby Vision";
+                default: return code.Trim('\0', ' ').Length == 4 ? code.Trim() : null;
+            }
+        }
+
+        // "60 fps", "29.97 fps", "23.976 fps"; a variable one "about 59.9 fps".
+        // The Info pane's rows: { frame rate, video format } (null where unknown). MP4/MOV are read here (the real average);
+        // other files as Windows reads them (the rate the file states).
+        public static string[] InfoRows(string file)
+        {
+            bool variable; string format; double usual;
+            double fps = FrameRate(file, out variable, out format, out usual);
+            if (fps <= 0 && format == null) VideoConverter.NativeVideo(file, out fps, out format);
+            else if (!variable && usual > 0) fps = usual; // steady: its frame length (an odd frame or two can't pull 120 to 119.8)
+            string rate = FrameRateText(fps, variable);
+            // Game recorders (Medal) set e.g. 120 but only write a frame when the game made one: say both.
+            if (rate != null && variable && usual > 0 && Math.Abs(usual - fps) > 2) rate += " (up to " + Math.Round(usual).ToString(System.Globalization.CultureInfo.InvariantCulture) + ")";
+            return new[] { rate, format };
+        }
+
+        public static string FrameRateText(double fps, bool variable)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (fps <= 0) return null;
+            if (!variable) // a steady video a hair off its usual rate (a game recorder's 119.8) says that rate
+            {
+                double nearest = new[] { 23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 90, 100, 119.88, 120, 144, 165, 240 }.OrderBy(c => Math.Abs(fps - c)).First();
+                if (Math.Abs(fps - nearest) < nearest * 0.005) fps = nearest;
+            }
+            if (variable) return "about " + (fps >= 100 || Math.Abs(fps - Math.Round(fps)) < 0.05 ? Math.Round(fps).ToString(inv) : fps.ToString("0.0", inv)) + " fps";
+            if (Math.Abs(fps - Math.Round(fps)) < 0.01) return Math.Round(fps).ToString(inv) + " fps";
+            return fps.ToString(Math.Abs(fps * 100 - Math.Round(fps * 100)) < 0.05 ? "0.00" : "0.000", inv) + " fps";
         }
 
         // For error messages. True: an MP4/MOV whose boxes are all there; false: an MP4/MOV that's cut off or

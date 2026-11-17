@@ -62,6 +62,7 @@ namespace FastViewer
         public static readonly string[] LanguageNames = { "Find out by itself", "English", "Dutch", "German", "Russian", "Slovak", "Chinese", "French", "Spanish", "Polish", "Ukrainian", "Italian", "Portuguese", "Turkish", "Japanese", "Korean" };
         public static readonly string[] LanguageCodes = { "auto", "en", "nl", "de", "ru", "sk", "zh", "fr", "es", "pl", "uk", "it", "pt", "tr", "ja", "ko" };
 
+        internal static string CaptionsFolder { get { return CaptionsDir; } }
         static string CaptionsDir { get { return Path.Combine(Path.GetDirectoryName(Addon.Dir), "Captions"); } }
 
         // Where a video's captions are kept: by its path, size and date, so an edited video gets new ones.
@@ -106,7 +107,7 @@ namespace FastViewer
         public static readonly List<string> Log = new List<string>();
 
         // Writes out the speech of a 16 kHz mono .wav. onCue gets each line as it's made (on another thread).
-        public static List<Cue> Transcribe(string wav, double seconds, string language, Action<double> progress, Action<Cue> onCue, CancelFlag cancel)
+        public static List<Cue> Transcribe(string wav, double seconds, string language, Action<double> progress, Action<Cue> onCue, CancelFlag cancel, bool parakeet = false)
         {
             var cues = new List<Cue>();
             var said = new List<string>();
@@ -121,7 +122,9 @@ namespace FastViewer
             double real = 0, speed = 3; // of the sound done; seconds of sound per second of work (a first guess)
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var sinceReal = System.Diagnostics.Stopwatch.StartNew();
-            int code = Helper.Run(Addon.File("whisper-cli.exe"), arguments, delegate(string text)
+            // 1.28.0: Parakeet (Parakeet.cs) prints its lines the same way, from a hidden FastViewer.
+            int code = Helper.Run(parakeet ? System.Reflection.Assembly.GetExecutingAssembly().Location : Addon.File("whisper-cli.exe"),
+                parakeet ? Parakeet.Arguments(wav, threads) : arguments, delegate(string text)
             {
                 var m = Line.Match(text.Trim());
                 if (!m.Success) { lock (said) { said.Add(text.Trim()); if (Log.Count < 200) Log.Add(text.Trim()); } return; }
@@ -149,11 +152,12 @@ namespace FastViewer
             {
                 string why = unchecked((uint)code) == 0xC0000135 ? "a part of Windows it needs is missing (install \"Microsoft Visual C++ Redistributable\" x64)"
                     : unchecked((uint)code) == 0xC000001D ? "this PC's processor is too old for it"
-                    : said.Count > 0 ? said[said.Count - 1] : "it stopped with error " + code;
+                    : said.Count > 0 ? (said[said.Count - 1].StartsWith("E ") ? said[said.Count - 1].Substring(2) : said[said.Count - 1]) : "it stopped with error " + code;
                 throw new Exception(why);
             }
             return Tidy(cues); // (1.27.0: repeated blocks, labels, reading time)
         }
+
 
         // ---------------------------------------------------------------- tidying (1.27.0)
 
@@ -423,6 +427,7 @@ namespace FastViewer
     partial class ViewerWindow
     {
         string captionLanguage = "auto"; // settings line captionLang=
+        int captionEngine;               // 1.28.0: 0 Automatic, 1 Parakeet, 2 Whisper (captionEngine=)
         internal string lastCaptionResult; // tests
         volatile string captionSteps = ""; // what the last run used (tests)
 
@@ -475,7 +480,8 @@ namespace FastViewer
                             Vocals.Isolate(stereo, wav, p => progress("Making captions: finding the voice", 0.05 + 0.25 * p), cancel);
                             done = 0.3;
                             progress("Making captions: writing", done);
-                            all = Whisper.Transcribe(wav, length, language, p => progress("Making captions: writing", done + (1 - done) * p), onCue, cancel);
+                            bool parakeetToo = ChooseEngine(wav, length, ref language, cancel, progress, done);
+                            all = Whisper.Transcribe(wav, length, language, p => progress("Making captions: writing", done + (1 - done) * p), onCue, cancel, parakeetToo);
                             captionSteps += ", voice isolated";
                         }
                         catch (OperationCanceledException) { throw; }
@@ -486,7 +492,8 @@ namespace FastViewer
                     length = VideoConverter.SpeechWav(video, wav, seconds, p => progress("Making captions: listening", done + p * 0.05), cancel);
                     done += 0.05;
                     progress("Making captions: writing", done);
-                    all = Whisper.Transcribe(wav, length, language, p => progress("Making captions: writing", done + (1 - done) * p), onCue, cancel);
+                    bool parakeet = ChooseEngine(wav, length, ref language, cancel, progress, done);
+                    all = Whisper.Transcribe(wav, length, language, p => progress("Making captions: writing", done + (1 - done) * p), onCue, cancel, parakeet);
                 }
                 catch (OperationCanceledException) { }
                 finally { try { File.Delete(wav); } catch { } try { File.Delete(stereo); } catch { } }
@@ -517,6 +524,16 @@ namespace FastViewer
                 }
                 ShowToast("Captions ready (" + all.Count + " lines). They'll be there next time too.", null, null, 6, "done");
             });
+        }
+
+        // 1.28.0: Parakeet or Whisper (Parakeet.Choose), written into captionSteps for the tests.
+        bool ChooseEngine(string wav, double length, ref string language, CancelFlag cancel, Action<string, double> progress, double done)
+        {
+            if (Parakeet.Addon.Installed && captionEngine == 0 && language == "auto") progress("Making captions: finding the language", done);
+            string why;
+            bool parakeet = Parakeet.Choose(captionEngine, wav, length, ref language, cancel, out why);
+            captionSteps += ", " + why;
+            return parakeet;
         }
 
         void SaveCaptionsAs()
@@ -555,8 +572,20 @@ namespace FastViewer
             AddAddonCard(Whisper.Large, "", "Better quality captions",
                 "A much larger Whisper model that gets more words right, most of all in songs, mumbled speech and languages other than English. " +
                 "An extra one-time download; once it's there it is used instead of the small one (Remove goes back to the small one). " +
-                "It is slower: a minute of video takes roughly a minute on an average PC.",
+                "It is slower: a minute of video takes roughly a minute on an average PC. With Faster captions below, it is used for the languages Parakeet doesn't know.",
                 () => !Environment.Is64BitOperatingSystem ? "This needs 64-bit Windows." : Whisper.Addon.Installed ? null : "Used together with Automatic captions above.", null);
+            // 1.28.0: Parakeet (Parakeet.cs)
+            AddAddonCard(Parakeet.Addon, "\uE945", "Faster captions (Parakeet)",
+                "A newer speech model, Parakeet by NVIDIA, that writes captions about 6 times faster than the large Whisper model and " +
+                "about as well, with better timing. For 25 European languages (English, Dutch, German, French, Spanish, Italian, Polish, " +
+                "Portuguese, Russian, Ukrainian and more); videos in other languages still get Whisper. An extra one-time download " +
+                "(the program from github.com/handy-computer/transcribe.cpp and the model from huggingface.co); once it's there it is " +
+                "used by itself. It works on any PC: it uses the processor.",
+                () => !Environment.Is64BitOperatingSystem ? "This needs 64-bit Windows." : Whisper.Addon.Installed ? null : "Used together with Automatic captions above.", null);
+            AddCard("\uE945", "Caption engine",
+                "Automatic: Parakeet for the languages it knows (once it's downloaded), Whisper for the others. With the language on " +
+                "\"Find out by itself\", FastViewer first listens to a few seconds of the video to know which.",
+                Dropdown(Parakeet.EngineNames, () => captionEngine, i => captionEngine = i));
             AddCard("", "Language spoken in your videos",
                 "For automatic captions. Pick the language when it guesses wrong.",
                 Dropdown(Whisper.LanguageNames, () => Math.Max(0, Array.IndexOf(Whisper.LanguageCodes, captionLanguage)), i => captionLanguage = Whisper.LanguageCodes[i]));
