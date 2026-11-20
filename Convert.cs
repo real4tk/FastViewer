@@ -29,6 +29,7 @@ namespace FastViewer
         public Action<int[], int, int, long> Paint; // draws on each finished picture before it's saved (burned-in captions): pixels, width, height, time in 100 ns
         public double Speed;          // play it this many times as fast (0 or 1: as it is); the sound changes pitch with it, as in the viewer
         public bool KeepTracks;       // every sound track saved as its own track, whatever the Sound setting says
+        public double Level = 1;      // Even out volume (Loudness.cs): the sound this much louder or quieter (mixed into one track)
         public int OutSoundTracks;    // filled in: the sound tracks that were written
         public int OutWidth, OutHeight; // filled in: the size that was made
         public double OutFps;
@@ -182,7 +183,12 @@ namespace FastViewer
                 var mixSlot = new System.Collections.Generic.Dictionary<int, int>(); // the file's stream number -> the mixer's track
                 double[] gains = null;
                 if (gains == null && !o.KeepTracks && audioFound.Count >= 2) gains = SoundMixing.For(source, cancel);
-                if (gains != null && audioFound.Count >= 2)
+                if (o.Level > 0 && Math.Abs(o.Level - 1) > 0.001 && !o.KeepTracks && o.Frame == null)
+                {
+                    if (gains == null && audioFound.Count == 1) gains = new[] { 1.0 };
+                    if (gains != null) gains = gains.Select(g => g * o.Level).ToArray(); // (the mixer bends peaks over smoothly)
+                }
+                if (gains != null && audioFound.Count >= 1)
                 {
                     var kept = new System.Collections.Generic.List<int>();
                     for (int k = 0; k < audioFound.Count; k++)

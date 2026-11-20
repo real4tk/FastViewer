@@ -327,6 +327,60 @@ namespace FastViewer
             return 0;
         }
 
+        // How long a track really plays, in seconds: the sum of its edit list's segments (movie time scale, mvhd);
+        // 0 when the file says nothing. (1.29.0 loops: an AAC track's decoded sound ends with the encoder's padding, up
+        // to ~40 ms of near-silence that isn't part of the sound; the edit list gives where the real sound ends.)
+        public static double EditDuration(string file, string handler, int nth = 0)
+        {
+            try
+            {
+                using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    long moov, moovEnd, mvhd, mvhdEnd;
+                    if (!FindChild(fs, 0, fs.Length, "moov", out moov, out moovEnd)) return 0;
+                    if (!FindChild(fs, moov, moovEnd, "mvhd", out mvhd, out mvhdEnd)) return 0;
+                    var b = new byte[20];
+                    fs.Position = mvhd;
+                    int mvVersion = fs.ReadByte();
+                    fs.Position = mvhd + 4 + (mvVersion == 1 ? 16 : 8);
+                    fs.Read(b, 0, 4);
+                    double movieScale = Int(b, 0);
+                    if (movieScale <= 0) return 0;
+                    long pos = moov, size, header;
+                    string type;
+                    while (ReadHeader(fs, pos, moovEnd, out size, out type, out header))
+                    {
+                        long trak = pos + header, trakEnd = pos + size;
+                        pos += size;
+                        if (type != "trak" || Handler(fs, trak, trakEnd) != handler) continue;
+                        if (nth-- > 0) continue;
+                        long edts, edtsEnd, elst, elstEnd;
+                        if (!FindChild(fs, trak, trakEnd, "edts", out edts, out edtsEnd)) return 0;
+                        if (!FindChild(fs, edts, edtsEnd, "elst", out elst, out elstEnd)) return 0;
+                        fs.Position = elst;
+                        int version = fs.ReadByte();
+                        fs.Position = elst + 4;
+                        fs.Read(b, 0, 4);
+                        long entries = Int(b, 0);
+                        int entrySize = version == 1 ? 20 : 12;
+                        double total = 0;
+                        for (long e = 0; e < entries && e < 8; e++)
+                        {
+                            fs.Position = elst + 8 + e * entrySize;
+                            fs.Read(b, 0, entrySize);
+                            long segment = version == 1 ? (long)(((ulong)Int(b, 0) << 32) | (ulong)Int(b, 4)) : Int(b, 0);
+                            long mediaTime = version == 1 ? (long)(((ulong)Int(b, 8) << 32) | (ulong)Int(b, 12)) : (int)Int(b, 4);
+                            if (mediaTime == -1) continue; // (an empty edit: a delay, not sound)
+                            total += segment / movieScale;
+                        }
+                        return total;
+                    }
+                }
+            }
+            catch { }
+            return 0;
+        }
+
         // For each sound track of an MP4/MOV, in the file's own order: the size in bytes of every packet of sound.
         // Null when the file doesn't say (not an MP4/MOV, a track whose packets are all one size, a file made in pieces).
         public static System.Collections.Generic.List<int[]> SoundPacketSizes(string file)

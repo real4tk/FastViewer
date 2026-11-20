@@ -35,6 +35,34 @@ namespace FastViewer
         {
             Directory.CreateDirectory(snapDir);
             testLog.Clear();
+            if (!TestSilence.WaitReady(5000)) { HuntLog("the test's own volume could not be set to 0: test stopped FAIL"); HuntDone(); return; } // (TestSilence.cs: no sound through the speakers)
+            // (Tests: should the window's thread stop answering for 2 s, its stack goes into log.partial.txt.)
+            {
+                var ui = System.Threading.Thread.CurrentThread;
+                long beat = Environment.TickCount;
+                var heart = new DispatcherTimer(DispatcherPriority.Send) { Interval = TimeSpan.FromMilliseconds(100) };
+                heart.Tick += delegate { System.Threading.Interlocked.Exchange(ref beat, Environment.TickCount); };
+                heart.Start();
+                string partial = Path.Combine(snapDir, "log.partial.txt");
+                new System.Threading.Thread(delegate()
+                {
+                    long reported = -1;
+                    while (true)
+                    {
+                        System.Threading.Thread.Sleep(250);
+                        long last = System.Threading.Interlocked.Read(ref beat);
+                        DumpIfStuck(partial);
+                        if (Environment.TickCount - last < 2000 || reported == last) continue;
+                        reported = last;
+                        string trace;
+#pragma warning disable 618
+                        try { ui.Suspend(); try { trace = new System.Diagnostics.StackTrace(ui, false).ToString(); } finally { ui.Resume(); } }
+                        catch (Exception ex) { trace = "(no stack: " + ex.Message + ")"; }
+#pragma warning restore 618
+                        try { File.AppendAllText(partial, "WINDOW THREAD STUCK for 2 s in:" + Environment.NewLine + string.Join(Environment.NewLine, trace.Split('\n').Select(l => "      " + l.Trim()).Take(25)) + Environment.NewLine); } catch { }
+                    }
+                }) { IsBackground = true }.Start();
+            }
             switch (huntCase)
             {
                 case "torture": HuntTorture(); break;
@@ -78,6 +106,14 @@ namespace FastViewer
                 case "sound": HuntSound(); break;
                 case "soundfix": HuntSoundFix(); break;
                 case "ownsound": HuntOwnSound(); break;
+                case "loudness": HuntLoudness(); break;
+                case "even": HuntEven(); break;
+                case "hold": HuntHold(); break;
+                case "pitch": HuntPitch(); break;
+                case "holdstorm": HuntHoldStorm(); break;
+                case "loops": HuntLoops(); break;
+                case "loopchange": HuntLoopChange(); break;
+                case "decodeinfo": HuntDecodeInfo(); break;
                 case "trimsound": HuntTrimSound(); break;
                 case "keepspeed": HuntKeepSpeed(); break;
                 case "speedstorm": HuntSpeedStorm(); break;
@@ -139,7 +175,28 @@ namespace FastViewer
         }
 
         readonly List<string> huntLog = new List<string>();
-        void HuntLog(string text) { huntLog.Add(text); }
+        internal static System.Threading.Thread analysisThread; internal static long analysisSince; // (tests)
+        long soundDumped;
+        void DumpIfStuck(string partial)
+        {
+            var p = soundPlayer;
+            if (p != null && p.BeatAge > 3 && Environment.TickCount - soundDumped > 10000) { soundDumped = Environment.TickCount; DumpStack(partial, "SOUND THREAD not answering for " + p.BeatAge.ToString("0.0") + " s", p.Worker); }
+            var a = analysisThread;
+            if (a != null && a.IsAlive && Environment.TickCount - analysisSince > 15000) { analysisSince = Environment.TickCount; DumpStack(partial, "TEST ANALYSIS still busy after 15 s", a); }
+        }
+
+        static void DumpStack(string partial, string what, System.Threading.Thread th)
+        {
+            string trace;
+#pragma warning disable 618
+            try { th.Suspend(); try { trace = new System.Diagnostics.StackTrace(th, false).ToString(); } finally { th.Resume(); } }
+            catch (Exception ex) { trace = "(no stack: " + ex.Message + ")"; }
+#pragma warning restore 618
+            try { File.AppendAllText(partial, what + ":" + Environment.NewLine + string.Join(Environment.NewLine, trace.Split((char)10).Select(l => "      " + l.Trim()).Take(25)) + Environment.NewLine); } catch { }
+        }
+
+        internal void Step(string what) { if (huntTest && snapDir != null) HuntLog("    . " + switchWatch.ElapsedMilliseconds + " ms " + what); } // (tests: where a test got to)
+        void HuntLog(string text) { huntLog.Add(text); try { File.AppendAllText(Path.Combine(snapDir, "log.partial.txt"), text + Environment.NewLine); } catch { } } // (written as it goes: a test that hangs still shows how far it got)
 
         // The mini player's see-through state, and how clear it really is: the window drawn over white and over
         // black, measured outside the test picture's circle (anything faint there shows as a grey box on screen).
@@ -204,6 +261,7 @@ namespace FastViewer
 
         void HuntDone()
         {
+            huntLog.Add("test silence: " + TestSilence.Sessions + " sound session(s) of this test, all at volume 0 and muted: " + TestSilence.Ok + " (turned down " + TestSilence.Fixes + " times)" + (TestSilence.Ok ? "" : " FAIL"));
             File.WriteAllLines(Path.Combine(snapDir, "log.txt"), huntLog);
             File.WriteAllLines(Path.Combine(snapDir, "events.txt"), testLog);
             Close();

@@ -36,6 +36,7 @@ namespace FastViewer
             if (args.Length >= 4 && args[0] == "--parakeet") { Environment.ExitCode = Parakeet.Child(args); return; } // 1.28.0: the hidden Parakeet captions writer (Parakeet.cs)
             if (args.Length >= 4 && args[0] == "--isolate") { Environment.ExitCode = Vocals.Child(args); return; } // the hidden helper of voice isolation (Vocals.cs)
             if (SingleInstance.TryForward(args)) return; // a FastViewer waiting in the background shows the file
+            if (args.Any(a => a.StartsWith("--") && a != "--updated")) TestSilence.Start(); // 1.29.0: test runs make no sound at all (TestSilence.cs)
             Run(args);
         }
 
@@ -507,6 +508,7 @@ namespace FastViewer
                 else if (args[i] == "--front") testInFront = true;
                 else if (args[i] == "--own-sound-off") ownSoundOff = true;     // sound as before 1.26, for comparing
                 else if (args[i] == "--own-sound-aloud") ownSoundAloud = true; // a test that is meant to be heard
+                else if (args[i] == "--loudness" && i + 1 < args.Length) loudnessStoreOverride = args[++i]; // tests: where loudness measurements are kept
                 else if (args[i] == "--tracks" && i + 1 < args.Length) soundStoreOverride = args[++i]; // tests: where what was found about sound tracks is kept
                 else if (args[i] == "--update-feed" && i + 1 < args.Length) updateFeed = args[++i];
                 else if (args[i] == "--update-test") updateTestAccept = true;
@@ -685,6 +687,8 @@ namespace FastViewer
             OnClick("MessageBtn", OpenWith);
             OnClick("MessageFixBtn", MakePlayableCopy);
             InitOwnSound();
+            InitLoudness(); // Loudness.cs
+            InitHold(); // Hold.cs
             // The file name sits in the title bar: it moves the window (and double-click maximizes) like the rest of it.
             titleText.MouseLeftButtonDown += delegate(object o, MouseButtonEventArgs e)
             {
@@ -1106,7 +1110,7 @@ namespace FastViewer
             s.Error = null;
             s.IsAudio = IsAudioFile(file);
             s.IsVideo = IsVideoFile(file) || s.IsAudio;
-            if (s.IsVideo) LearnSound(file); // (in the background: how many sound tracks it has, SoundPlay.cs)
+            if (s.IsVideo) { LearnSound(file); LevelWanted(file, false); } // (in the background: its sound tracks, SoundPlay.cs, and its loudness, Loudness.cs)
             ResetZoom(s);
             // Phones store some videos sideways with a "turn me" note; Windows ignores it, so apply it here.
             if (!s.IsAudio && !rotations.ContainsKey(file))
@@ -1333,6 +1337,26 @@ namespace FastViewer
             {
                 Go(1);
             }
+            else if (loop && PlannedLoop(s))
+            {
+                // (Stretch.cs: FastViewer's sound is a little longer than the picture; the picture waits on its last frame
+                // and is started over exactly when the sound reaches the next loop. Should that not come: as before.)
+                // (Windows' player sometimes says "ended" late, after the planned start-over has happened: then it only has
+                // to go on playing.)
+                Step("ended (planned loop)");
+                if ((System.Diagnostics.Stopwatch.GetTimestamp() - loopSeekAt) / (double)System.Diagnostics.Stopwatch.Frequency < 1.0) { s.Video.Play(); return; }
+                pictureAtEnd = true;
+                int restartsBefore = plannedLoops;
+                double wait = Math.Max(0, LoopLenFor(s) - (s.Video.NaturalDuration.HasTimeSpan ? s.Video.NaturalDuration.TimeSpan.TotalSeconds : 0)) / Math.Max(0.25, speed);
+                After((int)(wait * 1000) + 600, () =>
+                {
+                    if (!pictureAtEnd || shown != s || plannedLoops != restartsBefore) return;
+                    pictureAtEnd = false;
+                    s.Video.Position = TimeSpan.Zero;
+                    StartPlayback(s, true);
+                    NoteLoop(s);
+                });
+            }
             else if (loop)
             {
                 s.Video.Position = TimeSpan.Zero;
@@ -1379,7 +1403,8 @@ namespace FastViewer
                 Reveal(c);
                 if (autoplay)
                 {
-                    c.Video.Volume = Math.Min(1, volume);
+                    LevelStart(c); // (Even out volume: Loudness.cs)
+                    c.Video.Volume = PlayVolume(c);
                     c.Video.IsMuted = muted || OwnSound(c);
                     c.Video.Play();
                     c.Video.SpeedRatio = speed;
@@ -1421,7 +1446,8 @@ namespace FastViewer
                 catch { c.Poster.Source = null; }
             }
             c.Poster.Visibility = c.Poster.Source != null ? Visibility.Visible : Visibility.Collapsed;
-            c.Video.Volume = Math.Min(1, volume);
+            LevelStart(c); // (Even out volume: Loudness.cs)
+            c.Video.Volume = PlayVolume(c);
             c.Video.IsMuted = muted || OwnSound(c);
             c.Video.Play();
             c.Video.SpeedRatio = speed;
@@ -1459,6 +1485,7 @@ namespace FastViewer
             if (renderHooked) CompositionTarget.Rendering -= OnRendering;
             renderHooked = false;
             revealing = null;
+            LevelPictureUp(); // (Loudness.cs: the file on screen may be measured now)
         }
 
         void OnRendering(object sender, EventArgs e)
@@ -1781,7 +1808,7 @@ namespace FastViewer
         {
             if (shown != null && shown.IsVideo)
             {
-                shown.Video.Volume = Math.Min(1, volume);
+                shown.Video.Volume = PlayVolume(shown);
                 shown.Video.IsMuted = muted || OwnSound(shown);
             }
             UpdateControls();
@@ -2742,6 +2769,7 @@ namespace FastViewer
             bool clickPlays = mouseActions["click"] == "play"; // Settings > Mouse
             if (e.ClickCount == 2)
             {
+                CancelHold(); // (a double-click is never a hold)
                 if (video && clickToggled) TogglePlay(); // undo the first click's pause/play
                 clickToggled = false;
                 if (mini && mouseActions["double"] == "fullscreen") ToggleMiniSmoothly(); // from the mini player: back to the window
@@ -2758,24 +2786,35 @@ namespace FastViewer
                 panClock.Restart();
                 stage.CaptureMouse();
                 Cursor = Cursors.SizeAll;
+                ArmHold(e, false); // (holding still on a zoomed video: 2x; dragging pans as before)
             }
-            else if (mini && e.ButtonState == MouseButtonState.Pressed)
+            else if (mini)
             {
-                double x = Left, y = Top;
-                try { DragMove(); } // the mini player has no title bar: drag the video to move it
-                catch { }
-                bool moved = Math.Abs(Left - x) > 2 || Math.Abs(Top - y) > 2;
-                if (!moved && video && clickPlays) { TogglePlay(); clickToggled = true; } // a click without dragging: play/pause
+                // The mini player has no title bar: dragging the video moves it. 1.29.0: the move only starts once the mouse
+                // has moved a few pixels (OnStageMove -> MiniDrag); until then the press is a click or a hold like in the
+                // window, so letting go of a hold never counts as a click (it used to: Windows' move loop decided).
+                miniClick = video && clickPlays;
+                ArmHold(e, true);
+                if (!holdPending) holdCaptured = holdCaptured || stage.CaptureMouse(); // (a photo: still a drag to move)
+                if (holdPending && playing && miniClick) { holdWarm = true; UpdateOwnSound(); } // (as in the window: FastViewer's sound already plays when 2x starts)
+                miniPressed = true;
+                miniFrom = System.Windows.Forms.Cursor.Position;
             }
             else if (video && clickPlays)
             {
-                TogglePlay();
-                clickToggled = true;
+                // Paused: plays at once, as always (holding on then makes it 2x). Playing: a short click pauses when the
+                // button comes up, so holding it down can mean 2x instead (Hold.cs).
+                if (!playing || !CanHold(shown)) { TogglePlay(); clickToggled = true; }
+                else holdClickPauses = true;
+                ArmHold(e, true);
             }
+            else if (video) ArmHold(e, true);
         }
 
         void OnStageMove(object sender, MouseEventArgs e)
         {
+            if (MiniDrag()) return;
+            HoldMoved(e);
             if (!panning || shown == null) return;
             var p = e.GetPosition(stage);
             var moved = p - panStart;
@@ -2791,6 +2830,7 @@ namespace FastViewer
 
         void OnStageUp(object sender, MouseButtonEventArgs e)
         {
+            HoldReleased();
             if (!panning) return;
             panning = false;
             stage.ReleaseMouseCapture();
@@ -2856,6 +2896,7 @@ namespace FastViewer
             // Messages ("Update now") go below a floating top bar, which would otherwise cover them and their buttons;
             // the trim bar takes the control bar's place.
             F<FrameworkElement>("Toast").Margin = new Thickness(0, floating ? 48 + 14 : 14, 0, 0);
+            F<FrameworkElement>("HoldHint").Margin = new Thickness(0, floating && !mini ? 48 + 14 : 14, 0, 0);
             F<FrameworkElement>("TrimBar").Margin = transport.Margin;
             foreach (var bar in new[] { top, bottom })
             {

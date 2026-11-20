@@ -25,6 +25,7 @@ namespace FastViewer
             {
                 bool ok = false;
                 try { ok = ready(); } catch { }
+                if ((DateTime.UtcNow - started).TotalMilliseconds > 2000 && ((int)(DateTime.UtcNow - started).TotalMilliseconds) % 2000 < 110) Step("still waiting (shown " + (shown != null ? Path.GetFileName(shown.File) + " ready " + shown.Ready + " width " + (shown.IsVideo ? shown.Video.NaturalVideoWidth : -1) : "none") + ")");
                 if (!ok && (DateTime.UtcNow - started).TotalMilliseconds < timeoutMs) return;
                 t.Stop();
                 if (!ok) HuntLog("TIMED OUT waiting FAIL");
@@ -44,7 +45,7 @@ namespace FastViewer
         void HuntOpen(string name, Action then)
         {
             for (int i = 0; i < files.Count; i++)
-                if (Path.GetFileName(files[i]).Equals(name, StringComparison.OrdinalIgnoreCase)) ShowIndex(i, 1);
+                if (Path.GetFileName(files[i]).Equals(name, StringComparison.OrdinalIgnoreCase)) { Step("open: ShowIndex " + i); ShowIndex(i, 1); Step("open: shown"); }
             Until(() => shown != null && shown.Ready && Path.GetFileName(shown.File).Equals(name, StringComparison.OrdinalIgnoreCase)
                         && (!shown.IsVideo || shown.Video.NaturalVideoWidth > 0), 15000, delegate { After(500, then); });
         }

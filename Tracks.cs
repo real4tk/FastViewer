@@ -194,7 +194,9 @@ namespace FastViewer
     class TrackMixer
     {
         public const int Rate = 48000;
-        class Track { public double Gain; public long Next; public bool Started, Ended; public int Channels = 2, Hz = Rate; }
+        const int Fade = 120; // 2.5 ms
+        class Track { public double Gain; public long Next, Added; public bool Started, Ended; public int Channels = 2, Hz = Rate; }
+        public long AddedFrames(int track) { return track < tracks.Count ? tracks[track].Added : 0; } // (tests: frames of this track put in)
         readonly List<Track> tracks = new List<Track>();
         float[] sum = new float[Rate * 2 * 2]; // what's added up so far, from frame `start` on
         long start;
@@ -204,13 +206,28 @@ namespace FastViewer
         public static List<string> DebugLog;
         public int Tracks { get { return tracks.Count; } }
         public int AddTrack(double gain) { tracks.Add(new Track { Gain = gain }); return tracks.Count - 1; }
+
+        // How many frames a decoded buffer holds (48 kHz stereo 16-bit, as the player asks for).
+        public static int FramesOf(IMFSample sample)
+        {
+            IMFMediaBuffer buffer;
+            if (sample.ConvertToContiguousBuffer(out buffer) < 0) return 0;
+            IntPtr data;
+            int max, size;
+            buffer.Lock(out data, out max, out size);
+            buffer.Unlock();
+            Marshal.ReleaseComObject(buffer);
+            return size / 4;
+        }
         public void Shape(int track, int channels, int hz) { if (channels >= 1 && hz >= 4000) { tracks[track].Channels = channels; tracks[track].Hz = hz; } }
         public void End(int track) { tracks[track].Ended = true; }
 
         public bool AllEnded { get { return tracks.All(t => t.Ended); } }
         public long Position { get { return start; } } // frames handed out so far
 
-        public void Add(int track, long time, IMFSample sample, float gainNow = -1)
+        // exact: placed at its own time, never moved to follow on from the last buffer. cutAt / fadeInFrom (frames):
+        // nothing from cutAt on, faded out over the 2.5 ms before it; faded in over the 2.5 ms from fadeInFrom (1.29.0 loops).
+        public void Add(int track, long time, IMFSample sample, float gainNow = -1, bool exact = false, long cutAt = long.MaxValue, long fadeInFrom = -1, bool cutFade = true)
         {
             IMFMediaBuffer buffer;
             if (sample.ConvertToContiguousBuffer(out buffer) < 0) return;
@@ -228,13 +245,15 @@ namespace FastViewer
             long at = (long)Math.Round(time * (double)Rate / 1e7);
             if (DebugLog != null && DebugLog.Count < 3000) DebugLog.Add(track + " time " + time / 10000.0 + " ms, frames " + inFrames + ", expected " + (t.Started ? (t.Next * 1000.0 / Rate).ToString("0.00") : "-"));
             // Buffers follow each other exactly; only a real gap or jump (over 50 ms) moves the writing place.
-            if (t.Started && Math.Abs(t.Next - at) < Rate / 20) at = t.Next;
+            if (t.Started && !exact && Math.Abs(t.Next - at) < Rate / 20) at = t.Next;
+            if (at + outFrames > cutAt) { outFrames = (int)Math.Max(0, cutAt - at); if (outFrames <= 0) return; }
             t.Next = at + outFrames;
             t.Started = true;
             int skip = (int)Math.Max(0, Math.Min(outFrames, start - at)); // (already handed out: can't be added any more)
             long need = at + outFrames - start;
             if (need <= 0) return;
             if (need * 2 > sum.Length) Array.Resize(ref sum, (int)Math.Max(need * 2, sum.Length * 2L));
+            t.Added += outFrames - skip;
             float gain = gainNow >= 0 ? gainNow : (float)t.Gain; // (the player passes the volume of this moment)
             for (int f = skip; f < outFrames; f++)
             {
@@ -242,8 +261,12 @@ namespace FastViewer
                 int left = (short)(bytes[from] | (bytes[from + 1] << 8));
                 int right = ch > 1 ? (short)(bytes[from + 2] | (bytes[from + 3] << 8)) : left;
                 int to = (int)(at + f - start) * 2;
-                sum[to] += left * gain;
-                sum[to + 1] += right * gain;
+                float g = gain;
+                long abs = at + f;
+                if (cutFade && abs >= cutAt - Fade) g *= (cutAt - abs) / (float)Fade;
+                if (fadeInFrom >= 0 && abs >= fadeInFrom && abs < fadeInFrom + Fade) g *= (abs - fadeInFrom + 1) / (float)Fade;
+                sum[to] += left * g;
+                sum[to + 1] += right * g;
             }
             if (need > frames) frames = (int)need;
         }
@@ -292,7 +315,40 @@ namespace FastViewer
         long written;
         long firstTime = -1;
 
+        TimeStretch keep;   // 1.29.0: the same pitch (unless Settings > Videos > "Change pitch with speed")
+        short[] kept = new short[0];
+
         public short[] Apply(short[] piece, ref long time)
+        {
+            if (firstTime < 0) firstTime = (long)(time / Speed);
+            if (keep != null || (TimeStretch.KeepPitch && written == 0 && at == 0))
+            {
+                if (keep == null) keep = new TimeStretch { Speed = Speed };
+                keep.Push(piece, 0, piece.Length / 2, piece.Length / 2 / (double)TrackMixer.Rate);
+                double covered;
+                int n = keep.Pull(ref kept, 1, out covered, null, null, true);
+                return Out(n, ref time);
+            }
+            return Resampled(piece, ref time);
+        }
+
+        // Saving ends: the last bit the stretcher still holds.
+        public short[] Finish(ref long time)
+        {
+            if (keep == null) return new short[0];
+            return Out(keep.Finish(ref kept, 1), ref time);
+        }
+
+        short[] Out(int n, ref long time)
+        {
+            var result = new short[n * 2];
+            Array.Copy(kept, result, n * 2);
+            time = firstTime + written * 10000000L / TrackMixer.Rate;
+            written += n;
+            return result;
+        }
+
+        short[] Resampled(short[] piece, ref long time)
         {
             int frames = piece.Length / 2;
             if (firstTime < 0) firstTime = (long)(time / Speed);
@@ -350,6 +406,17 @@ namespace FastViewer
                 var made = MakeSoundSample(piece, time);
                 try { Check(writer.WriteSample(stream, made), "writing the sound"); }
                 finally { Marshal.ReleaseComObject(made); }
+            }
+            if (all && speed != null)
+            {
+                long end = 0;
+                var last = speed.Finish(ref end);
+                if (last.Length > 0)
+                {
+                    var made = MakeSoundSample(last, end);
+                    try { Check(writer.WriteSample(stream, made), "writing the sound"); }
+                    finally { Marshal.ReleaseComObject(made); }
+                }
             }
         }
 

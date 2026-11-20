@@ -98,6 +98,8 @@ namespace FastViewer
                 case "soundVol": SoundMixing.LoadVolumes(v); break;
                 case "soundChoice": soundChoice = Math.Max(0, Math.Min(16, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "keepSpeed": keepSpeed = v == "1"; break;
+                case "evenVolume": Loudness.On = v != "0"; break;
+                case "speedPitch": TimeStretch.KeepPitch = v != "1"; break;
                 case "discordMb": { int mb = int.Parse(v, CultureInfo.InvariantCulture); discordMb = mb == 50 || mb == 500 ? mb : 20; } break;
                 default:
                     if (LoadCustomOption(key, v)) { } // the custom look (CustomLook.cs)
@@ -157,6 +159,8 @@ namespace FastViewer
                 "soundVol=" + SoundMixing.VolumesLine,
                 "soundChoice=" + soundChoice.ToString(CultureInfo.InvariantCulture),
                 "keepSpeed=" + (keepSpeed ? "1" : "0"),
+                "evenVolume=" + (Loudness.On ? "1" : "0"),
+                "speedPitch=" + (TimeStretch.KeepPitch ? "0" : "1"),
                 "subs=" + (subsOn ? "1" : "0"),
                 "subsOrig=" + (subsOriginal ? "1" : "0"),
                 "subsEn=" + (subsEnglish ? "1" : "0"),
@@ -463,6 +467,15 @@ namespace FastViewer
             AddCard("", "Repeat videos",
                 "Start a video over when it ends.",
                 Toggle(() => loop, v => { loop = v; UpdateControls(); }));
+            AddCard("", "Even out volume",
+                "Plays loud videos and songs quieter and quiet ones a little louder, so they all sound about equally loud. " +
+                "Each file is measured once, in the background (also the ones next to it, before you get there). " +
+                "Your volume works on top of it. Nearly silent files and hiss are never turned up, and nothing is made so loud it distorts.",
+                Toggle(() => Loudness.On, v => { Loudness.On = v; LevelSettingChanged(); }));
+            AddCard("", "Change pitch with speed",
+                "Normally faster or slower sound keeps its normal pitch, like YouTube: voices just talk faster. Turn this on for " +
+                "the old way, where faster also sounds higher (and slower lower), like a tape. Also for \"Keep speed\" when you save or send a clip.",
+                Toggle(() => !TimeStretch.KeepPitch, v => TimeStretch.KeepPitch = !v));
             AddCard("\uE893", "When a video ends",
                 "\"Play the next file\" moves on by itself, handy for watching many clips in a row. " +
                 "Repeat (R) still loops a video exactly as before and takes priority.",

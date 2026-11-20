@@ -142,7 +142,7 @@ namespace FastViewer
                         s.Video.Pause();
                         if (h.Item3 && s == shown)
                         {
-                            s.Video.Volume = Math.Min(1, volume);
+                            s.Video.Volume = PlayVolume(s);
                             s.Video.IsMuted = muted || OwnSound(s);
                             s.Video.Play();
                             s.Video.SpeedRatio = speed;

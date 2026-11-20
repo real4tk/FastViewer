@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.28.0)
+# FastViewer: complete feature list (version 1.29.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests), Report.cs (1.28.0: the error report), Translate.cs (1.28.0: English translation), Hunt128.cs (1.28.0 tests), Parakeet.cs (1.28.0: Parakeet captions);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests), Report.cs (1.28.0: the error report), Translate.cs (1.28.0: English translation), Hunt128.cs (1.28.0 tests), Parakeet.cs (1.28.0: Parakeet captions), Loudness.cs (1.29.0: Even out volume), Hold.cs (1.29.0: hold for 2x), Stretch.cs (1.29.0: same pitch at any speed (WSOLA), speed changes timed with the picture), TestSilence.cs (1.29.0: test runs at Windows volume 0), Hunt129.cs (1.29.0: pitch / let-go / Keep speed / loops / decodeinfo tests);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -133,13 +133,13 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   opens the slider), time, seek bar, duration, Repeat, video "..." menu. The seek bar's dot moves every screen
   frame while playing (with animations on); dragging it holds the video still and shows the frames passed (at
   most ~20 jumps a second, ending exactly where you let go), then plays on if it was playing.
-- Play/pause button in the middle (Show / Only when paused / Hide); click the video to play/pause
+- Play/pause button in the middle (Show / Only when paused / Hide); click the video to play/pause (since 1.29.0 a click on a playing video pauses when the button comes up, so holding can mean 2x; a paused one starts at the press as before)
   (configurable); double-click for full screen.
 - Video dims slightly while controls show (optional); controls can also fade on a paused video (optional).
 - Short notes when a key or the wheel changes something while the controls are hidden ("Volume 45%",
   "+30 s 1:42 / 5:00").
 - Autoplay (optional), Repeat (R), "When a video ends": stop or play the next file.
-- Speed 0.25x to 5x (0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5): since 1.25.0 a slider row at the top of the video "..." menu (see the 1.25.0 section); the Slower/Faster keys step through all of them. The 1.20-1.24 setting "Speeds in the menu" (speeds=) is gone.
+- Speed 0.25x to 5x (0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5): since 1.25.0 a slider row at the top of the video "..." menu (see the 1.25.0 section); the Slower/Faster keys step through all of them. The 1.20-1.24 setting "Speeds in the menu" (speeds=) is gone. Hold the left mouse button on the video for 2x while held (1.29.0, see its section).
 - Frame by frame: , and . step one frame (uses the real frame length read from the file).
 - A-B loop: [ start, ] end, \ stop; the looped part shows as a band on the time bar.
 - Continue where you left off: videos over a minute resume where you stopped (300 most recent, shared
@@ -803,6 +803,186 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   E724, no tick). AddKeepSpeed (Make GIF) and Save clip use the same switch. Test: --case lookcheck [settings with a
   look] (pictures editor_<look>.png, discord_<look>.png; logs the row text colour and the Burn switch).
 
+## Hold for 2x, Even out volume, same pitch at any speed (1.29.0)
+- Hold for 2x (Hold.cs): holding the left mouse button on a video or song (not photos, not while cropping, in the grid
+  or Settings) for 0.3 s without moving more than 6 px plays it at 2x until the button comes up, then SetSpeed(the speed
+  it had) (only if the speed is still 2x: a key or the menu during the hold wins; at 2x already nothing changes). Hooked
+  into OnStageDown/Move/Up: ArmHold (holdTimer 300 ms, the stage captures the mouse so the release always arrives),
+  HoldMoved (a drag cancels), HoldTick (also asks Windows: Control.MouseButtons and Cursor.Position, because in the mini
+  player DragMove runs Windows' own move loop and the window gets no mouse messages; the timer still ticks there),
+  HoldReleased, EndHoldAfterDrag (mini player, after DragMove returns), CancelHold (a double-click). LostMouseCapture
+  and Deactivated end a hold. Clicks: a paused video still starts at the press; a playing one pauses when the button
+  comes up (holdClickPauses) instead of at the press, so a hold never pauses first; a double-click still undoes the
+  first click's pause/play. Zoomed in: holding still is 2x, dragging pans. Mini player: a still hold is 2x (on a
+  paused video it starts playing), dragging moves the window, a click plays/pauses as before. Hint: HoldHint (Window.xaml,
+  next to Toast, same FloatBg/MenuEdge/Radius.Float, "2x" + two triangles, not hit-testable, below a floating top bar
+  like the Toast; hides a "feedback" note). Sound: holdWarm: while the button is down on a playing video (where letting
+  go pauses anyway) OwnSound is true, so FastViewer's own sound is already playing when 2x starts (Windows' player
+  stands still ~0.1 s at a speed change, its sound too). Test: --case hold [--pattern <file>[@speed]] (simulated button
+  events, holdTestPressed; per file in the window and then the mini player: short click while playing / paused, a
+  2.3 s hold, letting go, hold on a paused video, double-click; a photo last; every 20 ms: picture still?, sound
+  there? = own sound Sounding or Windows' player unmuted while its picture moves). Measured: 60 s clip and Medal
+  clips (3 and 2 tracks), from 1x and 1.5x: 2x 0.3 s after the press, back 0.2 s after letting go, sound away 0 ms
+  and no sound restarts during holds and releases; the picture stands still 60-130 ms at each speed change (Windows'
+  player, as with the keys). (Round 1: at 1x Windows' player got the sound back 2 s after letting go, a 30 ms dip, and
+  the sound was bent to wait for the picture: both replaced in round 2, below.)
+- Even out volume (Loudness.cs, Settings > Videos card under Repeat videos, settings line evenVolume=, on by default):
+  Loudness.Measure decodes all of a file's heard sound (SoundMixing.Layout; the sources at their Sound volumes, "Game and
+  mic", mixed by a TrackMixer exactly as SoundPlayer does; 48 kHz stereo) and measures BS.1770: K-weighting (48 kHz
+  biquads), 100 ms sums, 400 ms blocks every 100 ms, gates -70 LUFS and -10 LU; plus the sample peak and the seconds
+  that passed the gates. GainOf: target -18 LUFS (Medal clips are about -23 to -25, songs -6), cut at most 15 dB,
+  boost at most 6 dB, falling to 0 dB between -30 and -40 LUFS (hiss, room noise stay as they are), never past a peak
+  of -1 dBFS; silent / under 1 s of real sound: 1. Kept per file (path, size, date) in memory and in
+  %LOCALAPPDATA%\FastViewer\loudness.txt ("lufs|peak|seconds|file <key>", 5000 lines, then it starts over; tests keep
+  nothing unless --loudness <file>). Measured against ffmpeg's ebur128: within 0.05 LU (generated pink noise -9/-16/
+  -28/-45, a sine, an MP3; real Medal clips mixed game+mic: -23.1/-23.9/-24.7 both ways). Time: a 30 s 190 MB Medal
+  clip 170-280 ms, a 5 min MP3 about 1 s, a 12 s clip 50 ms (the first file of a run also starts Windows' media tools).
+  Playing: PlayVolume(slot) = min(1, volume x LevelOf(slot)) everywhere Windows' player got Math.Min(1, volume);
+  OwnSound when volume x level > 1 (so a boost over 100% plays through FastViewer's sound, as volume over 100% does);
+  SoundWish.Volume = volume x level. LevelStart (where a file starts on screen) takes the known level, or 1 when it
+  isn't measured yet (levelLate): then the file on screen is measured first and LevelArrived glides (levelTimer, 3 dB
+  a second, steps of 0.15 dB) to its level, and not over 100% unless FastViewer's sound is playing already (no change
+  of players mid-sound). Background: one thread "Loudness" in Windows' background mode (THREAD_MODE_BACKGROUND_BEGIN:
+  lowest processor, disk and memory priority), started only once the first picture is up; queue = every loaded
+  (preloaded) video/song (LevelWanted from Load); the file on screen first once its picture is up (levelUp, set by
+  StopRevealWatch and UpdateOwnSound), the others 0.6 s after the last switch; files with 2+ tracks wait until their
+  layout is known; a neighbour being measured gives way to the file on screen. Turning the setting on/off takes effect
+  at once. Send to Discord: ConvertOptions.Level = ExportLevel(file) (the level it plays at, if measured) multiplies the
+  mix gains (a one-track file then goes through the mixer too); the "already small enough, copied as it is" shortcut
+  stays (no level then). Checked: copies with -9.2 / -1.9 / +6.0 dB measure -18.2 / -18.2 / -22.3 LUFS (expected
+  -18.0 / -18.0 / -22.1). Tests: --case loudness [--pattern save] (every file measured, again from memory, from the
+  file; save: copies with the level), --case even (with --settings: what each file plays at, a late file's glide,
+  volume 50%, the setting off and on).
+- Same pitch at any speed (round 2, Stretch.cs TimeStretch; setting "Change pitch with speed" in Settings > Videos, off,
+  settings line speedPitch=1 for the old way; TimeStretch.KeepPitch): WSOLA like Chrome's audio renderer: 20 ms periodic
+  Hann windows (w[i] + w[i+480] = 1), 10 ms steps, each window taken near speed x 10 ms further on in the input, at the
+  place within +-15 ms that best continues the last window (normalized cross-correlation of L+R: coarse every 6th place
+  on every 4th sample, then +-6 places on every 2nd sample; silence: no search). At exactly 1x it hands the input
+  through untouched (b = the natural next place). Time on the picture's clock is counted at the even pace (ana), not
+  at the window found, and input pushed with its seconds (a sliver played twice = 0 s): PendingSeconds = what is
+  inside the stretcher. Player (SoundPlayer.Step): stretchMode follows the setting (a change restarts the sound);
+  heard = mediaEnd - Waiting(true) - PendingSeconds, where Waiting(true) now also counts the ~50 ms inside Windows
+  and the card through the handed list (at the speed it was made at; before it was latency x the new speed: 50 ms off
+  at each change). At 1x with a pace correction of at most 0.5% the stretcher passes through and the old Render
+  (straight lines between samples, 1.28 behaviour, slivers at 25 ms) bends it; any real speed or a bigger correction
+  goes through WSOLA. Keep-speed saves: SoundStretch uses a TimeStretch (plain clamp, no soft limiter) and Finish
+  writes the last half window. Tests (--case pitch, folder with tone.mp4 = a 1 kHz tone, r1.mp4 = a Medal clip;
+  SoundPlayer.Tap records the sound before the volume): same pitch at 2/1.5/1.25/0.75/0.5/3x: 999.8-1000.3 Hz,
+  96-100% of the energy one clean sine (least-squares fit); the old way: 500/750/1250/1500/2000 Hz as expected
+  (67-100% clean, its 3x was always rough); saved 8 s at 2x / 0.5x: 1000.0 Hz, 100% clean, 4.017 / 16.067 s; the old
+  way 2000 / 500 Hz.
+- Letting go of a hold (round 2). Cause of the "slowed-down sound": for 2.5 s after any speed change the player read
+  the sound up to 20% slower or faster to meet Windows' player, which stands still ~0.12 s at every speed change and
+  then goes on from where it stood; with plain resampling the pitch dropped too. Now (TimeSpeedChange in the window,
+  ApplySpeedNow -> SetPictureSpeed): the sound is never bent in the first 0.9 s after a change; the two changes are
+  timed against each other instead. Going slower (b < a): the sound gets b at once (SoundPace, SoundWish.Speed; the
+  picture's own pace goes in SoundWish.PicturePace for Now()), and the picture gets it after OutputDelay (what is
+  already queued plays at the old speed: speaker queue + 50 ms, reported by the player) + b x T / (a - b). Going faster:
+  the picture at once, the sound after b x T / (b - a) - OutputDelay. T = the time Windows' player loses at a change,
+  learnt per file and direction (WatchStall: 0.8 s after a change, elapsed - moved / speed; default 0.1 s; measured
+  0.12 s on the user's Medal clip and on small clips). What is left after 0.9 s (a few hundredths: T varies) is closed
+  at the same pitch at most 3% faster or slower (closeGap), within a change only above 12 ms, at other speeds
+  outside a change above 25 ms; slivers only at 1x (25 ms, as before) or beyond 0.25 s. After a speed change own
+  sound stays for that file until it is paused or another file shows (soundSpeedFile + playing): no hand-back to
+  Windows' player mid-sound (was a ~30 ms dip 2 s after letting go). Fallback CatchUpPicture: only when the sound is
+  over 0.15 s ahead, the picture is moved forward by the gap plus what a move costs that file (learnt; Medal 1080p60:
+  0.4-0.6 s of standing still, so it is a last resort; at most 3 per change, never with Repeat).
+  Measured (--case pitch, letting go of a 2.5 s hold at 1x; 2 x tone.mp4, 3 x Medal r1.mp4): sound read at exactly
+  1.000x from 0.15 to 0.9 s after letting go, then 0.988-1.013x; sound and picture within 40 ms from 0.35-0.44 s on
+  (before that the picture runs ahead up to ~0.15 s by design while it waits to stand still), then within +-15 ms;
+  no picture moves, no missing sound; during the 2x hold within -44..+20 ms (was 160-300 ms). --case hold: sound away
+  0 ms through holds and 4 s after letting go. Loops (--case loopsound r1.mp4 at 120%): as 1.28 (worst 24-31 ms per
+  loop, a sliver brings it to 0). Slider drag (--case speeddrag): no gaps, no restarts during the drag.
+- 1.29.0 round 3 (the user's real-screen test). (1) Mini player: letting go of a hold paused the video, because the press went
+  straight into DragMove (Windows' move loop) and the click was decided after it returned. Now (FastViewer.cs OnStageDown
+  mini branch, Hold.cs MiniDrag): a press in the mini player is armed like in the window (capture, hold timer, holdWarm
+  when playing); the window move starts only once the cursor moved 4 px (MiniDrag: release capture, keep own sound via
+  soundSpeedFile, DragMove); HoldReleased: a hold always ends in EndHold (plays on at the speed it had), only a short
+  click (miniClick) plays/pauses when the button comes up. --case hold now also goes through this path in the mini pass.
+  (2) Repeat with own sound: measured with --case loops (Hunt129.cs; folder of noise clips n2 = 2 s, n7 = 7 s, m6 = 6 s
+  with 3 tracks mixed like Medal; each at 1x after a change, 1.5x, 2x, same pitch and pitch with speed, 5-8 loops; per
+  loop: silence in what the speakers got, speakers running dry (SoundPlayer.LongestStarve), doubled sound = a 20 ms
+  block of the changes between samples matching anything 30-300 ms before it at over 0.9, sound/picture apart 0.15-1.2 s
+  after the picture started over; the comparing runs off the window's thread). Before: 105 of 105 loops bad: speakers dry
+  120-1200 ms at each loop (the sound waited for Windows' player to say "ended" and start over), 100-200 ms played twice
+  (re-sync within 1.2 s after a loop, 2 per loop), 150-340 ms apart. Causes and changes: SoundPlayer.LoopWaits = false:
+  the sound never waits at the loop (no held piece, pieces may cross the wrap); PlanLoop / RestartPicture (Stretch.cs):
+  the picture is started over (Position = 0, NoteLoop) just before its end, early by its learnt restart cost per
+  file+speed (LoopCost, 0.8 s later: elapsed - position / speed; measured 0-10 ms), at the picture clock dur + drift -
+  cost x speed (at most dur - 0.03 x speed, so Windows' player never reaches its end; OnVideoEnded stays the fallback),
+  only while own sound plays; tracks start up to 141 ms after the picture (AAC, edit lists: n2 112 ms, Medal r1 game
+  track 141 ms) and run that far past its end: the part past the end is kept (Stash, up to 0.3 s) and placed into the
+  next loop's opening hole, cut exactly where that track's new sound starts (TrackMixer.Add exact / cutAt / fadeInFrom,
+  2.5 ms fades), no sample moved (before: dropped, and the next loop's sound slid up to 50 ms earlier when the hole was
+  small); at the seam the sound skips forward by how far it is behind (drift + SeamExtra, the after-loop offset learnt per
+  file+speed 0.9 s after each restart, not within 3 s of a speed change); "looping" protection only 0.2 s after a restart
+  and the last 0.05 x speed s. Sound corrections everywhere: no slivers any more (repeating 30 ms was heard as doubled):
+  closeGap from 15 ms (12 ms within a change) at most 3% (same pitch) or 1% (pitch with speed, the pitch moves with it);
+  slivers only beyond 0.25 s; a restart from the picture's place only when the sound is over 0.5 s ahead (it replays
+  what was heard) or 0.25 s behind. After: silence 0-4 ms (the joint fade), no doubled sound (closest match 0.2-0.3 on
+  noise, 0.3-0.66 on game sound), speakers never dry, no restarts, no slivers; Medal r1 (3 tracks, 30 s) at 1x/1.5x/2x
+  both pitch modes: 18 of 18 loops within 29 ms; noise clips: steady loops mostly within +-40 ms; the first loop right
+  after a speed change can be 70-280 ms off and settles over the next one or two loops; on a 2 s clip at 2x (a loop every
+  second) up to ~60 ms. --case loopsound r1 (1x, 120%): worst 14-24 ms per loop, no slivers (1.28: 24-32 ms + slivers).
+  Tests found on the way: hunt default pattern is "mixed" (not null); a test that blocks the window's thread for seconds
+  makes the sound think the picture stopped (it restarted ~130 ms back = heard as doubled): never in normal use.
+- 1.29.0 round 4 (replaces parts of round 3 above; this is how loops work now). The user: loops cut off the end of the sound; the
+  first loop after a speed change wasn't in step; after quick holds the video briefly ran slower than 1x.
+  (1) The sound is the master. SoundPlayer.ProbeSpans (when a reader opens): each heard track's first and last sample
+  (stamp + edit-list offset; reading from 0 and from 1.5 s before the end) -> SoundFrom / SoundTo (doubles), LoopSpan =
+  SoundTo - SoundFrom. Every track is read to its own end (no cut at the picture's end, no tails, no seam skips);
+  wrap when all ended; wrapBase += LoopSpan; each track's first sample of a new loop placed exactly (TrackMixer.Add
+  exact, no sliding), so the next loop's sound starts right after the last sample. The window: LoopLenFor(s) = LoopSpan
+  when known (SoundWish.LoopLength, NoteLoop adds it to soundLoopBase); a restart mid-loop finds its place from
+  w.LoopBase. PlanLoop: the picture is started over when the sound reaches the next loop (heard = position - drift,
+  wall time = (len - heard) / sound pace) minus the learnt restart cost (per file + speed + pitch mode, learnt from how
+  far apart they are 0.9 s after each start-over, not within 3 s of a speed change). The picture never reaches its own
+  end: starting Windows' player over in the moment it finishes the file jammed its media pipeline (found: the next
+  MFCreateSourceReaderFromURL in the process hung for good, own sound stopped); when the sound is longer than the
+  picture it is paused 0.08 x speed s before its end (pictureHeld) and started over from there (Position 0, Play).
+  OnVideoEnded with a planned loop: an "ended" within 1 s after a start-over only means Play; otherwise the picture
+  waits and a fallback starts it over the old way. Measured (--case loops, which now also counts per loop the frames
+  of each heard track put in, TrackMixer.AddedFrames, against the file's own count, plus frames ever left out,
+  SoundPlayer.DroppedFrames; at 1x one-track it also matches what the speakers got against the file in 20 ms blocks:
+  the last 500 ms and the first 100 ms of the next loop right after it): every whole loop got every sample of every
+  track, 0 frames left out; next loop's start right after the end matched 1.000; no silence, no doubled sound.
+  (2) First loop after a change: --case loopchange (1x->2x 0.8 s before the end, 2x->1x 0.5 s, 1x->1.5x 0.3 s, a hold
+  pressed 1.1 s before, let go 0.4 s before; 3 times each). Tried and dropped: predicting the sound's pace through the
+  change (worse), saving the change for the loop start with the picture's speed given at its start-over (much worse:
+  Windows' player stands still for an unknown time then); both reverted (SoundWish.PaceAt stays unused).
+  (3) Quick holds: --case holdstorm (12 holds of 0.35-0.9 s, 0.15-0.6 s apart, window + mini player): the sound is
+  never read faster or slower than it should (0.3-0.4% at most once a change has settled; the 3% closeGap of round 3
+  is gone: closeGap = false, only the 0.4% nudge). The picture still stands still 0.1-0.16 s at each of its speed
+  changes (for a let-go about 0.27 s after it, as timed): Windows' player's own, caused by its sound pipeline (a
+  video-only file shows none: picture 100% of its speed throughout); pausing around the change doesn't help.
+  Final state of round 4 (after the measurements): (a) Encoder padding: an AAC track decodes to priming + sound +
+  padding (n7: 21 + 7000 + 19 ms); Windows' decoder hands all of it out. VideoInfo.EditDuration (sum of the edit
+  list's segments, mvhd scale) gives the real length: each track's span ends at its first sample + EditStart +
+  EditDuration, the rest is cut exactly (TrackMixer.Add cutAt, no fade): every sample of the real sound, no padding
+  silence at the seam (was 7-20 ms). (b) The closing of what is left after a change: at most 1.5% at the same pitch
+  (0.5% the old way), only within 4 s of a speed change and only above 20 ms; otherwise the 0.4% nudge (round 3's 3%
+  was gone for a moment and made let-go residuals stay 70-90 ms). (c) TimeSpeedChange learns a per-file, per-direction
+  bias of its delay (WatchChange, 0.9 s after a change: delay -= drift / speed difference, slowly). Measured on the
+  final build: --case loops (3 clips x 3 speeds x 2 modes, 106 loops): every whole loop got every sample of the real
+  sound of every track, 0 frames left out, silence at the seam 0-2 ms, no doubled sound, no restarts; 89 of 106 loops
+  within 40 ms, the rest 41-52 ms (the restart moment of Windows' player varies). Medal r1 18 loops: all samples
+  (game 30016 ms, mic 30123 ms), mostly 7-25 ms. --case loopchange: holds pressed 1.1 s / let go 0.4 s before the
+  end 14-30 ms (one 50), 2x->1x 0.5 s before 17-44 ms, 1x->2x 0.8 s before 13-55 ms, 1x->1.5x only 0.3 s before 15-121
+  ms (Windows' stand-still at its speed change and its start-over overlap). --case pitch let-go: exactly 1.000x from
+  0.15 to 0.9 s, within 40 ms from ~0.4 s in 3 of 5, the other 2 close at 1.5% over a few seconds.
+  Tests: hunt logs are also written as they go (log.partial.txt) and a watchdog writes the window thread's stack when
+  it stops answering for 2 s, the sound thread's when it doesn't go round for 3 s, and a test analysis's.
+- Test silence (round 2, TestSilence.cs): every "--" run sets this process's own Windows volume to 0 and mute (its
+  audio sessions on every active render device, IAudioSessionManager2; the default session first, so it is already
+  0 when anything plays), checked again every 0.5 s from 3 s on; RunHunt waits for it (5 s, else the test stops) and
+  every hunt log ends with "test silence: n sound session(s) ... all at volume 0 and muted: True". Done off the
+  window's thread: on it, it held up the first video's opening by 0.6-0.8 s. Windows remembers a program's volume by
+  its path: test copies keep 0; the FastViewer.exe registered for "Open with" gets volume 1 back at the end of a test.
+  The same 1.28 build opens ~80 ms slower from a path Windows remembers as muted (563 vs 644 ms median), so first-
+  open comparisons of test runs carry that; switching (median 11-12 ms, p90 16-17 ms) is the same old and new.
+- Not verified: how even it sounds by ear on the user's speakers (WPF's volume is taken as linear, as FastViewer
+  always has); real mouse holds (tests simulate the button).
+
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -829,7 +1009,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 ## Settings (side menu pages)
 - Appearance (look, dark or light, Animations, Transition between files, mini player volume button), Custom look, Buttons (also the "..." menus), Viewing (zoom preference, show filter, order, wrap around, thumbnail strip,
   keep on top, ask before deleting, when you rotate a photo or video), Videos (continue where you left off,
-  autoplay, repeat, when a video ends, dim video, hide controls on paused video, hide controls after,
+  autoplay, repeat, even out volume (1.29.0), change pitch with speed (1.29.0), when a video ends, dim video, hide controls on paused video, hide controls after,
   skip back/forward, slideshow speed), Keyboard (every action, two keys each, Reset all), Mouse,
   Speed (stay ready in the background, Preload, "Start even faster" = NGen with admin approval),
   Default app (add to "Open with", open Windows Default apps), Updates (automatic check on/off, Check now),

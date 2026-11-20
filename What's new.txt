@@ -5,6 +5,45 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.29.0  (18 Nov 2026)
+  New
+  - Hold for 2x speed, like YouTube and TikTok: hold the left mouse button on a video or song and it plays at 2x
+    for as long as you hold it ("2x" shows at the top); let go and it goes back to the speed it had (also 1.5x or
+    0.5x). A short click still plays/pauses as before; only a press that stays put for about 0.3 s counts, so
+    dragging (a zoomed-in video, the mini player) works as always. Also in the mini player. The sound speeds up
+    with it without a break, Medal clips included. On a paused video holding plays it at 2x, and it plays on.
+    Letting go goes straight back to normal: no moment of slowed-down sound.
+  - Faster or slower sound keeps its normal pitch, like YouTube, TikTok and Telegram: voices just talk faster
+    instead of sounding like chipmunks (at every speed, 0.25x to 5x, and with hold for 2x). "Keep speed" when you
+    save a clip, make a GIF or send to Discord does the same. Settings -> Videos -> "Change pitch with speed"
+    brings back the old way, where faster also sounds higher.
+  - Even out volume (Settings -> Videos, on): loud videos and songs play quieter and quiet ones a little louder,
+    so they all sound about equally loud. Each file is measured once in the background, the way TV and streaming
+    services measure loudness (EBU R128), and remembered, so it's never measured twice. The files next to the one
+    you're watching are measured ahead, so switching is just as instant. A Medal clip is measured as you hear it
+    (game and mic together). Your volume slider works on top of it. Quiet files get at most 6 dB louder, nearly
+    silent ones and hiss not at all, and nothing is made so loud it distorts. Not measured yet (the very first
+    time you open a file)? It plays as it is and slides to its level within a few seconds, without a jump.
+    Send to Discord gets the same level, so your friends hear your clips at a normal loudness too.
+  Changed
+  - At another speed the sound and the picture now change speed together (Windows' player stands still for a
+    tenth of a second whenever its speed changes; the sound is timed around that instead of being slowed down
+    to wait for it), and after a speed change FastViewer keeps playing the sound itself until you pause, so
+    there's no small dip when Windows' player takes it back.
+  - Repeat with FastViewer's own sound (other speeds, Medal clips, after a speed change) loops seamlessly: no silence
+    at the end, no bit of sound heard twice after the restart, and the sound in step from the first picture. Every bit
+    of every sound track plays to the very end of the file, and the next loop's sound starts right after the last
+    bit; the picture is fitted to the sound (it waits a moment before its end when the sound is a little longer).
+  Fixed
+  - Mini player: letting go after holding for 2x paused the video. It now always plays on at the speed it had; only
+    a short click plays or pauses. Moving the mini player starts once you actually drag.
+  - After a few quick holds for 2x the sound could run up to 3% slower or faster for a few seconds. Now it plays at
+    its speed: tiny differences with the picture are evened out at most 0.4% (as before 1.29), and only in the
+    4 seconds after a speed change at most 1.5% at the same pitch; never by leaving out or repeating bits of sound.
+  Known
+  - Windows' player still stands still for about a tenth of a second whenever the speed changes (also when you let
+    go of a hold); FastViewer times the sound around it. Videos without sound don't have it.
+
 1.28.0  (15 Nov 2026)
   New
   - English translation of subtitles, for learning a language. Video "..." -> Subtitles -> Translate to English

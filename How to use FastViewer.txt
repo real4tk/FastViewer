@@ -39,6 +39,8 @@ Sound: game clips, loudness, files that won't play
   A clip with several sound tracks (Medal: game and microphone apart) plays with all of them together.
   The button next to the speaker (only there for such a clip) picks both, only the game or only the mic.
   The volume goes up to 200%: the mark in the middle of the slider is 100%.
+  Settings -> Videos -> "Even out volume" (on) makes loud and quiet files sound about equally loud; your
+  volume works on top of it.
   Anything you save from such a clip gets one mixed sound track, so Discord plays all of it. "Sound" in
   the trim bar sets how loud each track is (you hear it at once); "Keep the tracks separate" saves them
   as they were.
@@ -130,5 +132,7 @@ helps you with FastViewer. It holds no file names, and nothing is sent by itself
 Right-click an MP3's music view to change its cover. Settings > Viewing > Show picks photos, videos and/or music.
 Rotating a video or photo is remembered; Settings > Viewing can save the turn into the file (JPEG, MP4, MOV: no quality lost).
 Playback speed (0.25x to 5x): the slider at the top of the video "..." menu; click the speed next to it for 1x.
+Hold the left mouse button on a video or song to watch at 2x while you hold it; let go for the speed you had.
+Other speeds keep the normal pitch; Settings -> Videos -> "Change pitch with speed" makes faster sound higher again.
 Videos that don't play or get no thumbnail elsewhere: video "..." -> "Make compatible copy".
 iPhone videos (HEVC) need "HEVC Video Extensions" from the Microsoft Store, same as the Photos app.

@@ -275,6 +275,16 @@
       </Grid>
     </Border>
 
+    <!-- Holding the left mouse button on a video: it plays at 2x while held (Hold.cs) -->
+    <Border x:Name="HoldHint" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0" Visibility="Collapsed" IsHitTestVisible="False"
+            Background="{DynamicResource FloatBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"
+            CornerRadius="{DynamicResource Radius.Float}" Padding="12,5,12,5" AutomationProperties.Name="Playing at 2x while held">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="2x" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"/>
+        <Path Data="M0,0 L6,4.5 L0,9 Z M7,0 L13,4.5 L7,9 Z" Fill="{DynamicResource TextMain}" VerticalAlignment="Center" Margin="7,1,0,0"/>
+      </StackPanel>
+    </Border>
+
     <!-- Trim: a filmstrip of the video with two handles; the part between them is kept (Playback.cs, Trim.cs) -->
     <Border x:Name="TrimBar" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,16" Width="640" Visibility="Collapsed"
             Background="{DynamicResource FloatBg}" BorderBrush="{DynamicResource MenuEdge}" BorderThickness="1"

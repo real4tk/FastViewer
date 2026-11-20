@@ -473,7 +473,7 @@ namespace FastViewer
                 double video = plan.VideoBitrate;
                 for (int attempt = 1; attempt <= 4; attempt++)
                 {
-                    var o = new ConvertOptions { VideoBitrate = (int)video, AudioBitrate = plan.AudioBitrate, MaxShort = plan.MaxShort, MaxFps = plan.MaxFps, Speed = keep };
+                    var o = new ConvertOptions { VideoBitrate = (int)video, AudioBitrate = plan.AudioBitrate, MaxShort = plan.MaxShort, MaxFps = plan.MaxFps, Speed = keep, Level = sound ? ExportLevel(source) : 1 };
                     if (painter != null) { painter.Painted = painter.Lines = 0; o.Paint = painter.Paint; }
                     string label = attempt == 1 ? null : "Fitting it once more (try " + attempt + ")";
                     VideoConverter.Convert(source, temp, from, to, turn, p => progress(label, p), cancel, o);
