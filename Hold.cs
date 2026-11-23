@@ -335,7 +335,7 @@ namespace FastViewer
                                 double want = holding ? 2 : speed;
                                 if (Math.Abs(want - should) > 0.001) { should = want; lastChange = clock.ElapsedMilliseconds; }
                                 var p = soundPlayer;
-                                samples.Add(new[] { clock.ElapsedMilliseconds, should, p != null && OwnSound(shown) ? p.LastStep : -1, shown.Video.Position.TotalSeconds, lastChange, shown.Video.SpeedRatio, speedApplies, pictureWakes + 100 * speedRepairs });
+                                samples.Add(new[] { clock.ElapsedMilliseconds, should, p != null && OwnSound(shown) ? p.LastStep : -1, (shown.Video.IsOwn ? shown.Video.CountedNow() : shown.Video.Position.TotalSeconds), lastChange, shown.Video.SpeedRatio, speedApplies, pictureWakes + 100 * speedRepairs });
                             };
                             t.Start();
                             int i = 0;
@@ -348,7 +348,7 @@ namespace FastViewer
                                     After(3200, () =>
                                     {
                                         t.Stop();
-                                        HuntLog(nm + (m ? " (mini player)" : "") + ": " + StormVerdict(samples));
+                                        HuntLog(nm + (m ? " (mini player)" : "") + ": " + StormVerdict(samples) + (soundPlayer != null ? " | drift now " + (soundPlayer.LastDrift * 1000).ToString("0") + " ms, output delay " + (soundPlayer.OutputDelay * 1000).ToString("0") + " ms, last timed delay " + (lastTimedDelay * 1000).ToString("0") + " ms" : ""));
                                         if (mini) ToggleMini();
                                         After(1200, next);
                                     });

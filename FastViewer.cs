@@ -372,7 +372,7 @@ namespace FastViewer
     class Slot
     {
         public readonly Grid Host = new Grid();
-        public MediaElement Video;              // made by NewVideoPlayer
+        public OwnVideo Video;                  // made by NewVideoPlayer (1.31.0: FastViewer's own player, Player.cs; Windows' player inside it only as a fallback)
         public readonly Image Picture = new Image();
         public readonly Image Poster = new Image(); // first-frame snapshot shown while a video starts
         public readonly ScaleTransform Zoom = new ScaleTransform(1, 1);
@@ -508,10 +508,10 @@ namespace FastViewer
                 else if (args[i] == "--snap" && i + 1 < args.Length) snapDir = args[++i];
                 else if (args[i] == "--front") testInFront = true;
                 else if (args[i] == "--own-sound-off") ownSoundOff = true;     // sound as before 1.26, for comparing
-                else if (args[i] == "--frames" && i + 1 < args.Length) { ownFrames = args[++i] == "on"; framesSwitchFixed = true; } // 1.30.0: pictures drawn by FastViewer (FramePath.cs) on or off
-                else if (args[i] == "--frames-cpu") VideoConverter.FrameReader.NoGpu = true;
+                else if (args[i] == "--waveout") Wasapi.Off = true; // 1.31.0: the old sound output, for comparing
+                else if (args[i] == "--player" && i + 1 < args.Length) { OwnVideo.Enabled = args[++i] == "own"; playerSwitchFixed = true; } // 1.31.0: FastViewer's own player (Player.cs) or Windows'
+                else if (args[i] == "--frames-cpu")VideoConverter.FrameReader.NoGpu = true;
                 else if (args[i] == "--jam-probe-fail") jamProbeFails = true; // (tests: the jam watch's test reader never opens)
-                else if (args[i] == "--frames-cpu-show") VideoConverter.GpuShow.Off = true; // (1.30.0 round 2: pictures through memory, as in round 1)
                 else if (args[i] == "--own-sound-aloud") ownSoundAloud = true; // a test that is meant to be heard
                 else if (args[i] == "--loudness" && i + 1 < args.Length) loudnessStoreOverride = args[++i]; // tests: where loudness measurements are kept
                 else if (args[i] == "--tracks" && i + 1 < args.Length) soundStoreOverride = args[++i]; // tests: where what was found about sound tracks is kept
@@ -589,6 +589,7 @@ namespace FastViewer
             };
             WindowChrome.SetWindowChrome(this, chrome);
             LoadSettings(!testMode);
+            OwnVideo.Warm(); // 1.31.0: the graphics device made in the background before the first video
             if (stripOverride) showStrip = true;
             if (lookOverride != null) lookId = lookOverride;
             var lookWatch = Stopwatch.StartNew();
@@ -604,7 +605,7 @@ namespace FastViewer
                 Width = 1440;
                 Height = 760;
                 ShowActivated = false;
-                ShowInTaskbar = false;
+                ShowInTaskbar = Environment.GetEnvironmentVariable("FV_TASKBAR") == "1"; // (tests: no taskbar button, unless a test looks at it)
                 muted = true;
                 KeepTestOutOfSight();
             }
@@ -815,6 +816,7 @@ namespace FastViewer
 
             SourceInitialized += delegate
             {
+                SetUpVideoBack(); // (1.31.0, Player.cs: the window the own player's pictures are shown in)
                 ApplyWindowLook(); // dark or light frame, see-through for Liquid Glass
                 HwndSource.FromHwnd(new WindowInteropHelper(this).Handle).AddHook(WndProc);
                 if (testMode) SendToBack();
@@ -911,7 +913,7 @@ namespace FastViewer
         void NewVideoPlayer(Slot s)
         {
             if (s.Video != null) s.Rotor.Children.Remove(s.Video);
-            var v = new MediaElement
+            var v = new OwnVideo
             {
                 LoadedBehavior = MediaState.Manual,
                 UnloadedBehavior = MediaState.Manual,
@@ -922,14 +924,15 @@ namespace FastViewer
                 Visibility = Visibility.Collapsed
             };
             v.MediaOpened += delegate { OnVideoOpened(s); };
-            v.MediaFailed += delegate(object o, ExceptionRoutedEventArgs e) { OnLoadFailed(s, e.ErrorException); };
+            v.MediaFailed += delegate(Exception ex) { OnLoadFailed(s, ex); };
+            v.Host = s.Host;
+            v.LoopSource = delegate { return loop && s == shown && !s.Failed ? LoopLenFor(s) : 0; }; // (Repeat: the own player loops by itself, seamlessly)
             v.MediaEnded += delegate { OnVideoEnded(s); };
             // 1.30.0: in every test run Windows' player itself stays at volume 0, whatever the test sets (before, only this
             // process's Windows volume kept tests quiet, and that is checked every few tenths of a second: a moment could be heard).
             if (testRun && !ownSoundAloud)
             {
-                v.Volume = 0;
-                System.ComponentModel.DependencyPropertyDescriptor.FromProperty(MediaElement.VolumeProperty, typeof(MediaElement)).AddValueChanged(v, delegate { if (v.Volume != 0) v.Volume = 0; });
+                OwnVideo.TestSilent = true; // (Windows' player, whenever it is used, stays at volume 0)
             }
             s.Video = v;
             s.Rotor.Children.Insert(0, v);
@@ -1440,7 +1443,7 @@ namespace FastViewer
                 }
                 // With a first-frame snapshot we can show it instantly; otherwise it starts behind the
                 // current picture and OnRendering swaps it in once it's drawing.
-                bool hasPoster = c.Poster.Source != null;
+                bool hasPoster = c.Poster.Source != null || (c.Video.IsOwn && c.Video.hasPicture); // (1.31.0: the own player's first picture is up already)
                 playing = true;
                 StartPlayback(c, false);
                 if (hasPoster) Reveal(c);
@@ -1455,10 +1458,7 @@ namespace FastViewer
         // now. OnRendering removes it as soon as real frames are being drawn.
         void StartPlayback(Slot c, bool snapshotNow)
         {
-            // 1.30.0 round 2: while FastViewer's drawn picture is on screen (or Windows' player is paused under it), that
-            // picture is the cover: no snapshot of Windows' player, which may be paused elsewhere or still finding its place
-            // (seen as a grey haze over the video when clicking play/pause quickly: each click laid a new grab over it).
-            if (c == shown && (frameVisible || frameParked || (Stopwatch.GetTimestamp() - frameMovedPlayerAt) / (double)Stopwatch.Frequency < 1.5)) { snapshotNow = false; c.Poster.Source = null; }
+            if (c.Video.IsOwn) { snapshotNow = false; c.Poster.Source = null; } // (1.31.0: the own player never shows black at a start: no cover needed)
             if (snapshotNow && c.Poster.Visibility != Visibility.Visible && !slowGrabs)
             {
                 try { c.Poster.Source = Snapshot(c.Video); FitPoster(c); }
@@ -1514,7 +1514,8 @@ namespace FastViewer
             {
                 var played = c.Video.Position - revealStart;
                 // A slow PC: trust the clock instead of looking at the picture (see Grab).
-                bool drawing = slowGrabs ? played >= TimeSpan.FromMilliseconds(150)
+                bool drawing = c.Video.IsOwn ? c.Video.hasPicture
+                                         : slowGrabs ? played >= TimeSpan.FromMilliseconds(150)
                                          : played >= TimeSpan.FromMilliseconds(50) && HasPicture(c.Video);
                 if (!drawing && played < TimeSpan.FromMilliseconds(400) && revealWatch.ElapsedMilliseconds < 1500) return;
             }
@@ -1530,8 +1531,9 @@ namespace FastViewer
             if (snapDir != null) testLog.Add("live video at " + switchWatch.ElapsedMilliseconds + " ms");
         }
 
-        static BitmapSource Snapshot(MediaElement v)
+        static BitmapSource Snapshot(OwnVideo v)
         {
+            if (v.IsOwn) return v.Snapshot(); // (1.31.0: the picture on screen, read off the graphics card)
             if (v.NaturalVideoWidth == 0) return null;
             double k = Math.Min(1.0, 1920.0 / v.NaturalVideoWidth);
             var b = Grab(v, (int)(v.NaturalVideoWidth * k), (int)(v.NaturalVideoHeight * k));
@@ -1566,7 +1568,7 @@ namespace FastViewer
         static List<long> grabTimes; // tests: how long each grab took
 
         // Renders the video's current picture at the given size (works while it's hidden, too).
-        static RenderTargetBitmap Grab(MediaElement v, int w, int h)
+        static RenderTargetBitmap Grab(OwnVideo v, int w, int h)
         {
             var watch = Stopwatch.StartNew();
             var dv = new DrawingVisual();
@@ -1580,8 +1582,9 @@ namespace FastViewer
         }
 
         // True when the player is drawing something other than its start-up black.
-        static bool HasPicture(MediaElement v)
+        static bool HasPicture(OwnVideo v)
         {
+            if (v.IsOwn) return v.hasPicture;
             if (v.NaturalVideoWidth == 0) return false;
             var px = new byte[24 * 14 * 4];
             Grab(v, 24, 14).CopyPixels(px, 24 * 4, 0);
@@ -1598,7 +1601,7 @@ namespace FastViewer
             {
                 if (s.Token != token || !s.IsVideo || s.Failed || s == shown || s == revealing || slowGrabs) return;
                 var v = s.Video;
-                if (v.NaturalVideoWidth == 0) return;
+                if (v.NaturalVideoWidth == 0 || v.IsOwn) return; // (1.31.0: the own player keeps its first picture ready itself)
                 bool drawn = HasPicture(v);
                 if (slowGrabs) return; // that look took too long: no more snapshots (see Grab)
                 if (!drawn && attempt < 12)

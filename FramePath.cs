@@ -1,13 +1,6 @@
-// FastViewer 1.30.0: FastViewer draws the video's pictures itself (an experiment behind a switch, settings line ownFrames=).
-//
-// Windows' player (WPF's MediaElement) stands still for a moment whenever it starts over or changes speed. FastViewer's
-// own sound doesn't: it loops without a gap and changes speed without a gap (SoundPlay.cs, Stretch.cs). So here the
-// sound is the clock: a reader of our own (Media Foundation's source reader, decoding on the graphics card through a
-// D3D11 device, converted to BGRA there) decodes the pictures ahead of time, the next loop's first pictures included,
-// and every screen frame the picture that belongs to what is being heard right now is drawn over Windows' player.
-// Windows' player keeps running underneath, unseen, for everything else (the seek bar, captions, pausing, frame steps,
-// trimming, grabbing a frame): only what is seen while playing comes from here. Whenever this path has no picture for
-// the moment (starting, after a jump, a file it can't read), Windows' player simply shows through as before.
+// FastViewer: decoding a video's pictures on the graphics card (Media Foundation's source reader with a D3D11 device),
+// ahead of a clock and on into the next loop with Repeat. Made in 1.30.0 for an experiment that drew these pictures over
+// Windows' player; since 1.31.0 it is the picture half of FastViewer's own player (Player.cs), and the experiment is gone.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -44,7 +37,8 @@ namespace FastViewer
             public static string Trouble;
             public static IntPtr Device, Context; // (the D3D11 device and its immediate context, kept)
 
-            public static IntPtr Manager { get { lock (gate) { if (!tried) { tried = true; try { Make(); } catch (Exception ex) { Trouble = ex.Message; } } return manager; } } }
+            public static int MakeMs = -1; // (tests)
+            public static IntPtr Manager { get { lock (gate) { if (!tried) { tried = true; var mw = Stopwatch.StartNew(); try { Make(); } catch (Exception ex) { Trouble = ex.Message; } MakeMs = (int)mw.ElapsedMilliseconds; } return manager; } } }
 
             [DllImport("d3d11.dll")]
             static extern int D3D11CreateDevice(IntPtr adapter, int driverType, IntPtr software, int flags, IntPtr levels, int count, int sdk, out IntPtr device, out int level, out IntPtr context);
@@ -270,7 +264,12 @@ namespace FastViewer
             int gapAt, gapCount;
             double lastPts = double.NaN;
             public volatile int OpenMs, Seeks, Wraps, Decoded, Kept, LongestWrapMs;
-            const int Pool = 6;   // (round 2: was 10; 6 still keeps 5 pictures ready ahead)
+            int Pool = 6;   // (round 2: was 10; 6 still keeps 5 pictures ready ahead. 1.31.0, own player: 8 up to 1080p, 5 above)
+            public readonly bool Own;        // 1.31.0: for FastViewer's own player (Player.cs): pictures go to a swap chain, not to WPF
+            public int NativeWidth, NativeHeight;
+            public int Turn;              // (1.31.0) the file's "turn me" tag, already applied to the pictures handed out (0, 90, 180, 270)
+            volatile bool forceJump;
+            public void Jump() { forceJump = true; wake.Set(); } // (1.31.0: read from the clock asked for, even for a small step back)
             readonly int maxW, maxH;
             readonly object gate = new object();
             readonly List<VideoFrame> ready = new List<VideoFrame>(); // in clock order
@@ -286,9 +285,10 @@ namespace FastViewer
             volatile bool quit;
             bool ended;
 
-            public FrameReader(string file, int maxWidth, int maxHeight, IntPtr window)
+            public FrameReader(string file, int maxWidth, int maxHeight, IntPtr window, bool own = false)
             {
                 File = file;
+                Own = own;
                 hwnd = window;
                 maxW = maxWidth;
                 maxH = maxHeight;
@@ -300,8 +300,15 @@ namespace FastViewer
             // Where the picture should be now (the sound's clock), Repeat's loop length (0: none) and the pace.
             public void Ask(double clock, double loopLen, double pace)
             {
-                lock (gate) { askClock = clock; askLoop = loopLen; askPace = pace; }
-                wake.Set();
+                bool news;
+                lock (gate)
+                {
+                    // (1.31.0: asked at every screen refresh; the decoding thread is woken only for news. It is woken anyway
+                    // whenever a picture is taken, which is what lets it decode the next.)
+                    news = !Own || double.IsNaN(askClock) || Math.Abs(loopLen - askLoop) > 0.0005 || Math.Abs(pace - askPace) > 0.0005 || clock < askClock - 0.05 || clock > askClock + 0.2;
+                    askClock = clock; askLoop = loopLen; askPace = pace;
+                }
+                if (news) wake.Set();
             }
 
             // The newest frame at or before `clock`, or null when there is none new; the window copies it and gives it back.
@@ -329,6 +336,16 @@ namespace FastViewer
                 return f;
             }
 
+            // 1.31.0: after a jump Windows' decoder often hands out the first picture a frame or two after the place asked
+            // for: that one, when it is no later than `limit`.
+            public VideoFrame TakeFirst(double limit)
+            {
+                VideoFrame f = null;
+                lock (gate) { if (ready.Count > 0 && ready[0].Clock <= limit) { f = ready[0]; ready.RemoveAt(0); } }
+                if (f != null) wake.Set();
+                return f;
+            }
+
             public void Give(VideoFrame f) { if (f == null) return; lock (gate) spare.Push(f); wake.Set(); }
             public void PutBack(VideoFrame f) { if (f == null) return; lock (gate) ready.Insert(0, f); }
 
@@ -351,10 +368,12 @@ namespace FastViewer
             public readonly List<string> Recent = new List<string>(); // tests: what was decoded lately
             public static bool Tracing; // (tests)
             public static bool NoGpu; // (tests: --frames-cpu, decoding without the graphics card)
+            public static bool TestNoAdvanced; public static int TestPool; // (1.31.0 tests: memory probes)
             void Note(string what) { if (!Tracing) return; lock (Recent) { Recent.Add(what); if (Recent.Count > 60) Recent.RemoveAt(0); } }
 
             void Run()
             {
+                ThreadIds.Note("frames");
                 var watch = Stopwatch.StartNew();
                 try
                 {
@@ -391,7 +410,7 @@ namespace FastViewer
                     IMFAttributes ra;
                     Check(MFCreateAttributes(out ra, 3), "setting up");
                     if (manager != IntPtr.Zero) ra.SetUnknown(ref D3DManagerKey, manager);
-                    ra.SetUINT32(ref G.MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1);
+                    if (!TestNoAdvanced) ra.SetUINT32(ref G.MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1);
                     ra.SetUINT32(ref G.MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1);
                     Check(MFCreateSourceReaderFromURL(File, ra, out r), "opening the video");
                     Marshal.ReleaseComObject(ra);
@@ -402,6 +421,9 @@ namespace FastViewer
                     long packed;
                     Check(native.GetUINT64(ref G.MF_MT_FRAME_SIZE, out packed), "reading the picture's size");
                     int nw = (int)(packed >> 32), nh = (int)(packed & 0xFFFFFFFF);
+                    NativeWidth = nw; NativeHeight = nh;
+                    int nativeTurn;
+                    if (native.GetUINT32(ref G.MF_MT_VIDEO_ROTATION, out nativeTurn) < 0) nativeTurn = 0;
                     long rate;
                     if (native.GetUINT64(ref G.MF_MT_FRAME_RATE, out rate) >= 0 && (rate & 0xFFFFFFFF) > 0 && (rate >> 32) > 0)
                         FrameSeconds = Math.Max(1 / 240.0, Math.Min(1, (double)(rate & 0xFFFFFFFF) / (rate >> 32)));
@@ -411,12 +433,19 @@ namespace FastViewer
                     double longSide = Math.Max(maxW, maxH), shortSide = Math.Min(maxW, maxH);
                     double fit = Math.Min(1.0, Math.Min(longSide / Math.Max(nw, nh), shortSide / Math.Min(nw, nh)));
                     int ow = Math.Max(2, (int)Math.Round(nw * fit / 2) * 2), oh = Math.Max(2, (int)Math.Round(nh * fit / 2) * 2);
+                    // (1.31.0 fix: Windows' picture processing always turns the picture by the file's "turn me" tag (Rotate saves one,
+                    // phones write one) and squeezes it into the asked size, so a turned file is asked for in its turned size; the
+                    // own player turns it back (Turn) before the window turns it as shown (rotations), so it isn't turned twice.)
+                    nativeTurn = ((nativeTurn % 360) + 360) % 360;
+                    if (nativeTurn != 0 && nativeTurn != 90 && nativeTurn != 180 && nativeTurn != 270) throw new Exception("the picture is turned by " + nativeTurn + " degrees");
+                    Turn = nativeTurn;
+                    if (nativeTurn == 90 || nativeTurn == 270) { int t = ow; ow = oh; oh = t; }
                     IMFMediaType want;
                     MFCreateMediaType(out want);
                     want.SetGUID(ref G.MF_MT_MAJOR_TYPE, ref G.MFMediaType_Video);
                     // (Round 3: ARGB, so the 4th byte is filled in as fully opaque. With RGB32 it was 0, and WPF drew the picture
                     // see-through on a real screen: washed out, no deep blacks, the grey behind showing through.)
-                    want.SetGUID(ref G.MF_MT_SUBTYPE, ref Argb32);
+                    if (TestNoAdvanced) { var nv = new Guid("3231564E-0000-0010-8000-00AA00389B71"); want.SetGUID(ref G.MF_MT_SUBTYPE, ref nv); } else want.SetGUID(ref G.MF_MT_SUBTYPE, ref Argb32);
                     want.SetUINT64(ref G.MF_MT_FRAME_SIZE, ((long)ow << 32) | (uint)oh);
                     if (r.SetCurrentMediaType(FIRST_VIDEO, IntPtr.Zero, want) < 0)
                     {
@@ -430,10 +459,11 @@ namespace FastViewer
                     }
                     Marshal.ReleaseComObject(want);
                     ReadShape(r);
-                    // Windows may have turned the picture by the file's tag already: the window turns it itself, so such
-                    // files stay with Windows' player.
-                    if ((Width > Height) != (nw > nh) && nw != nh) throw new Exception("the picture came out turned");
-                    if (first) Scaled = Width < nw - 2;
+                    if (first && Own) Pool = TestPool > 0 ? TestPool : Width * Height <= 2200000 ? 8 : 5;
+                    // (The picture must come out in the asked shape, else the turn is unknown: such files stay with Windows' player.)
+                    bool quarter = nativeTurn == 90 || nativeTurn == 270;
+                    if ((Width > Height) != (quarter ? nh > nw : nw > nh) && nw != nh) throw new Exception("the picture came out turned");
+                    if (first) Scaled = Math.Max(Width, Height) < Math.Max(nw, nh) - 2;
                     if (first) Length = Duration(r) / 1e7;
                     if (first)
                     {
@@ -512,7 +542,8 @@ namespace FastViewer
                     // loop's start, frames Windows' decoder never hands out, and that is no reason to start over.)
                     bool back = c < lastAsk - 0.1;
                     lastAsk = c;
-                    bool jump = !positioned || Math.Abs(len - loopLen) > 0.0005 || back
+                    bool forced = forceJump; forceJump = false;
+                    bool jump = forced || !positioned || Math.Abs(len - loopLen) > 0.0005 || back
                         || (c > posClock + Math.Max(1.0, 0.6 * pace) && sinceSeek > 0.3);
                     if (jump)
                     {
@@ -531,7 +562,7 @@ namespace FastViewer
                     }
                     if (ended) { wake.WaitOne(15); continue; }
                     // Far enough ahead: wait for the window to use some.
-                    if (count >= Pool - 1 || (count > 0 && posClock > c + Math.Max(0.35, 0.5 * pace))) { wake.WaitOne(4); continue; }
+                    if (count >= Pool - 1 || (count > 0 && posClock > c + Math.Max(0.35, 0.5 * pace))) { wake.WaitOne(Own ? 25 : 4); continue; }
                     int index, flags;
                     long time;
                     IMFSample sample;
@@ -663,6 +694,7 @@ namespace FastViewer
                 IntPtr tex; int sub, format;
                 if (!SourceTexture(sample, out tex, out sub, out format)) return;
                 Marshal.Release(tex);
+                if (Own) { if (format == 87 && Gpu.Device != IntPtr.Zero) { TexFormat = format; OnGpu = true; } return; } // (1.31.0: copied into a swap chain, no WPF device)
                 if ((format == 87 || format == 88) && GpuShow.Ready(hwnd)) { TexFormat = format; OnGpu = true; }
             }
 
@@ -783,447 +815,8 @@ namespace FastViewer
 
     partial class ViewerWindow
     {
-        internal static bool ownFrames = false;    // settings line ownFrames= (1.30.0, experimental: off by default since 1.30.0 round 4; --frames on|off for tests)
-        internal static bool framesSwitchFixed;    // (tests: --frames decides, the settings file doesn't)
-        VideoConverter.FrameReader frameReader;
-        Image frameView;
-        WriteableBitmap frameBitmap;
-        object frameBound;
-        bool frameHooked, frameVisible, frameClockOk;
-        double frameClock, frameOnClock = double.NaN, frameOnFile;
-        long frameClockTick, frameHoldUntil, frameIdleSince, frameLastOk;
-        double framePace = 1, frameLoopLen;
-        readonly HashSet<string> frameBad = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // Tests: what was drawn (per screen frame: Stopwatch tick, the clock, the frame's clock, drawn by us?).
-        internal List<double[]> frameTrace;
-        internal int framesDrawn, frameCopyWorstUs;
-
-        // Can this video's pictures come from here? (A file with sound: the sound is the clock.)
-        bool FramesUsable(Slot s)
-        {
-            return ownFrames && !ownSoundOff && s != null && s.IsVideo && !s.IsAudio && !s.Failed && s.Ready && s.File != null
-                && !frameBad.Contains(s.File) && KnownTracks(s.File) >= 1;
-        }
-
-        bool FramesWanted(Slot s) { return s != null && s == shown && playing && IsVisible && !gridOpen && FramesUsable(s); }
-
-        // (OwnSound: FastViewer's own sound is the clock, so it plays whenever the pictures come from here.)
-        bool FramesWantSound(Slot s) { return s == shown && revealing != s && FramesWanted(s); }
-
-        // From UpdateOwnSound / TellSound: starts drawing while the video plays (each screen frame, OnFrameTick).
-        void CheckFrames()
-        {
-            if (!ownFrames && frameReader == null && !frameHooked) return;
-            var s = shown;
-            if (frameReader != null && (s == null || frameReader.File != s.File)) DropFrames();
-            if (FramesWanted(s) || frameVisible)
-            {
-                if (!frameHooked) { CompositionTarget.Rendering += OnFrameTick; frameHooked = true; }
-                frameIdleSince = 0;
-            }
-            else if (frameReader != null && frameIdleSince == 0) frameIdleSince = Stopwatch.GetTimestamp();
-            // A paused video keeps its reader for a moment (playing on needs no new one); then its memory goes.
-            if (frameReader != null && frameIdleSince != 0 && (Stopwatch.GetTimestamp() - frameIdleSince) / (double)Stopwatch.Frequency > 8) DropFrames();
-        }
-
-        void DropFrames()
-        {
-            if (frameReader != null) { frameReader.Quit(); frameReader = null; }
-            ShowFrames(false, null);
-            frameOnClock = double.NaN;
-            frameLoopLen = 0;
-            frameClockOk = false;
-            frameIdleSince = 0;
-        }
-
-        void OnFrameTick(object sender, EventArgs e)
-        {
-            var s = shown;
-            long now = Stopwatch.GetTimestamp();
-            double freq = Stopwatch.Frequency;
-            var r = frameReader;
-            if (r != null && (s == null || r.File != s.File)) { DropFrames(); r = null; }
-            if (!FramesWanted(s))
-            {
-                frameClockOk = false;
-                if (frameParked) Unpark(s == parkSlot && playing);
-                // Paused: the picture on screen stays while Windows' player is put on the same frame underneath.
-                if (frameVisible && s != null && !playing && r != null && !double.IsNaN(frameOnClock))
-                {
-                    if (frameHoldUntil == 0)
-                    {
-                        frameHoldUntil = now + (long)(0.35 * freq);
-                        double at = s.Video.Position.TotalSeconds;
-                        if (Math.Abs(at - frameOnFile) > s.FrameSeconds * 0.5) { s.Video.Position = TimeSpan.FromSeconds(frameOnFile); frameMovedPlayerAt = now; }
-                    }
-                    if (now < frameHoldUntil) return;
-                }
-                frameHoldUntil = 0;
-                ShowFrames(false, s);
-                CompositionTarget.Rendering -= OnFrameTick;
-                frameHooked = false;
-                CheckFrames();
-                return;
-            }
-            frameHoldUntil = 0;
-            if (r == null)
-            {
-                var screen = System.Windows.Forms.Screen.FromHandle(new System.Windows.Interop.WindowInteropHelper(this).Handle).Bounds;
-                frameReader = r = new VideoConverter.FrameReader(s.File, Math.Max(1280, screen.Width), Math.Max(720, screen.Height), new System.Windows.Interop.WindowInteropHelper(this).Handle);
-            }
-            if (r.Failed)
-            {
-                frameBad.Add(s.File);
-                Log("own pictures off for " + Path.GetFileName(s.File) + ": " + r.Trouble);
-                DropFrames();
-                UpdateOwnSound();
-                return;
-            }
-            // The clock: what is being heard right now, a screen frame on (the picture comes up at the next one).
-            double at0 = 0, pace = 1, len = 0;
-            long stamp = 0;
-            var p = soundPlayer;
-            bool ok = p != null && p.Clock(s.File, out at0, out stamp, out pace, out len);
-            double c;
-            if (ok)
-            {
-                c = at0 + Math.Min(0.1, (now - stamp) / freq) * pace + 0.012 * pace;
-                // (Smoothed: the reckoning steps a little each time the sound thread goes round.)
-                double pred = frameClockOk ? frameClock + (now - frameClockTick) / freq * pace : c;
-                double err = c - pred;
-                frameClock = !frameClockOk || Math.Abs(err) > 0.04 ? c : pred + err * 0.2;
-                c = frameClock;
-                frameClockOk = true;
-                frameLastOk = now;
-                frameClockReal = true;
-                framePace = pace;
-                frameLoopLen = len;
-            }
-            else if (frameClockOk && playing && (now - frameLastOk) / freq < 0.4)
-            {
-                // The sound thread was busy for a moment (seen right at a loop's seam): carry on from its last clock. (Falling
-                // back to Windows' player here made the reader jump and lose its ready pictures: a hold at the seam.)
-                pace = framePace;
-                len = frameLoopLen;
-                frameClock += (now - frameClockTick) / freq * pace;
-                c = frameClock;
-                ok = true;
-                frameClockReal = false;
-            }
-            else
-            {
-                // (No sound yet: keep the reader near the picture, so it is ready when the sound comes.)
-                c = s.Video.Position.TotalSeconds + soundLoopBase;
-                len = loop ? (frameLoopLen > 0.3 ? frameLoopLen : LoopLenFor(s)) : 0; // (the sound's own loop length once known: Windows' player's differs a little, and a change makes the reader start over)
-                pace = speed;
-                frameClockOk = false;
-            }
-            frameClockTick = now;
-            r.Ask(c, loop ? len : 0, pace);
-            int skippedNow = 0; double skippedAt = double.NaN;
-            var f = r.Opened ? r.Take(c, out skippedNow, out skippedAt) : null;
-            if (f != null)
-            {
-                long t0 = Stopwatch.GetTimestamp();
-                frameBusy = false;
-                bool drawn = f.Tex != IntPtr.Zero ? ShowOnCard(f, r) : false;
-                if (frameBusy) { r.PutBack(f); f = null; } // (WPF still had the surface: tried again at the next screen frame)
-                else frameCopyWorstUs = Math.Max(frameCopyWorstUs, (int)((Stopwatch.GetTimestamp() - t0) * 1000000 / Stopwatch.Frequency));
-            }
-            if (f != null)
-            {
-                NoteFrameShown(f, skippedNow, skippedAt, c, r.FrameSeconds, pace);
-                long t0 = Stopwatch.GetTimestamp();
-                bool drawn = f.Tex != IntPtr.Zero;
-                if (!drawn && f.Data != IntPtr.Zero)
-                {
-                    if (frameBitmap == null || frameBitmap.PixelWidth != r.Width || frameBitmap.PixelHeight != r.Height)
-                        frameBitmap = new WriteableBitmap(r.Width, r.Height, 96, 96, PixelFormats.Bgr32, null);
-                    frameBitmap.WritePixels(new Int32Rect(0, 0, r.Width, r.Height), f.Data, r.Width * r.Height * 4, r.Width * 4);
-                    frameSource = frameBitmap;
-                    if (frameView != null && frameView.Source != frameBitmap) frameView.Source = frameBitmap;
-                }
-                frameOnClock = f.Clock;
-                frameOnFile = f.FileTime;
-                r.Give(f);
-                framesDrawn++;
-                frameCopyWorstUs = Math.Max(frameCopyWorstUs, (int)((Stopwatch.GetTimestamp() - t0) * 1000000 / Stopwatch.Frequency));
-            }
-            // Shown once there is a picture for this moment; it stays while the sound plays (a late picture is still
-            // better than switching to Windows' player, which would stand still at a loop).
-            double behind = c - frameOnClock;
-            bool near = !double.IsNaN(frameOnClock) && behind > -0.03 && behind < Math.Max(0.05, 2.5 * r.FrameSeconds) * Math.Max(1, pace);
-            bool stays = frameVisible && !double.IsNaN(frameOnClock) && behind > -0.25 && behind < 0.6;
-            bool show = ok && (near || stays) && !(r.Scaled && s.Zoom.ScaleX > 1.01) && s.Video.Visibility == Visibility.Visible;
-            ShowFrames(show, s);
-            // 1.30.0 round 2: once FastViewer's pictures have been on screen steadily for a moment, Windows' player under
-            // them is paused ("parked"): it no longer decodes every frame for nothing (that was the second video decoding
-            // in Task Manager). Its place is then the drawn picture's (VideoAt); any jump, pause, switch or the end of a
-            // clip without Repeat gives it back its own playing.
-            if (show) { if (frameShownSince == 0) frameShownSince = now; frameLastShown = now; } else frameShownSince = 0;
-            if (frameParked)
-            {
-                var len0 = s.Video.NaturalDuration;
-                if (now < parkSettle) parkedAt = s.Video.Position.TotalSeconds; // (just paused: its place settles for a moment)
-                else if (Math.Abs(s.Video.Position.TotalSeconds - parkedAt) > 0.004) Unpark(true, false); // (someone moved it: a skip, the time bar, a frame step)
-                else if (!show && (now - frameLastShown) / freq > 0.3) Unpark(true);
-                else if (!loop && len0.HasTimeSpan && frameOnFile >= len0.TimeSpan.TotalSeconds - 0.12)
-                {
-                    // (The end without Repeat: as if Windows' player had played to its end.)
-                    Unpark(false);
-                    var ended = s;
-                    Dispatcher.BeginInvoke(new Action(delegate { if (shown == ended) OnVideoEnded(ended); }));
-                }
-            }
-            else if (show && frameClockReal && (now - frameShownSince) / freq > 0.6 && !scrubbing && trimDrag == '\0' && revealing != s
-                && soundPlayer != null && soundPlayer.Sounding && !holdPending)
-            {
-                var len1 = s.Video.NaturalDuration;
-                if (loop || !len1.HasTimeSpan || frameOnFile < len1.TimeSpan.TotalSeconds - 1.0) Park(s);
-            }
-            var trace = frameTrace;
-            if (trace != null && trace.Count < 200000) trace.Add(new[] { now, c, frameOnClock, show ? 1 : 0, ok ? 1 : 0, s.Video.Position.TotalSeconds + soundLoopBase });
-        }
-
-        // Windows' player under the drawn pictures, paused while they are drawn (1.30.0 round 2).
-        internal bool frameParked;
-        Slot parkSlot;
-        double parkedAt;
-        long parkSettle;
-        internal long frameMovedPlayerAt; // (when Windows' player was last put on the drawn picture's frame: it may still be finding it)
-        bool frameClockReal;
-        long frameShownSince, frameLastShown;
-
-        void Park(Slot s)
-        {
-            s.Video.Pause();
-            parkedAt = s.Video.Position.TotalSeconds;
-            parkSlot = s;
-            parkSettle = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 4 / 10;
-            frameParked = true;
-            if (testRun) Log("Windows' player parked at " + parkedAt.ToString("0.000"));
-        }
-
-        // play: it plays on (else it stays paused); reposition: it is put on the picture on screen first (not when
-        // someone else just moved it).
-        void Unpark(bool play, bool reposition = true)
-        {
-            var ps = parkSlot;
-            frameParked = false;
-            parkSlot = null;
-            if (ps == null || ps.Video == null) return;
-            bool audio = parkedAudio;
-            parkedAudio = false;
-            double place = audio ? audioPlace : frameOnFile;
-            if (reposition && (audio || !double.IsNaN(frameOnClock))) { ps.Video.Position = TimeSpan.FromSeconds(Math.Max(0, place)); frameMovedPlayerAt = Stopwatch.GetTimestamp(); }
-            if (play) ps.Video.Play();
-            if (testRun) Log("Windows' player unparked" + (play ? ", playing" : "") + (reposition ? " at " + frameOnFile.ToString("0.000") : ""));
-        }
-
-        // Where a video is: the drawn picture's place while Windows' player is parked, else Windows' player's.
-        internal TimeSpan VideoAt(Slot s)
-        {
-            if (frameParked && s == parkSlot && parkedAudio) return TimeSpan.FromSeconds(Math.Max(0, audioPlace));
-            if (frameParked && s == parkSlot && !double.IsNaN(frameOnClock)) return TimeSpan.FromSeconds(Math.Max(0, frameOnFile));
-            return s.Video.Position;
-        }
-
-        // While parked the sound is its own clock: it is told its own place, so it never chases a picture.
-        // 1.30.0 round 3: music too. While FastViewer plays a song's sound itself, Windows' player (it has no picture to
-        // show) is parked as well: the sound loops by itself, and Windows' player is never started over at its very end
-        // (that left an MP3 on Repeat at 2x and 200% failed for good: "the file can't be played").
-        bool parkedAudio;
-        double audioPlace;
-        long audioClockAt;
-
-        void CheckAudioPark(Slot s)
-        {
-            if (frameParked || s == null || !s.IsAudio || s.Failed || !playing || scrubbing || revealing == s || !soundGo) return;
-            var p = soundPlayer;
-            if (p == null || !p.Sounding) return;
-            double at0, pace, len;
-            long st;
-            if (!p.Clock(s.File, out at0, out st, out pace, out len)) return;
-            var dur = s.Video.NaturalDuration;
-            double loopLen = loop ? (len > 0.3 ? len : LoopLenFor(s)) : 0;
-            double place = loopLen > 0 ? at0 - Math.Floor(at0 / loopLen) * loopLen : at0;
-            if (!loop && dur.HasTimeSpan && place > dur.TimeSpan.TotalSeconds - 1.0) return;
-            audioPlace = place;
-            audioClockAt = Stopwatch.GetTimestamp();
-            Park(s);
-            parkedAudio = true;
-        }
-
-        bool TellParkedSound(Slot s, SoundLayout layout)
-        {
-            if (frameParked && parkedAudio && s != parkSlot) { Unpark(false); return false; } // (another file: music has no frame tick to notice)
-            if (!frameParked || s != parkSlot) return false;
-            var p = soundPlayer;
-            double at0, pace, len;
-            long st;
-            long now = Stopwatch.GetTimestamp();
-            if (p == null || !p.Clock(s.File, out at0, out st, out pace, out len))
-            {
-                // (A moment without its clock: the last wish stands. Music: for long, Windows' player takes over again.)
-                if (parkedAudio && (now - audioClockAt) / (double)Stopwatch.Frequency > 0.5) Unpark(playing);
-                return true;
-            }
-            audioClockAt = now;
-            double at = at0 + (now - st) / (double)Stopwatch.Frequency * pace;
-            double loopLen = loop ? (len > 0.3 ? len : LoopLenFor(s)) : 0;
-            double loopBase = loopLen > 0 ? Math.Floor(at / loopLen) * loopLen : 0;
-            if (parkedAudio)
-            {
-                audioPlace = at - loopBase;
-                var dur = s.Video.NaturalDuration;
-                if (!playing) { Unpark(false); return false; }
-                if (now < parkSettle) parkedAt = s.Video.Position.TotalSeconds;
-                else if (Math.Abs(s.Video.Position.TotalSeconds - parkedAt) > 0.004) { Unpark(true, false); return false; } // (a skip, the time bar)
-                if (!loop && dur.HasTimeSpan && audioPlace >= dur.TimeSpan.TotalSeconds - 0.12)
-                {
-                    Unpark(false);
-                    var ended = s;
-                    Dispatcher.BeginInvoke(new Action(delegate { if (shown == ended) OnVideoEnded(ended); }));
-                    return true;
-                }
-            }
-            soundLoopBase = loopBase;
-            soundSeenAt = at;
-            soundSeenTick = now;
-            soundMovedAt = now;
-            soundSeenFile = s.File;
-            soundPlayer.Ask(new SoundWish
-            {
-                File = s.File,
-                Gains = layout == null || layout.Count == 0 ? null : HeardGains(layout),
-                Volume = muted ? 0 : volume * LevelOf(s),
-                Position = at,
-                Stamp = now,
-                Playing = true,
-                LoopLength = loopLen,
-                LoopBase = loopBase,
-                Speed = speed,
-                PicturePace = speed,
-                Silent = testRun && !ownSoundAloud
-            });
-            if (!s.Video.IsMuted) s.Video.IsMuted = true;
-            return true;
-        }
-
-        // 1.30.0 round 2: showing a picture that is on the graphics card: copied (on the card) into the texture WPF
-        // draws through a D3DImage. When that can't be done the pictures go through memory, as before.
-        System.Windows.Interop.D3DImage frameD3D;
-        ImageSource frameSource;
-        IntPtr sharedTex, sharedTex9, sharedSurf;
-        int sharedW, sharedH, sharedFmt;
-
-        bool frameBusy;
-        internal int statsBusy;
-
-        bool ShowOnCard(VideoFrame f, VideoConverter.FrameReader r)
-        {
-            try
-            {
-                if (frameD3D == null)
-                {
-                    frameD3D = new System.Windows.Interop.D3DImage();
-                    frameD3D.IsFrontBufferAvailableChanged += delegate { if (frameD3D.IsFrontBufferAvailable) sharedFmt = -1; }; // (made again after a lost screen)
-                }
-                if (!frameD3D.IsFrontBufferAvailable) return false;
-                if (sharedTex == IntPtr.Zero || sharedW != r.Width || sharedH != r.Height || sharedFmt != r.TexFormat)
-                {
-                    ReleaseShared();
-                    if (!VideoConverter.GpuShow.Shared(r.Width, r.Height, r.TexFormat, out sharedTex, out sharedTex9, out sharedSurf)) throw new Exception("no shared texture");
-                    sharedW = r.Width; sharedH = r.Height; sharedFmt = r.TexFormat;
-                    frameD3D.Lock();
-                    frameD3D.SetBackBuffer(System.Windows.Interop.D3DResourceType.IDirect3DSurface9, sharedSurf, true);
-                    frameD3D.Unlock();
-                }
-                // (Round 3: not waiting for WPF's render thread to let go of the surface: the window's thread would stand still,
-                // fewer screen frames get drawn and pictures are skipped. Busy: the same picture next screen frame.)
-                long lockFrom = Stopwatch.GetTimestamp();
-                if (!frameD3D.TryLock(new Duration(TimeSpan.FromMilliseconds(1)))) { frameD3D.Unlock(); NoteLockWait(lockFrom); frameBusy = true; statsBusy++; return false; } // (a TryLock that timed out still has to be undone)
-                NoteLockWait(lockFrom);
-                try
-                {
-                    VideoConverter.GpuShow.Copy(sharedTex, f.Tex, 0, r.Width, r.Height);
-                    VideoConverter.GpuShow.Finish();
-                    frameD3D.AddDirtyRect(new Int32Rect(0, 0, r.Width, r.Height));
-                }
-                finally { frameD3D.Unlock(); }
-                frameSource = frameD3D;
-                if (frameView != null && frameView.Source != frameD3D) frameView.Source = frameD3D;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                // (Pictures through memory from now on: the reader starts again that way.)
-                Log("pictures can't stay on the graphics card: " + ex.Message);
-                VideoConverter.GpuShow.Off = true;
-                Dispatcher.BeginInvoke(new Action(DropFrames));
-                return false;
-            }
-        }
-
-        void ReleaseShared()
-        {
-            if (sharedSurf != IntPtr.Zero) { Marshal.Release(sharedSurf); sharedSurf = IntPtr.Zero; }
-            if (sharedTex9 != IntPtr.Zero) { Marshal.Release(sharedTex9); sharedTex9 = IntPtr.Zero; }
-            if (sharedTex != IntPtr.Zero) { Marshal.Release(sharedTex); sharedTex = IntPtr.Zero; }
-        }
-
-        // The picture FastViewer is showing, as a WPF picture (Copy frame, Save frame).
-        // (Tests: the average of the shared texture's 4th byte, which WPF may take as opacity.)
-        internal double DrawnAlpha()
-        {
-            if (sharedTex == IntPtr.Zero) return -1;
-            var b = VideoConverter.GpuShow.Read(sharedTex, sharedW, sharedH, sharedFmt, true);
-            if (b == null) return -1;
-            var px = new byte[b.PixelWidth * b.PixelHeight * 4];
-            b.CopyPixels(px, b.PixelWidth * 4, 0);
-            double sum = 0; long n = 0;
-            for (int i = 3; i < px.Length; i += 4 * 13) { sum += px[i]; n++; }
-            return sum / Math.Max(1, n);
-        }
-
-        internal BitmapSource DrawnPicture()
-        {
-            if (frameSource == frameD3D && sharedTex != IntPtr.Zero)
-                try { return VideoConverter.GpuShow.Read(sharedTex, sharedW, sharedH, sharedFmt); } catch { return null; }
-            return frameBitmap != null ? (BitmapSource)frameBitmap.Clone() : null;
-        }
-
-        void ShowFrames(bool on, Slot s)
-        {
-            if (on && s != null)
-            {
-                if (frameView == null)
-                {
-                    frameView = new Image { Stretch = Stretch.Fill, IsHitTestVisible = false, Source = frameSource };
-                    RenderOptions.SetBitmapScalingMode(frameView, BitmapScalingMode.Linear);
-                }
-                // Right above the slot's Windows player, exactly its size (it is turned, zoomed and panned with it).
-                var parent = frameView.Parent as Panel;
-                int vi = s.Rotor.Children.IndexOf(s.Video);
-                if (parent != s.Rotor || s.Rotor.Children.IndexOf(frameView) != vi + 1)
-                {
-                    if (parent != null) parent.Children.Remove(frameView);
-                    vi = s.Rotor.Children.IndexOf(s.Video);
-                    s.Rotor.Children.Insert(vi + 1, frameView);
-                }
-                if (frameBound != s.Video)
-                {
-                    frameView.SetBinding(WidthProperty, new Binding("ActualWidth") { Source = s.Video });
-                    frameView.SetBinding(HeightProperty, new Binding("ActualHeight") { Source = s.Video });
-                    frameBound = s.Video;
-                }
-            }
-            if (frameView != null)
-            {
-                var want = on ? Visibility.Visible : Visibility.Collapsed;
-                if (frameView.Visibility != want) frameView.Visibility = want;
-            }
-            frameVisible = on && frameView != null;
-        }
+        // Where a video is. (1.30.0 kept a second answer here for its experimental drawn pictures; since 1.31.0 there is
+        // one player, Player.cs, and its Position is the place.)
+        internal TimeSpan VideoAt(Slot s) { return s.Video.Position; }
     }
 }

@@ -28,7 +28,15 @@ namespace FastViewer
         readonly bool[] busy = new bool[Buffers];
         static readonly int HeaderSize = IntPtr.Size == 8 ? 48 : 32, FlagsAt = IntPtr.Size == 8 ? 24 : 16;
         long written;
-        public bool Open { get { return handle != IntPtr.Zero || fake; } }
+        public bool Open { get { return handle != IntPtr.Zero || fake || was != null; } }
+        Wasapi was; // 1.31.0 (Speakers.cs): WASAPI when Windows allows it, else waveOut as before
+        public bool Low { get { return was != null; } }
+        // How much to keep waiting in the speakers (frames), and how long after the device's position it is heard.
+        public int Target { get { return was != null ? Math.Min(TrackMixer.Rate * 45 / 1000, was.Buffer * 3 / 5) : TrackMixer.Rate / 10; } }
+        public double Latency { get { return was != null ? Math.Max(0.01, was.Latency) + 0.005 : fake ? 0 : 0.05; } } // (the pretended speaker of silent tests has none)
+        public bool CanLevel { get { return was != null && was.CanLevel; } }
+        public void SetLevel(float v) { if (was != null) was.SetLevel(v); }
+        public bool SpeakersChanged { get { return was != null && was.SpeakersChanged; } }
 
         // 1.30.0: silent test runs never open a sound device at all (even silence can click in earphones when a device
         // stream starts): the speaker is pretended, with the same timing (played = what the clock says, never more than written).
@@ -41,6 +49,7 @@ namespace FastViewer
         public bool Start()
         {
             if (Pretend) { fake = true; fakeWatch.Restart(); return true; }
+            if (!Wasapi.Off) { was = Wasapi.Open(); if (was != null) return true; }
             var format = new byte[18];
             BitConverter.GetBytes((short)1).CopyTo(format, 0);            // PCM
             BitConverter.GetBytes((short)2).CopyTo(format, 2);            // channels
@@ -66,6 +75,7 @@ namespace FastViewer
             get
             {
                 if (fake) return FakePlayed();
+                if (was != null) return was.Played;
                 if (handle == IntPtr.Zero) return 0;
                 var time = new byte[12];
                 BitConverter.GetBytes(2).CopyTo(time, 0); // in samples
@@ -86,6 +96,7 @@ namespace FastViewer
                 written += n;
                 return n;
             }
+            if (was != null) return was.Write(frames, offset, count);
             int took = 0;
             while (count > 0 && handle != IntPtr.Zero)
             {
@@ -115,6 +126,7 @@ namespace FastViewer
         public void Flush()
         {
             if (fake) { written = 0; fakeBase = 0; fakeWatch.Restart(); return; }
+            if (was != null) { was.Flush(); return; }
             if (handle == IntPtr.Zero) return;
             waveOutReset(handle);
             for (int i = 0; i < Buffers; i++)
@@ -125,6 +137,7 @@ namespace FastViewer
         public void Dispose()
         {
             if (fake) { fake = false; return; }
+            if (was != null) { was.Dispose(); was = null; return; }
             if (handle == IntPtr.Zero) return;
             Flush();
             waveOutClose(handle);
@@ -198,6 +211,19 @@ namespace FastViewer
             // How long the file is, in seconds (0: not known).
             public static double Length(IMFSourceReader reader) { return Duration(reader) / 1e7; }
             public static void DeselectAll(IMFSourceReader reader) { reader.SetStreamSelection(ALL_STREAMS, false); }
+            // (1.31.0, Player.cs) Is stream i sound or picture? false once there is no stream i.
+            public static bool Kind(IMFSourceReader reader, int i, out bool audio, out bool video)
+            {
+                audio = video = false;
+                IMFMediaType t;
+                if (reader.GetNativeMediaType(i, 0, out t) < 0) return false;
+                Guid major;
+                t.GetGUID(ref G.MF_MT_MAJOR_TYPE, out major);
+                Marshal.ReleaseComObject(t);
+                audio = major == G.MFMediaType_Audio;
+                video = major == G.MFMediaType_Video;
+                return true;
+            }
             public static void JumpTo(IMFSourceReader reader, long time) { Seek(reader, Math.Max(0, time)); }
 
             // The next piece of sound: false at a read error. sample stays null at the end of a stream (ended says so).
@@ -285,6 +311,7 @@ namespace FastViewer
     class SoundPlayer
     {
         volatile SoundWish wish = new SoundWish();
+        public string WishFile { get { var w = wish; return w != null && w.Playing ? w.File : null; } } // (1.31.0: the file being played, for the window's watch)
         readonly Thread thread;
         public Thread Worker { get { return thread; } } // (tests: its stack when it stops answering)
         readonly AutoResetEvent wake = new AutoResetEvent(false);
@@ -300,7 +327,7 @@ namespace FastViewer
         int leadMs;
         readonly Stopwatch gapWatch = new Stopwatch();
         long lastSound, beat;              // (Stopwatch times) the last real sound handed to the speakers; the last sign of life
-        const double latency = 0.05 + 95 / 48000.0; // (1.30.0: + the limiter's look-ahead)
+        double latency { get { return (speaker != null ? speaker.Latency : 0.05) + 95 / 48000.0; } } // (1.31.0: WASAPI's own latency when it plays) // (1.30.0: + the limiter's look-ahead)
 
         // Sound was handed to the speakers within the last third of a second.
         public bool Sounding { get { return Since(Interlocked.Read(ref lastSound)) < 0.35; } }
@@ -318,6 +345,7 @@ namespace FastViewer
         }
 
         public void Ask(SoundWish w) { wish = w; wake.Set(); }
+        public double AskedVolume { get { return wish.Volume; } } // (tests)
         public void Quit() { quit = true; wake.Set(); }
         public void ResetStats() { Starts = Resyncs = Failures = LongestGap = Splices = Wraps = LongestStarve = Starves = SeamSkips = LongestStepGap = 0; MinQueuedMs = 9999; LastDrift = WorstDrift = MaxNudge = 0; Trouble = null; lock (Notes) Notes.Clear(); }
 
@@ -478,6 +506,7 @@ namespace FastViewer
 
         void Run()
         {
+            ThreadIds.Note("sound");
             if (!VideoConverter.Reading.Begin()) { Trouble = "Media Foundation didn't start"; return; }
             try
             {
@@ -635,6 +664,20 @@ namespace FastViewer
             return seconds;
         }
 
+        // 1.31.0: the pace of what is being heard right now (the piece at the speakers' playhead), not of what is being
+        // written: FastViewer's own player follows the sound's clock and changes speed exactly when the ear does.
+        double HeardPace(double fallback)
+        {
+            double frames = speaker.Queued + latency * TrackMixer.Rate;
+            for (int i = handed.Count - 1; i >= 0; i--)
+            {
+                double n = Math.Max(1, handed[i][0]);
+                if (frames <= n) return handed[i][1] > 0 ? handed[i][1] / (n / TrackMixer.Rate) : fallback;
+                frames -= n;
+            }
+            return fallback;
+        }
+
         void Stop()
         {
             if (running && speaker != null) speaker.Flush();
@@ -649,6 +692,7 @@ namespace FastViewer
         void Step()
         {
             var w = wish;
+            if (speaker != null && speaker.CanLevel && Tap == null) speaker.SetLevel(Math.Min(1f, w.Silent ? 0f : (float)w.Volume)); // (1.31.0: a new volume heard within 10 ms)
             bool stale = (Stopwatch.GetTimestamp() - w.Stamp) / (double)Stopwatch.Frequency > 0.7;
             if (w.File == null || !w.Playing || stale || w.Gains == null)
             {
@@ -707,7 +751,7 @@ namespace FastViewer
             bool keep = TimeStretch.KeepPitch;
             if (keep != stretchMode) { stretchMode = keep; stretcher.Reset(); ResetRender(); limiter.Reset(); if (running) { speaker.Flush(); handed.Clear(); running = false; } }
             double heard = running ? mediaEnd - Waiting(true) - (stretchMode ? stretcher.PendingSeconds : 0) : 0;
-            if (running && !finished && handed.Count > 0) SetClock(open, heard, LastStep > 0 ? LastStep : runSpeed, w.LoopLength > 0.5 ? (LoopSpan > 0 && SpanFile == open ? LoopSpan : w.LoopLength) : 0); else SetClock(null, 0, 1, 0);
+            if (running && !finished && handed.Count > 0) SetClock(open, heard, HeardPace(LastStep > 0 ? LastStep : runSpeed), w.LoopLength > 0.5 ? (LoopSpan > 0 && SpanFile == open ? LoopSpan : w.LoopLength) : 0); else SetClock(null, 0, 1, 0);
             if (speaker != null) OutputDelay = (float)(speaker.Queued / (double)TrackMixer.Rate + latency);
             double drift = expected - heard; // over 0: the sound is behind the picture
             if (catching && sinceSpeed.ElapsedMilliseconds >= 2500 && Math.Abs(drift) < 0.03) catching = false;
@@ -783,7 +827,8 @@ namespace FastViewer
             if (running && !finished && sinceStart.ElapsedMilliseconds > 300 && speaker.Queued == 0) { if (!starving) { starving = true; Starves++; starveWatch.Restart(); } }
             else if (starving) { starving = false; LongestStarve = Math.Max(LongestStarve, (int)starveWatch.ElapsedMilliseconds); }
             // Keep about a tenth of a second waiting in the speakers.
-            if (speaker.Queued < TrackMixer.Rate / 10 && !finished)
+            if (speaker.SpeakersChanged) throw new Exception("Windows switched the speakers"); // (1.31.0: made again on the new ones)
+            if (speaker.Queued < speaker.Target && !finished)
             {
                 long time;
                 // Small pieces (about 60 ms of sound as it will be heard), so a change is heard at once at any speed.
@@ -805,7 +850,7 @@ namespace FastViewer
                 else
                 {
                     // (Pieces never run over into the next loop: that part waits for the picture.)
-                    int most = Math.Max(1024, (int)(TrackMixer.Rate * 0.06 * runSpeed));
+                    int most = Math.Max(1024, (int)(TrackMixer.Rate * (speaker.Low ? 0.02 : 0.06) * runSpeed)); // (1.31.0: smaller with WASAPI, which keeps less waiting)
                     if (w.PaceAt >= 0) { long toSeam = (long)Math.Round((w.PaceAt - origin) * TrackMixer.Rate) - mixer.Position; if (toSeam >= 256 && toSeam < most) most = (int)toSeam; }
                     long wrapFrame = (long)Math.Round((wrapBase - origin) * TrackMixer.Rate);
                     if (LoopWaits && loopNow > 0 && w.LoopBase < wrapBase - 0.01 && mixer.Position < wrapFrame) most = (int)Math.Min(most, wrapFrame - mixer.Position);
@@ -942,7 +987,11 @@ namespace FastViewer
                 double step = runSpeed * (1 + nudge);
                 LastStep = (float)step;
                 // (Tests: everything as usual, the sound kept for measuring, then silence instead of it.)
-                float volume = (w.Silent && Tap == null ? 0 : (float)w.Volume) / PeakLimiter.Headroom; // (1.30.0: tests that record get the real volume, 200% too; Hand silences it after recording)
+                float wantVol = w.Silent && Tap == null ? 0 : (float)w.Volume;
+                // (1.31.0: up to 100% the stream's own level does it, heard at once, also for sound already waiting; louder
+                // than that stays FastViewer's own gain. Muted is the stream at 0: unmuting is heard at once too.)
+                if (speaker.CanLevel && Tap == null) { speaker.SetLevel(Math.Min(1f, wantVol)); wantVol = Math.Max(1f, wantVol); }
+                float volume = wantVol / PeakLimiter.Headroom; // (1.30.0: tests that record get the real volume, 200% too; Hand silences it after recording)
                 double power = 0; // (tests: how loud the mix is before the volume, as a running average)
                 for (int i = 0; i < frames; i += 4) power += (double)piece[i * 2] * piece[i * 2];
                 Level = (float)(Level * 0.6 + Math.Sqrt(power / Math.Max(1, frames / 4)) * 0.4);
@@ -1083,7 +1132,10 @@ namespace FastViewer
         }
 
         // Does FastViewer play this slot's sound itself? Then the picture's own player stays silent.
-        internal bool OwnSound(Slot s) { return OwnSoundBase(s) || FramesWantSound(s); } // (1.30.0: also whenever FastViewer draws the pictures: the sound is their clock)
+        internal bool OwnSound(Slot s) { return OwnSoundBase(s) || PlayerSound(s); } // (1.31.0: always for the own player, which has no sound of its own)
+
+        // 1.31.0: FastViewer's own player (Player.cs) has no sound of its own: its sound is always FastViewer's.
+        bool PlayerSound(Slot s) { return !ownSoundOff && s != null && s == shown && s.IsVideo && !s.Failed && s.Video.IsOwn && s.Video.HasAudio; }
 
         internal bool OwnSoundBase(Slot s)
         {
@@ -1140,7 +1192,6 @@ namespace FastViewer
                 }
                 if (s != null && s.IsVideo && !s.Failed && s.Video.IsMuted != muted && (playing || s.IsAudio)) s.Video.IsMuted = muted;
             }
-            CheckFrames();
             UpdateTracksButton();
         }
 
@@ -1177,7 +1228,6 @@ namespace FastViewer
             // A sound thread that has stopped answering (stuck inside Windows) is left behind and a new one takes over.
             if (soundPlayer != null && soundPlayer.BeatAge > 2) { soundPlayer.Quit(); soundPlayer = null; soundRecoveries++; Log("the sound thread was replaced"); }
             if (soundPlayer == null) soundPlayer = new SoundPlayer();
-            if (TellParkedSound(s, layout)) { CheckFrames(); return; } // (1.30.0: Windows' player is paused under the drawn pictures: FramePath.cs)
             // A picture that stands still (looking for the place after a jump, a slow disk) has its sound wait with
             // it. Around a speed change Windows' player stumbles for a moment: the sound plays on through that.
             double at = s.Video.Position.TotalSeconds;
@@ -1192,23 +1242,37 @@ namespace FastViewer
             // its reading at the same length. While the picture restarts (it stands still for a moment, then makes up)
             // the sound plays on; what is left over is corrected without being heard.
             if (s.File != soundSeenFile || !loop) soundLoopBase = 0;
-            // (Windows' player shows position 0 a moment before it says the video ended: that is the loop, not a jump.)
-            var dur0 = s.Video.NaturalDuration;
-            if (loop && dur0.HasTimeSpan && s.File == soundSeenFile && at < 0.5 && soundSeenAt - soundLoopBase >= dur0.TimeSpan.TotalSeconds - 0.6) NoteLoop(s);
-            at += soundLoopBase;
+            bool own = s.Video.IsOwn;
+            if (own)
+            {
+                // (1.31.0: the own player counts its clock on across loops itself, exactly: the sound takes it as it is.)
+                double cnt = s.Video.CountedNow(), L = s.Video.LoopLen;
+                double newBase = L > 0 ? Math.Floor(cnt / L) * L : 0;
+                if (newBase > soundLoopBase + 0.001 && s.File == soundSeenFile) { soundLoopTick = Stopwatch.GetTimestamp(); if (loopTapAt != null && soundPlayer != null) loopTapAt.Add(soundPlayer.TapAt[0]); } // (a loop start, for tests: --case loops)
+                soundLoopBase = newBase;
+                at = cnt;
+            }
+            else
+            {
+                // (Windows' player shows position 0 a moment before it says the video ended: that is the loop, not a jump.)
+                var dur0 = s.Video.NaturalDuration;
+                if (loop && dur0.HasTimeSpan && s.File == soundSeenFile && at < 0.5 && soundSeenAt - soundLoopBase >= dur0.TimeSpan.TotalSeconds - 0.6) NoteLoop(s);
+                at += soundLoopBase;
+            }
             // (Starting over: the last moments before the end, where Windows' player may stand on the last frame for a while,
             // and the first second after.)
             var dur = s.Video.NaturalDuration;
             bool planned = !SoundPlayer.LoopWaits; // (1.29.0: the picture is started over in time, PlanLoop: only the moment around it counts)
             bool nearEnd = loop && dur.HasTimeSpan && at - soundLoopBase >= dur.TimeSpan.TotalSeconds - (planned ? 0.05 * pace : 0.5 * Math.Max(1, pace));
             bool looping = soundGo && ((tick - soundLoopTick) / (double)Stopwatch.Frequency < (planned ? 0.2 : 1.0) || nearEnd || pictureHeld);
-            WatchStall(s, s.Video.Position.TotalSeconds, tick);
+            if (!own) WatchStall(s, s.Video.Position.TotalSeconds, tick);
             if (speedTrace != null && speedTrace.Count < 400) speedTrace.Add(((tick - speedTraceFrom) * 1000 / Stopwatch.Frequency) + ":" + s.Video.Position.TotalSeconds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + "/" + pace + "/" + SoundPace(s) + "/" + (soundPlayer == null ? 0 : soundPlayer.LastDrift * 1000).ToString("0"));
-            bool catchMove = CatchUpTick(s.Video.Position.TotalSeconds, at, tick); // (Stretch.cs: the picture being moved forward to the sound)
+            bool catchMove = !own && CatchUpTick(s.Video.Position.TotalSeconds, at, tick); // (Stretch.cs: the picture being moved forward to the sound)
             double since = (tick - soundSeenTick) / (double)Stopwatch.Frequency, moved = at - soundSeenAt;
             bool can = playing && !scrubbing && s.Ready && (revealing != s || looping) && s.File == soundSeenFile; // (the picture comes first: the sound starts once it is on screen)
             bool jumped = !looping && !catchMove && (moved < -0.05 || moved > since * pace + 0.25);
             if (!can || jumped) { if (soundGo && testRun) Log("own sound held: " + (jumped ? "jump " + moved.ToString("0.000") + " in " + since.ToString("0.000") + " s" : "can't: playing " + playing + " ready " + s.Ready + " revealing " + (revealing == s) + " looping " + looping)); soundGo = false; soundMoves = 0; soundMovedAt = tick; }
+            else if (own) { soundMovedAt = tick; soundGo = s.Video.Moving; } // (1.31.0: the own player's clock never says it moves when it doesn't: the sound goes with it at once)
             else if (looping) soundMovedAt = tick; // (standing still while it starts over isn't stopping)
             else if (moved > 0)
             {
@@ -1223,11 +1287,10 @@ namespace FastViewer
             soundSeenAt = at;
             soundSeenTick = tick;
             soundSeenFile = s.File;
-            if (!catchMove) CatchUpPicture(s, moved, since, pace, changing, looping || nearEnd || loop, tick);
+            if (!catchMove && !own) CatchUpPicture(s, moved, since, pace, changing, looping || nearEnd || loop, tick);
             CheckDeferred(s);
             WatchChange(tick);
             PlanLoop(s, s.Video.Position.TotalSeconds, pace, tick); // (Stretch.cs: seamless loops)
-            CheckFrames();
             bool wanted = can && soundGo;
             soundPlayer.Ask(new SoundWish
             {
@@ -1237,7 +1300,7 @@ namespace FastViewer
                 Position = at,
                 Stamp = tick,
                 Playing = wanted,
-                LoopLength = loop ? LoopLenFor(s) : 0, // (1.29.0: the sound's own length when known, Stretch.cs)
+                LoopLength = loop ? (own ? s.Video.LoopLen : LoopLenFor(s)) : 0, // (1.29.0: the sound's own length when known, Stretch.cs; 1.31.0: the own player's, which it took from there)
                 Looping = looping,
                 LoopBase = soundLoopBase,
                 SeamExtra = SeamExtraFor(s, pace),
@@ -1260,7 +1323,6 @@ namespace FastViewer
             bool handover = there && !OwnSoundBase(s) && !s.Video.IsMuted && soundPlayer.HeardFor < 0.02;
             bool quiet = lost ? muted : (there && !handover) || KnownTracks(s.File) >= 2 || s.Video.IsMuted;
             if (s.Video.IsMuted != quiet) s.Video.IsMuted = quiet;
-            CheckAudioPark(s); // (1.30.0 round 3: music: Windows' player rests while FastViewer plays the sound: FramePath.cs)
         }
 
         double soundSeenAt;
@@ -1300,6 +1362,7 @@ namespace FastViewer
             speedAskedAt = now;
             var s = shown;
             if (s == null || !s.IsVideo || !playing) return; // (a video that starts gets the speed then)
+            if (s.Video.IsOwn) { ApplySpeedNow(); return; } // (1.31.0: the own player takes any number of changes at once)
             if (sinceAsked >= 400 && sinceApplied >= 400 && (speedTimer == null || !speedTimer.IsEnabled)) { ApplySpeedNow(); return; }
             if (speedTimer == null)
             {
@@ -1323,7 +1386,7 @@ namespace FastViewer
                 return;
             }
 
-            if (TimeSpeedChange(s)) { UpdateOwnSound(); return; } // (Stretch.cs: the picture gets it a moment later)
+            if (!s.Video.IsOwn && TimeSpeedChange(s)) { UpdateOwnSound(); return; } // (Stretch.cs: the picture gets it a moment later)
             SetPictureSpeed(s);
         }
 
@@ -1377,7 +1440,8 @@ namespace FastViewer
             var s = shown;
             long now = Stopwatch.GetTimestamp();
             if (s == null || !s.IsVideo || s.Failed || !s.Ready || !playing || scrubbing || revealing == s || trimDrag != '\0') { ResetPictureWatch(); rateEndAt = -1; return; }
-            if (frameParked) { ResetPictureWatch(); rateEndAt = -1; return; } // (1.30.0: paused under the drawn pictures on purpose)
+
+            if (s.Video.IsOwn) { ResetPictureWatch(); rateEndAt = -1; return; } // (1.31.0: the own player never stands still by itself, and says when it ends)
             double at = s.Video.Position.TotalSeconds, set = s.Video.SpeedRatio > 0 ? s.Video.SpeedRatio : 1;
             var d = s.Video.NaturalDuration;
             if (d.HasTimeSpan && at >= d.TimeSpan.TotalSeconds - Math.Max(1.5, 0.75 * set))

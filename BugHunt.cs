@@ -112,16 +112,17 @@ namespace FastViewer
                 case "pitch": HuntPitch(); break;
                 case "holdstorm": HuntHoldStorm(); break;
                 case "loops": HuntLoops(); break;
-                case "frames": HuntFrames(); break;
-                case "fps": HuntFps(); break;
+                case "player": HuntPlayer(); break;
+                case "memprobe": HuntMemProbe(); break;
+                case "screen": HuntScreen(); break; // 1.31.0 (Hunt131.cs)
+                case "rotscreen": HuntRotScreen(); break;
+                case "solo": HuntSolo(); break;
+                case "thumbs": HuntThumbs(); break;
+                case "thumbaspect": HuntThumbAspect(); break;
                 case "jamrepair": HuntJamRepair(); break;
                 case "skipjam": HuntSkipJam(); break;
-                case "colours": HuntColours(); break;
-                case "frameloops": HuntFrames(); break;
                 case "clickspam": HuntClickSpam(); break;
-                case "usage": HuntUsage(); break;
                 case "clicks": HuntClicks(); break;
-                case "skiphold": HuntFrames(); break;
                 case "narrowsettings": HuntNarrowSettings(); break;
                 case "loopchange": HuntLoopChange(); break;
                 case "decodeinfo": HuntDecodeInfo(); break;

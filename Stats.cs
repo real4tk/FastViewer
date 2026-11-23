@@ -22,11 +22,13 @@ namespace FastViewer
         TextBlock statsText;
         DispatcherTimer statsTimer;
         long statsSince;
-        int statsTicks, statsShown, statsSkipped, statsLate, statsLockWorstUs;
+        int statsTicks, statsShown, statsSkipped, statsLate;
         readonly List<string> statsPlaces = new List<string>();
         // (Tests and the log: the last second's numbers.)
         internal string StatsLine = "";
         internal int LastShownPerSecond, LastTicksPerSecond, LastSkipped, LastLate;
+        bool statsOwnPlaying;
+        OwnVideo statsOwn; int statsRefr0, statsPres0, statsSkip0, statsLate0; // (1.31.0: the own player's counters a second ago)
 
         void ToggleStats()
         {
@@ -70,58 +72,80 @@ namespace FastViewer
         void ResetStatsCounters()
         {
             statsSince = Stopwatch.GetTimestamp();
-            statsTicks = statsShown = statsSkipped = statsLate = statsLockWorstUs = statsBusy = 0;
-            frameCopyWorstUs = 0;
+            statsTicks = statsShown = statsSkipped = statsLate = 0;
             lock (statsPlaces) statsPlaces.Clear();
         }
 
         void StatsTick(object sender, EventArgs e) { statsTicks++; }
 
-        // From OnFrameTick (FramePath.cs): a picture is shown; `skipped` were passed over before it.
-        void NoteFrameShown(VideoFrame f, int skipped, double skippedAt, double clock, double frameSeconds, double pace)
-        {
-            statsShown++;
-            if (skipped > 0)
-            {
-                statsSkipped += skipped;
-                if (statsOn) lock (statsPlaces) if (statsPlaces.Count < 12) statsPlaces.Add("skipped " + skipped + " at " + skippedAt.ToString("0.000", CultureInfo.InvariantCulture));
-            }
-            // Late: the picture shown belonged to a moment more than 1.5 pictures ago (the right one wasn't ready).
-            if (clock - f.Clock > 1.5 * frameSeconds * Math.Max(1, pace))
-            {
-                statsLate++;
-                if (statsOn) lock (statsPlaces) if (statsPlaces.Count < 12) statsPlaces.Add("late " + ((clock - f.Clock) * 1000).ToString("0") + " ms at " + f.FileTime.ToString("0.000", CultureInfo.InvariantCulture));
-            }
-        }
-
-        void NoteLockWait(long from)
-        {
-            int us = (int)((Stopwatch.GetTimestamp() - from) * 1000000 / Stopwatch.Frequency);
-            if (us > statsLockWorstUs) statsLockWorstUs = us;
-        }
-
         void StatsSecond()
         {
             double secs = Math.Max(0.001, (Stopwatch.GetTimestamp() - statsSince) / (double)Stopwatch.Frequency);
             var s = shown;
-            string who = s == null || !s.IsVideo ? "nothing playing" : frameVisible ? (frameSource == frameD3D ? "FastViewer (graphics card)" : "FastViewer (through memory)") : "Windows' player";
+            string who = s == null || !s.IsVideo ? "nothing playing" : "Windows' player";
             double fps = s != null && s.IsVideo && s.FrameSeconds > 0 ? 1 / s.FrameSeconds : 0;
-            if (frameReader != null && frameReader.MeasuredFps > 0) fps = frameReader.MeasuredFps; // (measured from the pictures' times)
-            else if (frameReader != null && frameReader.FrameSeconds > 0) fps = 1 / frameReader.FrameSeconds;
             LastTicksPerSecond = (int)Math.Round(statsTicks / secs);
             LastShownPerSecond = (int)Math.Round(statsShown / secs);
             LastSkipped = statsSkipped;
             LastLate = statsLate;
+            bool own = s != null && s.IsVideo && s.Video.IsOwn;
+            if (own)
+            {
+                // (1.31.0: FastViewer's own player: the screen's own refreshes, counted by the thread that shows the pictures,
+                // and the pictures it really handed to the screen; WPF's frames don't matter for the video any more.)
+                var v = s.Video;
+                int refr = Presenter.Refreshes, pres = v.Presents, skip = v.Skipped, late = v.Late;
+                if (statsOwn == v)
+                {
+                    LastTicksPerSecond = (int)Math.Round((refr - statsRefr0) / secs);
+                    LastShownPerSecond = (int)Math.Round((pres - statsPres0) / secs);
+                    statsSkipped = skip - statsSkip0;
+                    statsLate = late - statsLate0;
+                }
+                bool sameRun = statsOwn == v && statsOwnPlaying == playing;
+                statsOwn = v; statsRefr0 = refr; statsPres0 = pres; statsSkip0 = skip; statsLate0 = late;
+                // (1.31.0 fix: paused, a song, or a second in which play/pause was pressed: no rates, they would only be half a
+                // second's worth; the screen thread rests while paused.)
+                string still = !v.HasVideo ? "song: no pictures to show" : !playing ? "paused" : !sameRun ? "counting..." : null;
+                statsOwnPlaying = playing;
+                if (still != null)
+                {
+                    StatsLine = "FastViewer's player | " + still;
+                    if (statsText != null) statsText.Text = "FastViewer's player (graphics card)\n" + still;
+                    ResetStatsCounters();
+                    return;
+                }
+                double mfps = v.MeasuredFps;
+                if (mfps > 0) fps = mfps;
+                LastSkipped = statsSkipped;
+                LastLate = statsLate;
+                double can = Math.Min(fps * speed, LastTicksPerSecond);
+                StatsLine = "FastViewer's player | video " + fps.ToString("0.##", CultureInfo.InvariantCulture) + " fps at " + speed.ToString("0.##", CultureInfo.InvariantCulture) + "x | screen " + LastTicksPerSecond + "/s | shown " +
+                    LastShownPerSecond + "/s (of " + can.ToString("0") + " possible) | skipped " + statsSkipped + " | late " + statsLate + " | refresh " + (Presenter.Period * 1000).ToString("0.00", CultureInfo.InvariantCulture) + " ms";
+                if (statsText != null)
+                    statsText.Text = "FastViewer's player (graphics card)\nvideo " + fps.ToString("0.##", CultureInfo.InvariantCulture) + " fps at " + speed.ToString("0.##", CultureInfo.InvariantCulture) + "x\nscreen frames " + LastTicksPerSecond + "/s\n" +
+                        "pictures shown " + LastShownPerSecond + "/s of " + can.ToString("0") + "\nskipped " + statsSkipped + "  late " + statsLate;
+                if (statsOn && !testRun)
+                    try
+                    {
+                        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FastViewer");
+                        Directory.CreateDirectory(dir);
+                        string file = Path.Combine(dir, "playback.txt");
+                        if (File.Exists(file) && new FileInfo(file).Length > 1 << 20) File.Delete(file);
+                        File.AppendAllText(file, DateTime.Now.ToString("HH:mm:ss ") + Path.GetFileName(s.File) + " at " + s.Video.Position.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture) + " s: " + StatsLine + Environment.NewLine);
+                    }
+                    catch { }
+                ResetStatsCounters();
+                return;
+            }
+            statsOwn = null;
             string places;
             lock (statsPlaces) places = string.Join(", ", statsPlaces);
-            double want = Math.Min(fps * speed, LastTicksPerSecond);
             StatsLine = who + " | video " + fps.ToString("0.##", CultureInfo.InvariantCulture) + " fps at " + speed.ToString("0.##", CultureInfo.InvariantCulture) + "x | screen " + LastTicksPerSecond + "/s | shown " +
-                (frameVisible ? LastShownPerSecond + "/s (of " + want.ToString("0") + " possible)" : "- (Windows' player doesn't tell)") +
-                " | skipped " + statsSkipped + " | late " + statsLate + " | surface busy " + statsBusy + " | drawing max " + (frameCopyWorstUs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " ms, surface wait max " + (statsLockWorstUs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " ms";
+                "- (Windows' player doesn't tell)";
             if (statsText != null)
                 statsText.Text = who + "\nvideo " + fps.ToString("0.##", CultureInfo.InvariantCulture) + " fps at " + speed.ToString("0.##", CultureInfo.InvariantCulture) + "x\nscreen frames " + LastTicksPerSecond + "/s\n" +
-                    "pictures shown " + (frameVisible ? LastShownPerSecond + "/s of " + want.ToString("0") : "(Windows' player)") + "\nskipped " + statsSkipped + "  late " + statsLate + "  busy " + statsBusy +
-                    "\ndrawing max " + (frameCopyWorstUs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " ms\nsurface wait max " + (statsLockWorstUs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " ms";
+                    "pictures shown (Windows' player doesn't tell)";
             if (statsOn && !testRun)
                 try
                 {

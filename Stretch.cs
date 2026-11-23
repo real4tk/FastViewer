@@ -290,6 +290,7 @@ namespace FastViewer
         static double StallOf(string file, bool faster)
         {
             double t;
+            if (OwnVideo.IsOwnFile(file)) return 0; // (1.31.0: the own player never stands still at a speed change)
             lock (speedStalls) return file != null && speedStalls.TryGetValue(file + (faster ? "|+" : "|-"), out t) ? t : 0.1;
         }
 
@@ -507,6 +508,7 @@ namespace FastViewer
         // From TellSound, every tick while FastViewer plays the sound.
         void PlanLoop(Slot s, double raw, double pace, long tick)
         {
+            if (s.Video.IsOwn) return; // (1.31.0: the own player loops by itself at the sound's loop length, Player.cs)
             if (loopSyncWatch && s.File == loopFile && soundPlayer != null && (tick - loopSeekAt) / (double)Stopwatch.Frequency >= 0.3)
             {
                 // 0.3 s after starting over (the picture runs again, the tiny correction has done next to nothing yet):

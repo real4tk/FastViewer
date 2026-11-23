@@ -99,7 +99,7 @@ namespace FastViewer
                 case "soundChoice": soundChoice = Math.Max(0, Math.Min(16, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "keepSpeed": keepSpeed = v == "1"; break;
                 case "evenVolume": Loudness.On = v != "0"; break;
-                case "ownFrames": if (!framesSwitchFixed) ownFrames = v == "1"; break;
+                case "ownPlayer": if (!playerSwitchFixed) OwnVideo.Enabled = v != "0"; break; // 1.31.0 (the 1.30 experiment ownFrames= is gone)
                 case "speedPitch": TimeStretch.KeepPitch = v != "1"; break;
                 case "discordMb": { int mb = int.Parse(v, CultureInfo.InvariantCulture); discordMb = mb == 50 || mb == 500 ? mb : 20; } break;
                 default:
@@ -161,7 +161,7 @@ namespace FastViewer
                 "soundChoice=" + soundChoice.ToString(CultureInfo.InvariantCulture),
                 "keepSpeed=" + (keepSpeed ? "1" : "0"),
                 "evenVolume=" + (Loudness.On ? "1" : "0"),
-                "ownFrames=" + (ownFrames ? "1" : "0"),
+                "ownPlayer=" + (OwnVideo.Enabled ? "1" : "0"),
                 "speedPitch=" + (TimeStretch.KeepPitch ? "0" : "1"),
                 "subs=" + (subsOn ? "1" : "0"),
                 "subsOrig=" + (subsOriginal ? "1" : "0"),
@@ -481,11 +481,11 @@ namespace FastViewer
                 "Normally faster or slower sound keeps its normal pitch, like YouTube: voices just talk faster. Turn this on for " +
                 "the old way, where faster also sounds higher (and slower lower), like a tape. Also for \"Keep speed\" when you save or send a clip.",
                 Toggle(() => !TimeStretch.KeepPitch, v => TimeStretch.KeepPitch = !v));
-            AddCard("\uE714", "Smooth loops and speed changes (experimental)",
-                "Experimental, off by default. FastViewer draws the video itself, timed by its own sound, so Repeat starts over " +
-                "without a stop and speed changes (also holding for 2x) never freeze the picture. For now pausing and playing can " +
-                "show a grey haze, short loops can feel late and it uses more memory. Off: Windows' player draws it, as in 1.29.",
-                Toggle(() => ownFrames, v => { ownFrames = v; UpdateOwnSound(); })); // 1.30.0 (FramePath.cs)
+            AddCard("\uE714", "FastViewer's own video player",
+                "On: FastViewer plays every video and song itself, decoded on the graphics card and shown at your screen's full " +
+                "frame rate. Pausing, skipping, speed changes, holding for 2x and Repeat take effect at once, loops have no gap, " +
+                "and it uses less memory. Files it can't open still play in Windows' player. Off: Windows' player, as in 1.30.",
+                Toggle(() => OwnVideo.Enabled, v => { OwnVideo.Enabled = v; ReloadPlayers(); })); // 1.31.0 (Player.cs)
             AddCard("\uE893", "When a video ends",
                 "\"Play the next file\" moves on by itself, handy for watching many clips in a row. " +
                 "Repeat (R) still loops a video exactly as before and takes priority.",
@@ -1053,9 +1053,8 @@ namespace FastViewer
         BitmapSource FrameAsShown(Slot s)
         {
             double k = Math.Min(1.0, 3840.0 / s.Video.NaturalVideoWidth);
-            // (1.30.0: the picture FastViewer draws, when it is the one on screen: exactly that frame, and Windows' player
-            // may be paused under it.)
-            BitmapSource drawn = frameVisible && s == shown ? DrawnPicture() : null;
+            // (1.31.0: FastViewer's own player: exactly the picture on screen, read off the graphics card.)
+            BitmapSource drawn = s.Video.IsOwn ? s.Video.Snapshot() : null;
             BitmapSource frame = drawn != null ? drawn : Grab(s.Video, (int)(s.Video.NaturalVideoWidth * k), (int)(s.Video.NaturalVideoHeight * k));
             int turn;
             if (rotations.TryGetValue(s.File, out turn) && turn != 0) frame = new TransformedBitmap(frame, new RotateTransform(turn));

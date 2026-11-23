@@ -91,9 +91,12 @@ namespace FastViewer
             }
             catch { }
             var src = HwndSource.FromHwnd(hwnd);
+            // (1.31.0: with FastViewer's own player the window can always be see-through: its video lies right behind it,
+            // seen through a hole in the backgrounds, Player.cs. Everywhere else the backgrounds keep it opaque as before.)
+            bool clearHwnd = clear || OwnVideo.Enabled;
             if (src != null && src.CompositionTarget != null)
-                src.CompositionTarget.BackgroundColor = clear ? Colors.Transparent : Colors.Black;
-            chrome.GlassFrameThickness = clear ? new Thickness(-1) : frameless ? new Thickness(0) : new Thickness(1);
+                src.CompositionTarget.BackgroundColor = clearHwnd ? Colors.Transparent : Colors.Black;
+            chrome.GlassFrameThickness = clearHwnd ? new Thickness(-1) : frameless ? new Thickness(0) : new Thickness(1);
             if (glass && snapDir != null) Background = TestDesktop(); // tests: a stand-in for the desktop (never the real one)
             else if (clear) Background = Brushes.Transparent;
             else SetResourceReference(BackgroundProperty, "WindowBg");
@@ -109,9 +112,11 @@ namespace FastViewer
                 if (miniClear) rootGrid.Background = Brushes.Transparent;
                 else rootGrid.SetResourceReference(Panel.BackgroundProperty, "WindowBg");
             }
-            if (snapDir == null || !glass) Looks.SetBlurBehind(hwnd, glass);
+            if (snapDir == null || !glass) Looks.SetBlurBehind(hwnd, glass && !videoUp); // (1.31.0: the video window blurs instead while it is up)
             RoundCorners();
             UpdateSlotOpacity();
+            ApplyVideoBlur();
+            VideoBack.For(this).UpdateHoles(); // (the backgrounds were just set again: the video's hole too)
         }
 
         void RoundCorners()
@@ -120,7 +125,7 @@ namespace FastViewer
             var src = PresentationSource.FromVisual(this);
             if (hwnd == IntPtr.Zero || src == null || src.CompositionTarget == null) return;
             bool round = seeThrough && !fullscreen && !mini && WindowState == WindowState.Normal;
-            bool square = mini || fullscreen;
+            bool square = mini || fullscreen || videoNoFrame && !round; // (1.31.0 fix: own player's video up, Player.cs VideoBack.Frame)
             if (!round && !square && !rounded) return;
             var m = src.CompositionTarget.TransformToDevice;
             var r = Application.Current.Resources["Radius.Window"];

@@ -4,6 +4,35 @@ FastViewer - what's new
 Version numbers: major.minor.patch. New features raise the middle number, bug fixes the last one.
 You can see which version you have in "..." -> Settings -> About.
 
+1.31.0  (23 Nov 2026)
+  New
+  - One player: FastViewer now plays every video and song with a player of its own, built for this, instead of Windows'
+    player (which 1.30's "Smooth loops" experiment ran next to it). Windows' player is only used for a file FastViewer's
+    player can't open. It's on by default: Settings -> Videos -> "FastViewer's own video player" (off = as in 1.30).
+    The 1.30 experiment "Smooth loops and speed changes" is gone: this replaces it.
+  - The picture: decoded on the graphics card by Windows' own decoder and shown outside WPF, at every refresh of your
+    screen. Measured (hidden test window, 144 Hz screen): a 120 fps clip shows 119 of 120 pictures a second, none skipped,
+    none late, the screen at its full 144 refreshes (1.30: 72 of 120, 108 screen frames). Colours as a standard decoder,
+    always fully opaque. The controls, captions, menus, trim bar and the stats box still draw over the video as before.
+  - Everything takes effect at once (measured): pause 3 ms, play: next picture after 5-18 ms, a jump while paused
+    2-20 ms (a 120 fps file that must decode from its last key frame 60-100 ms), a loop start the length of one picture
+    or less (6.9 ms on a 60 fps clip), every sample of the sound in every loop. Speed changes and holding for 2x: the
+    picture runs at the new speed right away and stays exactly with the sound (20 holds in a row: sound 0 ms off).
+    Before, Windows' player stood still 0.1-0.2 s at every loop and speed change.
+  - Much less memory (Task Manager, one 1080p video playing): about 85-100 MB, also with 3 files ready on each side
+    (1.29: 145-250 MB, 1.30 with Smooth loops: 245-290 MB). Files ready ahead now keep only their first picture.
+  - Sound goes to the speakers through Windows' low-latency path (WASAPI): about 45 ms waiting instead of 100-170 ms,
+    and the volume (up to 100%) is set on the sound stream itself, so turning the wheel is heard at once.
+  - The taskbar and Alt+Tab previews show the video playing: sharp, about 25 pictures a second while you hover, always in
+    the right proportions, and never at the cost of playback.
+  - Only the file on screen can play: a player left playing out of sight is stopped within half a second (and noted in
+    errors.txt). When Windows' video system gets stuck and FastViewer restarts itself, the stuck one now always ends.
+  - Playback stats (Ctrl+Shift+P) say "paused" or "counting..." instead of half a second's numbers.
+  Good to know
+  - The video is shown in a window of its own right behind FastViewer's window. Sharing just FastViewer's window in
+    Discord or OBS (window capture) shows the window without the video; sharing the whole screen shows everything.
+  - While a video is on screen Windows draws no shadow around FastViewer's window.
+
 
 1.30.0  (21 Nov 2026)
   New

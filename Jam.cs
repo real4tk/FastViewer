@@ -39,7 +39,9 @@ namespace FastViewer
                 if (args[i] == "--resume-playing" && i + 1 < args.Length) { JamResumePlaying = args[++i] == "1"; continue; }
                 rest.Add(args[i]);
             }
-            try { if (pid > 0) Process.GetProcessById(pid).WaitForExit(6000); } catch { }
+            // (1.31.0 fix: if the stuck one is still there after 6 s, it is ended: it could keep playing, frozen, in a window
+            // of its own that can't be paused.)
+            try { if (pid > 0) { var old = Process.GetProcessById(pid); if (!old.WaitForExit(6000)) { old.Kill(); old.WaitForExit(2000); } } } catch { }
             if (rest.Count > 0 && !rest[0].StartsWith("--")) JamResumeFile = rest[0];
             return rest.ToArray();
         }
@@ -61,6 +63,57 @@ namespace FastViewer
             jamTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
             jamTimer.Tick += delegate { JamTick(); };
             jamTimer.Start();
+            soloTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(250) };
+            soloTimer.Tick += delegate { KeepSolo(); };
+            soloTimer.Start();
+        }
+
+        // (1.31.0) Only the file on screen may play or be heard. Four times a second: any other player that still plays (or
+        // will as soon as it's open) or isn't muted, half a second after the last switch, is paused and muted; FastViewer's
+        // own sound playing another file is moved to the file on screen. The one being revealed (switching, crossfade) may play
+        // muted. Each catch is written to errors.txt: it means some path forgot to stop a player.
+        DispatcherTimer soloTimer;
+        static readonly bool TestNoSolo = Environment.GetEnvironmentVariable("FV_NOSOLO") == "1"; // (tests: the watch off)
+        readonly Dictionary<Slot, int> soloSeen = new Dictionary<Slot, int>();
+        int soloSoundSeen;
+        internal int SoloCatches;                  // (tests)
+        internal string SoloLast;                  // (tests)
+
+        void KeepSolo()
+        {
+            if (slots == null || TestNoSolo) return;
+            bool settled = !Switching;
+            foreach (var s in slots)
+            {
+                if (s == null || s == shown) { soloSeen.Remove(s); continue; }
+                bool loose = s.Video.WantsToPlay && s != revealing || !s.Video.IsMuted && s != revealing;
+                int n;
+                soloSeen.TryGetValue(s, out n);
+                n = loose && settled ? n + 1 : 0;
+                soloSeen[s] = n;
+                if (n < 2) continue;
+                soloSeen[s] = 0;
+                SoloCatches++;
+                SoloLast = "hidden player " + (s.Video.WantsToPlay ? "playing" : "not muted") + ": " + Path.GetFileName(s.File) + " (on screen: " + (shown != null ? Path.GetFileName(shown.File) : "nothing") + ")";
+                Log("solo: " + SoloLast);
+                if (!testRun) Program.LogUiError(new Exception("A " + SoloLast + "; it was stopped."));
+                s.Video.IsMuted = true;
+                s.Video.Pause();
+            }
+            var sp = soundPlayer;
+            string heard = sp != null && sp.Sounding ? sp.WishFile : null;
+            bool strayed = heard != null && settled && (shown == null || !string.Equals(heard, shown.File, StringComparison.OrdinalIgnoreCase)) &&
+                (revealing == null || !string.Equals(heard, revealing.File, StringComparison.OrdinalIgnoreCase));
+            soloSoundSeen = strayed ? soloSoundSeen + 1 : 0;
+            if (soloSoundSeen >= 2)
+            {
+                soloSoundSeen = 0;
+                SoloCatches++;
+                SoloLast = "FastViewer's sound playing " + Path.GetFileName(heard) + " (on screen: " + (shown != null ? Path.GetFileName(shown.File) : "nothing") + ")";
+                Log("solo: " + SoloLast);
+                if (!testRun) Program.LogUiError(new Exception(SoloLast + "; it was stopped."));
+                if (shown == null || !shown.IsVideo) EndOwnSound(); else UpdateOwnSound();
+            }
         }
 
         static double Secs(long since) { return (Stopwatch.GetTimestamp() - since) / (double)Stopwatch.Frequency; }
@@ -144,8 +197,6 @@ namespace FastViewer
             var at = VideoAt(s);
             Program.LogUiError(new Exception("A video player stopped (" + why + "): it was made again. File: " + Path.GetFileName(s.File)));
             Log("jam: player made again (" + why + ")");
-            if (frameParked && parkSlot == s) Unpark(false, false);
-            if (frameReader != null) DropFrames();
             string file = s.File;
             ++s.Token;
             try { s.Video.Stop(); s.Video.Close(); } catch { }
@@ -160,6 +211,9 @@ namespace FastViewer
             else s.Video.Pause();
             UpdateOwnSound();
         }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr p, uint code);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
 
         // Windows' media pipeline is stuck for the whole program: FastViewer starts itself again on the same file and place.
         void RestartForJam(Slot s, string why)
@@ -180,9 +234,12 @@ namespace FastViewer
                 Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false });
             }
             catch (Exception ex) { Program.LogUiError(ex); }
-            // (A stuck pipeline can also hold up a normal exit: end for sure.)
-            new Thread(() => { Thread.Sleep(2000); try { Process.GetCurrentProcess().Kill(); } catch { } }) { IsBackground = true }.Start();
-            try { Environment.Exit(0); } catch { }
+            // (1.31.0 fix: a stuck pipeline can hold up a normal exit, and while it waits the sound and picture threads play
+            // on in a frozen window. Silent and out of sight first, then ended by Windows at once: no shutdown code runs.)
+            try { EndOwnSound(); } catch { }
+            try { foreach (var sl in slots) if (sl != null) { sl.Video.IsMuted = true; sl.Video.Pause(); } } catch { }
+            try { Hide(); } catch { }
+            TerminateProcess(GetCurrentProcess(), 0);
         }
 
         // Started by a FastViewer that was stuck: on to the same place, playing if it was.
