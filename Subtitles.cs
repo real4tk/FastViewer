@@ -276,7 +276,7 @@ namespace FastViewer
         {
             var s = shown;
             if (!HasSubs || !subsOn || s == null || s.Failed || trimming || cropping || gridOpen || settingsOpen) { ShowCue(-1, true); return; }
-            double at = (scrubbing ? TimeSpan.FromSeconds(seek.Value) : s.Video.Position).TotalSeconds;
+            double at = (scrubbing ? TimeSpan.FromSeconds(seek.Value) : VideoAt(s)).TotalSeconds;
             // The last cue that has started (they are in order of starting time); it shows until its own end.
             int lo = 0, hi = cues.Count - 1, found = -1;
             while (lo <= hi)

@@ -28,10 +28,19 @@ namespace FastViewer
         readonly bool[] busy = new bool[Buffers];
         static readonly int HeaderSize = IntPtr.Size == 8 ? 48 : 32, FlagsAt = IntPtr.Size == 8 ? 24 : 16;
         long written;
-        public bool Open { get { return handle != IntPtr.Zero; } }
+        public bool Open { get { return handle != IntPtr.Zero || fake; } }
+
+        // 1.30.0: silent test runs never open a sound device at all (even silence can click in earphones when a device
+        // stream starts): the speaker is pretended, with the same timing (played = what the clock says, never more than written).
+        internal static bool Pretend;
+        bool fake;
+        long fakeBase;
+        readonly System.Diagnostics.Stopwatch fakeWatch = new System.Diagnostics.Stopwatch();
+        long FakePlayed() { return Math.Min(written, fakeBase + (long)(fakeWatch.Elapsed.TotalSeconds * TrackMixer.Rate)); }
 
         public bool Start()
         {
+            if (Pretend) { fake = true; fakeWatch.Restart(); return true; }
             var format = new byte[18];
             BitConverter.GetBytes((short)1).CopyTo(format, 0);            // PCM
             BitConverter.GetBytes((short)2).CopyTo(format, 2);            // channels
@@ -56,6 +65,7 @@ namespace FastViewer
         {
             get
             {
+                if (fake) return FakePlayed();
                 if (handle == IntPtr.Zero) return 0;
                 var time = new byte[12];
                 BitConverter.GetBytes(2).CopyTo(time, 0); // in samples
@@ -68,6 +78,14 @@ namespace FastViewer
         // Takes as much as there is room for; returns how many frames it took.
         public int Write(short[] frames, int offset, int count)
         {
+            if (fake)
+            {
+                long played = FakePlayed();
+                if (played >= written) { fakeBase = written; fakeWatch.Restart(); played = written; } // (ran dry: the clock waits, like the device)
+                int n = (int)Math.Max(0, Math.Min(count, (long)Buffers * Capacity - (written - played)));
+                written += n;
+                return n;
+            }
             int took = 0;
             while (count > 0 && handle != IntPtr.Zero)
             {
@@ -96,6 +114,7 @@ namespace FastViewer
         // Drops what is waiting and starts counting from nothing again.
         public void Flush()
         {
+            if (fake) { written = 0; fakeBase = 0; fakeWatch.Restart(); return; }
             if (handle == IntPtr.Zero) return;
             waveOutReset(handle);
             for (int i = 0; i < Buffers; i++)
@@ -105,6 +124,7 @@ namespace FastViewer
 
         public void Dispose()
         {
+            if (fake) { fake = false; return; }
             if (handle == IntPtr.Zero) return;
             Flush();
             waveOutClose(handle);
@@ -207,6 +227,59 @@ namespace FastViewer
         }
     }
 
+    // 1.30.0: the last step before the speakers. The sound is made at half its level (room above full scale for 200%,
+    // a boost from Even out volume, several loud tracks together) and here brought back up; where that would go past
+    // full scale, the level is turned down smoothly beforehand: it looks 2 ms ahead (the sound is that much late),
+    // takes the lowest level any sample in that time needs, averages it over the same time (no step in the level is
+    // ever a click) and comes back up over ~80 ms. Before, each sample over -2 dBFS was squeezed on its own (a curve):
+    // at 200% that bent every loud peak, heard as crackling.
+    sealed class PeakLimiter
+    {
+        public const float Headroom = 2.5f;
+        const int D = 96;                 // 2 ms look-ahead (frames)
+        const float Ceiling = 32000f;     // about -0.2 dBFS
+        static readonly float Release = (float)(1 - Math.Exp(-1.0 / (0.08 * 48000)));
+        readonly float[] need = new float[D], mins = new float[D], delayL = new float[D], delayR = new float[D];
+        int at;
+        float sum = D, env = 1;
+        public int Reductions;            // tests: samples turned down
+        public static int Delay { get { return D - 1; } }
+
+        public PeakLimiter() { Reset(); }
+
+        public void Reset()
+        {
+            for (int i = 0; i < D; i++) { need[i] = 1; mins[i] = 1; delayL[i] = 0; delayR[i] = 0; }
+            sum = D; env = 1; at = 0;
+        }
+
+        // In place: frames (stereo) at half level come out at full level, never past the ceiling, D - 1 frames later.
+        public void Process(short[] frames, int count)
+        {
+            for (int n = 0; n < count; n++)
+            {
+                float l = frames[n * 2] * Headroom, r = frames[n * 2 + 1] * Headroom;
+                float peak = Math.Max(Math.Abs(l), Math.Abs(r));
+                need[at] = peak > Ceiling ? Ceiling / peak : 1f;
+                float m = 1f;
+                for (int k = 0; k < D; k++) if (need[k] < m) m = need[k];
+                sum += m - mins[at];
+                mins[at] = m;
+                float a = sum / D;
+                env = a < env ? a : env + (a - env) * Release;
+                if (env < 0.9999f) Reductions++;
+                // (The sample D - 1 frames back, which `a` covers exactly.)
+                int back = (at + 1) % D;
+                float ol = delayL[back] * env, or = delayR[back] * env;
+                delayL[at] = l;
+                delayR[at] = r;
+                at = (at + 1) % D;
+                frames[n * 2] = (short)Math.Max(-32768, Math.Min(32767, Math.Round(ol)));
+                frames[n * 2 + 1] = (short)Math.Max(-32768, Math.Min(32767, Math.Round(or)));
+            }
+        }
+    }
+
     // One thread that plays what SoundWish asks for, in step with the picture. Nothing that goes wrong in it ends
     // it: it lets go of the file and the speakers and starts over. (The window replaces it if it stops answering.)
     class SoundPlayer
@@ -227,7 +300,7 @@ namespace FastViewer
         int leadMs;
         readonly Stopwatch gapWatch = new Stopwatch();
         long lastSound, beat;              // (Stopwatch times) the last real sound handed to the speakers; the last sign of life
-        const double latency = 0.05;       // about what Windows and the sound card add after the sound is handed over
+        const double latency = 0.05 + 95 / 48000.0; // (1.30.0: + the limiter's look-ahead)
 
         // Sound was handed to the speakers within the last third of a second.
         public bool Sounding { get { return Since(Interlocked.Read(ref lastSound)) < 0.35; } }
@@ -246,7 +319,7 @@ namespace FastViewer
 
         public void Ask(SoundWish w) { wish = w; wake.Set(); }
         public void Quit() { quit = true; wake.Set(); }
-        public void ResetStats() { Starts = Resyncs = Failures = LongestGap = Splices = Wraps = LongestStarve = SeamSkips = 0; LastDrift = WorstDrift = MaxNudge = 0; Trouble = null; lock (Notes) Notes.Clear(); }
+        public void ResetStats() { Starts = Resyncs = Failures = LongestGap = Splices = Wraps = LongestStarve = Starves = SeamSkips = LongestStepGap = 0; MinQueuedMs = 9999; LastDrift = WorstDrift = MaxNudge = 0; Trouble = null; lock (Notes) Notes.Clear(); }
 
         static double Now(SoundWish w)
         {
@@ -304,10 +377,12 @@ namespace FastViewer
         long heldTime;
         bool running, finished, pendingLead, first, catching;
         double runSpeed = 1;
+        readonly PeakLimiter limiter = new PeakLimiter(); // (1.30.0)
         readonly TimeStretch stretcher = new TimeStretch(); // the same pitch at any speed (Stretch.cs)
         short[] stretched = new short[0];
         bool stretchMode = TimeStretch.KeepPitch;
-        public volatile int LongestStarve; bool starving; readonly Stopwatch starveWatch = new Stopwatch(); // tests
+        public volatile int LongestStarve, Starves; public volatile int MinQueuedMs = 9999, LongestStepGap; long lastStepT; // tests: how close the speakers came to running dry
+ bool starving; readonly Stopwatch starveWatch = new Stopwatch(); // tests
         public volatile float LastStep = 1;  // tests: the pace the sound was read at last (speed x nudge)
         // Repeat (1.29.0): the heard tracks' sound spans [SoundFrom, SoundTo) on the picture's clock (their own first and last
         // sample, edit-list offsets included). A loop of the sound is SoundTo - SoundFrom long: every sample of every track
@@ -376,6 +451,23 @@ namespace FastViewer
         }
 
         public volatile float OutputDelay = 0.15f; // seconds from handing sound over to hearing it (queued + Windows and the card): a new speed is heard that much later
+        // 1.30.0 (FramePath.cs): the clock of what is being heard right now, for the pictures drawn by FastViewer itself.
+        readonly object clockGate = new object();
+        string clockFile; double clockAt, clockPace = 1, clockLoop; long clockStamp, runSince;
+        public bool Clock(string file, out double at, out long stamp, out double pace, out double loopLen)
+        {
+            lock (clockGate)
+            {
+                at = clockAt; stamp = clockStamp; pace = clockPace; loopLen = clockLoop;
+                return clockFile != null && clockFile == file && (Stopwatch.GetTimestamp() - clockStamp) / (double)Stopwatch.Frequency < 0.12;
+            }
+        }
+        void SetClock(string file, double at, double pace, double loopLen)
+        {
+            lock (clockGate) { clockFile = file; clockAt = at; clockPace = pace; clockLoop = loopLen; clockStamp = Stopwatch.GetTimestamp(); }
+        }
+        // Seconds the sound of this run has really been heard (written longer ago than it takes to reach the speakers).
+        public double HeardFor { get { long r = Interlocked.Read(ref runSince); return r == 0 || !Sounding ? 0 : Since(r) - OutputDelay; } }
         public float[] Tap; public readonly int[] TapAt = new int[1]; // tests: what went to the speakers before the volume (left)
         short[] chunk = new short[0];
         readonly Stopwatch asked = Stopwatch.StartNew(), sinceStart = Stopwatch.StartNew(), sinceSpeed = Stopwatch.StartNew();
@@ -424,19 +516,42 @@ namespace FastViewer
         }
 
         // A stretch of a mixed piece as the speakers get it: read at `step` frames a time (the speed), at the volume.
-        // Returns how many frames it put into chunk.
+        // Returns how many frames it put into chunk. 1.30.0: the reading place is carried from one piece to the next
+        // (and the last sample of the one before is kept to read between the two). Before, every piece started fresh
+        // at its first sample and the part of a sample left over at the end was dropped: at any pace but exactly 1.000
+        // (the small corrections that keep sound and picture together, every other speed) the sound jumped a little
+        // at every piece, up to 16 times a second: heard as crackling on loud tones and music.
+        double renderAt;      // where the next piece starts being read, from its first sample (-1..0: between the last one and it)
+        short prevL, prevR;
+        bool renderPrev;
+        void ResetRender() { renderAt = 0; renderPrev = false; }
+
         int Render(short[] piece, int from, int count, double step, float volume)
         {
-            int frames = piece.Length / 2, made = Math.Max(1, (int)(count / step));
-            if (chunk.Length < made * 2) chunk = new short[made * 2];
-            for (int i = 0; i < made; i++)
+            if (count <= 0) return 0;
+            int end = from + count, cap = (int)(count / step) + 3;
+            if (chunk.Length < cap * 2) chunk = new short[cap * 2];
+            double at = from + (renderPrev ? renderAt : Math.Max(0, renderAt));
+            int made = 0;
+            while (at <= end - 1 + 1e-9 && made < cap)
             {
-                double at = from + i * step;
-                int a = Math.Min(frames - 1, (int)at), b = Math.Min(frames - 1, a + 1);
-                float f = (float)(at - a);
-                chunk[i * 2] = TrackMixer.Limit((piece[a * 2] + (piece[b * 2] - piece[a * 2]) * f) * volume);
-                chunk[i * 2 + 1] = TrackMixer.Limit((piece[a * 2 + 1] + (piece[b * 2 + 1] - piece[a * 2 + 1]) * f) * volume);
+                int a = (int)Math.Floor(at);
+                float la, ra, lb, rb, f;
+                if (a < from) { la = prevL; ra = prevR; lb = piece[from * 2]; rb = piece[from * 2 + 1]; f = (float)(at - (from - 1)); }
+                else
+                {
+                    int b = Math.Min(end - 1, a + 1);
+                    la = piece[a * 2]; ra = piece[a * 2 + 1]; lb = piece[b * 2]; rb = piece[b * 2 + 1]; f = (float)(at - a);
+                }
+                chunk[made * 2] = TrackMixer.Limit((la + (lb - la) * f) * volume);
+                chunk[made * 2 + 1] = TrackMixer.Limit((ra + (rb - ra) * f) * volume);
+                made++;
+                at += step;
             }
+            renderAt = at - end;
+            prevL = piece[(end - 1) * 2];
+            prevR = piece[(end - 1) * 2 + 1];
+            renderPrev = true;
             return made;
         }
 
@@ -468,6 +583,7 @@ namespace FastViewer
 
         void Hand(short[] frames, int count, double seconds)
         {
+            if (count > 0) limiter.Process(frames, count); // (1.30.0: back to full level, peaks turned down smoothly)
             if (count > 0 && Tap != null) for (int i = 0; i < count && TapAt[0] < Tap.Length; i++) Tap[TapAt[0]++] = frames[i * 2]; // (tests: everything the speakers get, silence too)
             if (count > 0 && wish.Silent) Array.Clear(frames, 0, count * 2);
             HandOut(frames, count, seconds);
@@ -523,8 +639,10 @@ namespace FastViewer
         {
             if (running && speaker != null) speaker.Flush();
             handed.Clear();
-            stretcher.Reset();
+            stretcher.Reset(); ResetRender(); limiter.Reset();
             running = false;
+            SetClock(null, 0, 1, 0);
+            Interlocked.Exchange(ref runSince, 0);
             Interlocked.Exchange(ref lastSound, 0);
         }
 
@@ -587,8 +705,9 @@ namespace FastViewer
             double expected = Now(w);
             // (What the stretcher holds is pushed but not heard yet: the same pitch at another speed, Stretch.cs.)
             bool keep = TimeStretch.KeepPitch;
-            if (keep != stretchMode) { stretchMode = keep; stretcher.Reset(); if (running) { speaker.Flush(); handed.Clear(); running = false; } }
+            if (keep != stretchMode) { stretchMode = keep; stretcher.Reset(); ResetRender(); limiter.Reset(); if (running) { speaker.Flush(); handed.Clear(); running = false; } }
             double heard = running ? mediaEnd - Waiting(true) - (stretchMode ? stretcher.PendingSeconds : 0) : 0;
+            if (running && !finished && handed.Count > 0) SetClock(open, heard, LastStep > 0 ? LastStep : runSpeed, w.LoopLength > 0.5 ? (LoopSpan > 0 && SpanFile == open ? LoopSpan : w.LoopLength) : 0); else SetClock(null, 0, 1, 0);
             if (speaker != null) OutputDelay = (float)(speaker.Queued / (double)TrackMixer.Rate + latency);
             double drift = expected - heard; // over 0: the sound is behind the picture
             if (catching && sinceSpeed.ElapsedMilliseconds >= 2500 && Math.Abs(drift) < 0.03) catching = false;
@@ -629,7 +748,7 @@ namespace FastViewer
                 foreach (var pair in slotOf) map[pair.Key] = mixer.AddTrack(1);
                 mixerSlots = map;
                 origin = from;
-                stretcher.Reset();
+                stretcher.Reset(); ResetRender(); limiter.Reset();
                 mediaEnd = from;
                 running = true;
                 double loopLen = w.LoopLength > 0.5 ? w.LoopLength : 0, fileFrom = from;
@@ -659,8 +778,9 @@ namespace FastViewer
                 }
             }
 
+            if (running && !finished && sinceStart.ElapsedMilliseconds > 500) { int q = (int)(speaker.Queued * 1000L / TrackMixer.Rate); if (q < MinQueuedMs) MinQueuedMs = q; long nowT = Stopwatch.GetTimestamp(); if (lastStepT != 0) { int gap = (int)((nowT - lastStepT) * 1000 / Stopwatch.Frequency); if (gap > LongestStepGap) LongestStepGap = gap; } lastStepT = nowT; } else lastStepT = 0;
             // (Tests: how long the speakers ran dry while playing, the longest time.)
-            if (running && !finished && sinceStart.ElapsedMilliseconds > 300 && speaker.Queued == 0) { if (!starving) { starving = true; starveWatch.Restart(); } }
+            if (running && !finished && sinceStart.ElapsedMilliseconds > 300 && speaker.Queued == 0) { if (!starving) { starving = true; Starves++; starveWatch.Restart(); } }
             else if (starving) { starving = false; LongestStarve = Math.Max(LongestStarve, (int)starveWatch.ElapsedMilliseconds); }
             // Keep about a tenth of a second waiting in the speakers.
             if (speaker.Queued < TrackMixer.Rate / 10 && !finished)
@@ -717,9 +837,12 @@ namespace FastViewer
                         if (mine && freshStreams.Contains(stream))
                         {
                             freshStreams.Remove(stream);
-                            mixer.Add(slot, stamp + (long)((offset[stream] + wrapBase - origin) * 1e7), sample, gainNow, true, CutFor(stream), -1, false);
+                            // (1.30.0: a loop's seam fades out and in over 2.5 ms: every sample still plays, but where the end and
+                            // the start of the sound don't meet, that is no longer a step, heard as a click at every loop.)
+                            long seamFrame = wrapBase > 0 ? (long)Math.Round((stamp / 1e7 + offset[stream] + wrapBase - origin) * TrackMixer.Rate) : -1;
+                            mixer.Add(slot, stamp + (long)((offset[stream] + wrapBase - origin) * 1e7), sample, gainNow, true, CutFor(stream), seamFrame, true);
                         }
-                        else if (mine && !atWrap.Contains(stream)) mixer.Add(slot, stamp + (long)((offset[stream] + wrapBase - origin) * 1e7), sample, gainNow, false, CutFor(stream), -1, false);
+                        else if (mine && !atWrap.Contains(stream)) mixer.Add(slot, stamp + (long)((offset[stream] + wrapBase - origin) * 1e7), sample, gainNow, false, CutFor(stream), -1, true);
                         Marshal.ReleaseComObject(sample);
                     }
                     if (mine && ended) { if (loopLen > 0) atWrap.Add(stream); else mixer.End(slot); }
@@ -819,7 +942,7 @@ namespace FastViewer
                 double step = runSpeed * (1 + nudge);
                 LastStep = (float)step;
                 // (Tests: everything as usual, the sound kept for measuring, then silence instead of it.)
-                float volume = w.Silent && Tap == null ? 0 : w.Silent ? 1 : (float)w.Volume;
+                float volume = (w.Silent && Tap == null ? 0 : (float)w.Volume) / PeakLimiter.Headroom; // (1.30.0: tests that record get the real volume, 200% too; Hand silences it after recording)
                 double power = 0; // (tests: how loud the mix is before the volume, as a running average)
                 for (int i = 0; i < frames; i += 4) power += (double)piece[i * 2] * piece[i * 2];
                 Level = (float)(Level * 0.6 + Math.Sqrt(power / Math.Max(1, frames / 4)) * 0.4);
@@ -845,7 +968,7 @@ namespace FastViewer
                         Array.Copy(stretched, exact, n * 2);
                         out1 = n > 0 ? Render(exact, 0, n, step, volume) : 0;
                     }
-                    else out1 = stretcher.Pull(ref chunk, volume, out covered);
+                    else { out1 = stretcher.Pull(ref chunk, volume, out covered); ResetRender(); } // (the stretcher reads on by itself: the plain reading starts fresh after it)
                     Hand(chunk, out1, covered);
                 }
                 else
@@ -863,6 +986,7 @@ namespace FastViewer
                 }
                 mediaEnd = origin + time / 1e7 + frames / (double)TrackMixer.Rate;
                 if (first) { first = false; StartMs = (int)asked.ElapsedMilliseconds; }
+                if (Interlocked.Read(ref runSince) == 0) Interlocked.Exchange(ref runSince, Stopwatch.GetTimestamp());
                 if (gapOpen) { gapOpen = false; LongestGap = Math.Max(LongestGap, (int)gapWatch.ElapsedMilliseconds + leadMs); }
                 Interlocked.Exchange(ref lastSound, Stopwatch.GetTimestamp());
                 return;
@@ -959,7 +1083,9 @@ namespace FastViewer
         }
 
         // Does FastViewer play this slot's sound itself? Then the picture's own player stays silent.
-        internal bool OwnSound(Slot s)
+        internal bool OwnSound(Slot s) { return OwnSoundBase(s) || FramesWantSound(s); } // (1.30.0: also whenever FastViewer draws the pictures: the sound is their clock)
+
+        internal bool OwnSoundBase(Slot s)
         {
             if (ownSoundOff || s == null || !s.IsVideo || s.Failed || s.File == null) return false;
             if (volume * LevelOf(s) > 1.001 && !muted) return true;  // louder than Windows' player goes (also: Even out volume)
@@ -1014,6 +1140,7 @@ namespace FastViewer
                 }
                 if (s != null && s.IsVideo && !s.Failed && s.Video.IsMuted != muted && (playing || s.IsAudio)) s.Video.IsMuted = muted;
             }
+            CheckFrames();
             UpdateTracksButton();
         }
 
@@ -1050,6 +1177,7 @@ namespace FastViewer
             // A sound thread that has stopped answering (stuck inside Windows) is left behind and a new one takes over.
             if (soundPlayer != null && soundPlayer.BeatAge > 2) { soundPlayer.Quit(); soundPlayer = null; soundRecoveries++; Log("the sound thread was replaced"); }
             if (soundPlayer == null) soundPlayer = new SoundPlayer();
+            if (TellParkedSound(s, layout)) { CheckFrames(); return; } // (1.30.0: Windows' player is paused under the drawn pictures: FramePath.cs)
             // A picture that stands still (looking for the place after a jump, a slow disk) has its sound wait with
             // it. Around a speed change Windows' player stumbles for a moment: the sound plays on through that.
             double at = s.Video.Position.TotalSeconds;
@@ -1099,6 +1227,7 @@ namespace FastViewer
             CheckDeferred(s);
             WatchChange(tick);
             PlanLoop(s, s.Video.Position.TotalSeconds, pace, tick); // (Stretch.cs: seamless loops)
+            CheckFrames();
             bool wanted = can && soundGo;
             soundPlayer.Ask(new SoundWish
             {
@@ -1126,8 +1255,12 @@ namespace FastViewer
             if (there || !wanted || s.File != soundQuietFile) { soundQuietSince = tick; soundQuietFile = s.File; }
             bool lost = (tick - soundQuietSince) / (double)Stopwatch.Frequency > 1.5;
             if (lost != soundFallback) { soundFallback = lost; if (lost) { soundFallbacks++; Log("own sound stayed away: Windows' player sounds meanwhile"); } }
-            bool quiet = lost ? muted : there || KnownTracks(s.File) >= 2 || s.Video.IsMuted;
+            // (1.30.0: when the sound is only FastViewer's because it draws the pictures, Windows' player goes quiet once
+            // FastViewer's sound is really heard, not when it is handed over: no gap at the start.)
+            bool handover = there && !OwnSoundBase(s) && !s.Video.IsMuted && soundPlayer.HeardFor < 0.02;
+            bool quiet = lost ? muted : (there && !handover) || KnownTracks(s.File) >= 2 || s.Video.IsMuted;
             if (s.Video.IsMuted != quiet) s.Video.IsMuted = quiet;
+            CheckAudioPark(s); // (1.30.0 round 3: music: Windows' player rests while FastViewer plays the sound: FramePath.cs)
         }
 
         double soundSeenAt;
@@ -1244,6 +1377,7 @@ namespace FastViewer
             var s = shown;
             long now = Stopwatch.GetTimestamp();
             if (s == null || !s.IsVideo || s.Failed || !s.Ready || !playing || scrubbing || revealing == s || trimDrag != '\0') { ResetPictureWatch(); rateEndAt = -1; return; }
+            if (frameParked) { ResetPictureWatch(); rateEndAt = -1; return; } // (1.30.0: paused under the drawn pictures on purpose)
             double at = s.Video.Position.TotalSeconds, set = s.Video.SpeedRatio > 0 ? s.Video.SpeedRatio : 1;
             var d = s.Video.NaturalDuration;
             if (d.HasTimeSpan && at >= d.TimeSpan.TotalSeconds - Math.Max(1.5, 0.75 * set))

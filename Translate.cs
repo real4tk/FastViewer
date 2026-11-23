@@ -328,7 +328,7 @@ namespace FastViewer
             }
             var list = cues;
             string video = cuesFor, from = cuesFrom;
-            double at = s.Video.Position.TotalSeconds;
+            double at = VideoAt(s).TotalSeconds;
             int here = list.FindIndex(c => c.To > at);
             if (here < 0) here = 0;
             var order = Enumerable.Range(here, list.Count - here).Concat(Enumerable.Range(0, here)).Where(i => string.IsNullOrEmpty(list[i].En)).ToList();

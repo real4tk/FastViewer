@@ -58,6 +58,7 @@ namespace FastViewer
                 S("loopB", "Loop until here (B)", SetLoopEnd, "OemCloseBrackets"),
                 S("loopStop", "Stop A-B loop", ClearLoop, "OemPipe", "OemBackslash"),
                 S("repeat", "Repeat video on/off", ToggleLoop, "R"),
+                S("stats", "Playback stats on/off (frames shown, skipped, late)", ToggleStats, "Ctrl+Shift+P"), // 1.30.0 round 3 (Stats.cs)
                 S("volumeUp", "Volume up", delegate { SetVolume(volume + 0.05); }, "Up"),
                 S("volumeDown", "Volume down", delegate { SetVolume(volume - 0.05); }, "Down"),
                 S("mute", "Mute", ToggleMute, "M"),

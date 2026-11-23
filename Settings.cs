@@ -99,6 +99,7 @@ namespace FastViewer
                 case "soundChoice": soundChoice = Math.Max(0, Math.Min(16, int.Parse(v, CultureInfo.InvariantCulture))); break;
                 case "keepSpeed": keepSpeed = v == "1"; break;
                 case "evenVolume": Loudness.On = v != "0"; break;
+                case "ownFrames": if (!framesSwitchFixed) ownFrames = v == "1"; break;
                 case "speedPitch": TimeStretch.KeepPitch = v != "1"; break;
                 case "discordMb": { int mb = int.Parse(v, CultureInfo.InvariantCulture); discordMb = mb == 50 || mb == 500 ? mb : 20; } break;
                 default:
@@ -160,6 +161,7 @@ namespace FastViewer
                 "soundChoice=" + soundChoice.ToString(CultureInfo.InvariantCulture),
                 "keepSpeed=" + (keepSpeed ? "1" : "0"),
                 "evenVolume=" + (Loudness.On ? "1" : "0"),
+                "ownFrames=" + (ownFrames ? "1" : "0"),
                 "speedPitch=" + (TimeStretch.KeepPitch ? "0" : "1"),
                 "subs=" + (subsOn ? "1" : "0"),
                 "subsOrig=" + (subsOriginal ? "1" : "0"),
@@ -424,6 +426,9 @@ namespace FastViewer
                 "How to show photos and videos that are smaller than the window.",
                 Dropdown(new[] { "Fit to window", "View at actual size" },
                     () => smallActualSize ? 1 : 0, i => { smallActualSize = i == 1; ApplyStretch(); }));
+            AddCard("\uE740", "Double-click for full screen",
+                "When off, double-clicking the picture does nothing; F, the full screen button and Esc work as always. (Settings > Mouse can give the double-click another job.)",
+                Toggle(() => mouseActions["double"] == "fullscreen", v => { mouseActions["double"] = v ? "fullscreen" : "none"; })); // 1.30.0
             AddCard("", "Show",
                 "Which files to go through when you press next or previous.",
                 Dropdown(ShowChoices,
@@ -476,6 +481,11 @@ namespace FastViewer
                 "Normally faster or slower sound keeps its normal pitch, like YouTube: voices just talk faster. Turn this on for " +
                 "the old way, where faster also sounds higher (and slower lower), like a tape. Also for \"Keep speed\" when you save or send a clip.",
                 Toggle(() => !TimeStretch.KeepPitch, v => TimeStretch.KeepPitch = !v));
+            AddCard("\uE714", "Smooth loops and speed changes (experimental)",
+                "Experimental, off by default. FastViewer draws the video itself, timed by its own sound, so Repeat starts over " +
+                "without a stop and speed changes (also holding for 2x) never freeze the picture. For now pausing and playing can " +
+                "show a grey haze, short loops can feel late and it uses more memory. Off: Windows' player draws it, as in 1.29.",
+                Toggle(() => ownFrames, v => { ownFrames = v; UpdateOwnSound(); })); // 1.30.0 (FramePath.cs)
             AddCard("\uE893", "When a video ends",
                 "\"Play the next file\" moves on by itself, handy for watching many clips in a row. " +
                 "Repeat (R) still loops a video exactly as before and takes priority.",
@@ -675,6 +685,7 @@ namespace FastViewer
             if (page == appearancePage) BuildLookPreviews(); // drawn the first time they're needed, not at start-up
             if (page == customPage) FillCustomLookPage();
             var before = settingsPages.FirstOrDefault(p => settingsList.Children.Contains(p.Value)).Key;
+            foreach (var refresh in settingsRefresh) refresh(); // (1.30.0: a choice made on another page shows here too, e.g. the double-click)
             settingsList.Children.Clear();
             settingsList.Children.Add(page);
             MakeKeyboardReachable(page);
@@ -729,12 +740,53 @@ namespace FastViewer
                 control.VerticalAlignment = VerticalAlignment.Center;
                 Grid.SetColumn(control, 2);
                 grid.Children.Add(control);
+                FitCardControl(grid, texts, control);
             }
 
             var card = Card(grid, description == null ? new Thickness(16, 6, 16, 6) : new Thickness(16, 12, 16, 12));
             card.MinHeight = description == null ? 48 : 68;
             settingsPage.Children.Add(card);
             return card;
+        }
+
+        // 1.30.0: in a narrow window a card's control (a row of buttons, a long menu) didn't fit next to its text and was
+        // pushed past the right edge, out of sight. Now it moves under the text when there isn't room beside it (and back),
+        // so every setting stays on screen at any window width.
+        static void FitCardControl(Grid grid, FrameworkElement texts, FrameworkElement control)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            bool under = false;
+            double natural = -1, decidedAt = -1;
+            Action fit = delegate
+            {
+                double width = grid.ActualWidth;
+                if (width <= 0 || Math.Abs(width - decidedAt) < 1) return; // (only when the card's width really changed: no loops)
+                decidedAt = width;
+                if (natural < 0)
+                {
+                    // The control's own width in one line, measured once while it still sits beside the text.
+                    control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    natural = control.DesiredSize.Width - control.Margin.Left - control.Margin.Right;
+                }
+                double room = width - Math.Max(38, grid.ColumnDefinitions[0].ActualWidth);
+                // Beside the text when the text keeps at least ~150 px.
+                bool want = room - natural - 24 < 150;
+                if (want == under) { var w0 = control as WrapPanel; if (w0 != null && under) w0.MaxWidth = Math.Max(80, room); return; }
+                under = want;
+                Grid.SetRow(control, under ? 1 : 0);
+                Grid.SetColumn(control, under ? 1 : 2);
+                Grid.SetColumnSpan(control, under ? 2 : 1);
+                Grid.SetColumnSpan(texts, under ? 2 : 1);
+                control.Margin = under ? new Thickness(0, 10, 0, 0) : new Thickness(24, 0, 0, 0);
+                control.HorizontalAlignment = under ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+                var wrap = control as WrapPanel;
+                if (wrap != null) wrap.MaxWidth = under ? Math.Max(80, room) : double.PositiveInfinity;
+            };
+            // (After the layout pass, not inside it; and again whenever the page comes back on screen.)
+            Action later = delegate { grid.Dispatcher.BeginInvoke(fit, System.Windows.Threading.DispatcherPriority.Loaded); };
+            grid.SizeChanged += delegate { later(); };
+            grid.IsVisibleChanged += delegate { if (grid.IsVisible) later(); };
         }
 
         // A card whose control sits under its text (the look cards).
@@ -1001,7 +1053,10 @@ namespace FastViewer
         BitmapSource FrameAsShown(Slot s)
         {
             double k = Math.Min(1.0, 3840.0 / s.Video.NaturalVideoWidth);
-            BitmapSource frame = Grab(s.Video, (int)(s.Video.NaturalVideoWidth * k), (int)(s.Video.NaturalVideoHeight * k));
+            // (1.30.0: the picture FastViewer draws, when it is the one on screen: exactly that frame, and Windows' player
+            // may be paused under it.)
+            BitmapSource drawn = frameVisible && s == shown ? DrawnPicture() : null;
+            BitmapSource frame = drawn != null ? drawn : Grab(s.Video, (int)(s.Video.NaturalVideoWidth * k), (int)(s.Video.NaturalVideoHeight * k));
             int turn;
             if (rotations.TryGetValue(s.File, out turn) && turn != 0) frame = new TransformedBitmap(frame, new RotateTransform(turn));
             return frame;
@@ -1037,7 +1092,7 @@ namespace FastViewer
             var s = shown;
             if (s == null || !s.IsVideo || s.IsAudio || s.Failed || s.Video.NaturalVideoWidth == 0) return;
             if (playing) TogglePlay();
-            var pos = s.Video.Position;
+            var pos = VideoAt(s);
             BitmapSource frame = FrameAsShown(s);
             var dlg = new Microsoft.Win32.SaveFileDialog
             {

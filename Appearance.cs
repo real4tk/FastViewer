@@ -354,11 +354,11 @@ namespace FastViewer
             AddCustomLookPage();
 
             AddGroup("Buttons");
-            var presets = new StackPanel { Orientation = Orientation.Horizontal };
+            var presets = new WrapPanel(); // (1.30.0: wraps in a narrow window)
             for (int i = 0; i < PresetNames.Length; i++)
             {
                 int p = i;
-                var b = new Button { Content = PresetNames[i], MinWidth = 104, Height = 32, Margin = new Thickness(i == 0 ? 0 : 8, 0, 0, 0) };
+                var b = new Button { Content = PresetNames[i], MinWidth = 104, Height = 32, Margin = new Thickness(0, 3, i == PresetNames.Length - 1 ? 0 : 8, 3) };
                 b.Click += delegate { ApplyPreset(p); };
                 presets.Children.Add(b);
                 settingsRefresh.Add(delegate { b.SetResourceReference(StyleProperty, CurrentPreset() == p ? "AccentButton" : "Filled"); });

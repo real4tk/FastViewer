@@ -5,6 +5,50 @@ Version numbers: major.minor.patch. New features raise the middle number, bug fi
 You can see which version you have in "..." -> Settings -> About.
 
 
+1.30.0  (21 Nov 2026)
+  New
+  - EXPERIMENTAL, OFF BY DEFAULT: Smooth loops and speed changes, like TikTok and Reels. Turn it on in
+    Settings -> Videos -> "Smooth loops and speed changes (experimental)". FastViewer then draws the video itself
+    (decoded on the graphics card), timed by its own sound, and gets the first pictures of the next loop ready
+    before the old loop ends. Repeat starts over without the picture stopping for a moment, and speed changes (also
+    holding for 2x) no longer freeze the picture. Measured on a Medal clip: the picture used to stand still
+    60-180 ms at each loop and 105-140 ms at each speed change, now 0-12 ms and mostly under 30 ms.
+    Not finished yet, which is why it is off: pausing and playing can still show a grey haze for a moment, short
+    loops can feel a little late, and it uses noticeably more memory. A rebuilt version comes in 1.31. With it off
+    (the default) videos play exactly as in 1.29, with the fixes below.
+  - Settings -> Viewing -> "Double-click for full screen": turn it off and double-clicking the picture does
+    nothing (F, the full screen button and Esc work as always).
+  - Playback stats: Ctrl+Shift+P shows, top left, who draws the video, its frame rate, how many screen frames and
+    video pictures were shown each second, and how many were skipped or late. While it is on, every second is also
+    written to playback.txt (in %LOCALAPPDATA%\FastViewer), with where any picture was skipped or late.
+  Fixed
+  - Videos looked washed out and greyish with "Smooth loops and speed changes" (no deep blacks): the picture FastViewer
+    draws was made partly see-through, so the grey behind showed through the dark parts. Now it is fully opaque; its
+    colours match a standard decoder exactly (measured: 45 dB, the same picture).
+  - Skipping forward again and again at the end of a clip could jam Windows' video playback for the whole program:
+    nothing played any more, other videos neither, until FastViewer was ended in Task Manager. Skipping past the end
+    now goes on into the next loop (with Repeat) or stops just before the end. And should a video player ever get
+    stuck again, FastViewer notices within a few seconds and makes it again by itself (or, if Windows' playback is stuck
+    as a whole, starts itself again on the same video and place); it is noted in errors.txt.
+  - 120 fps videos were sometimes shown with fewer pictures: showing a picture could wait for WPF to let go of it,
+    which held up the next screen frames. It no longer waits; measured 111-118 of 120 pictures a second in a test
+    window that itself draws irregularly.
+  - A song on Repeat at 2x or above 100% could stop with "can't be played": Windows' player was started over right at
+    its end. Now it rests while FastViewer plays the song's sound, as with videos.
+  - Crackling in the sound (also in 1.28 and 1.29, more often in 1.30): whenever FastViewer plays the sound itself
+    (other speeds, volume over 100%, Even out volume boosting a quiet file, Medal clips, and every video with Smooth loops on) and
+    keeps it in step with the picture, it reads the sound a tiny bit faster or slower. Each piece of sound (every
+    60 ms) then started fresh and left out a fraction of a sample: a small jump, up to 16 times a second, heard as
+    crackling on loud music and tones. The reading now carries on exactly from piece to piece. Measured on a loud test
+    tone: 27-113 jumps in 6 s before, none now. Volume over 100% (and Even out volume) used to squeeze every loud
+    peak on its own; a proper limiter now turns loud moments down smoothly a moment ahead. A loop's seam fades over
+    2.5 ms, so where the end and the start of a clip's sound don't meet it no longer clicks.
+  - Playback stats (Ctrl+Shift+P) only said "Playback stats on": the stats themselves were placed off screen. They
+    now show top left on the video, with Smooth loops on and off.
+  - Settings in a narrow window: on some pages (Buttons, Viewing) a setting's buttons or menu were pushed past the
+    right edge, out of sight. Now they move under their text when there isn't room, so every setting shows at any
+    window width.
+
 1.29.0  (18 Nov 2026)
   New
   - Hold for 2x speed, like YouTube and TikTok: hold the left mouse button on a video or song and it plays at 2x

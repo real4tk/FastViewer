@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.29.0)
+# FastViewer: complete feature list (version 1.30.0)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests), Report.cs (1.28.0: the error report), Translate.cs (1.28.0: English translation), Hunt128.cs (1.28.0 tests), Parakeet.cs (1.28.0: Parakeet captions), Loudness.cs (1.29.0: Even out volume), Hold.cs (1.29.0: hold for 2x), Stretch.cs (1.29.0: same pitch at any speed (WSOLA), speed changes timed with the picture), TestSilence.cs (1.29.0: test runs at Windows volume 0), Hunt129.cs (1.29.0: pitch / let-go / Keep speed / loops / decodeinfo tests);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests), Report.cs (1.28.0: the error report), Translate.cs (1.28.0: English translation), Hunt128.cs (1.28.0 tests), Parakeet.cs (1.28.0: Parakeet captions), Loudness.cs (1.29.0: Even out volume), Hold.cs (1.29.0: hold for 2x), Stretch.cs (1.29.0: same pitch at any speed (WSOLA), speed changes timed with the picture), TestSilence.cs (1.29.0: test runs at Windows volume 0), Hunt129.cs (1.29.0: pitch / let-go / Keep speed / loops / decodeinfo tests), FramePath.cs (1.30.0: FastViewer draws the video itself), Hunt130.cs (1.30.0 tests: frames, skiphold, narrowsettings, clicks, usage, clickspam, colours, skipjam, jamrepair, fps), Jam.cs (1.30.0: a jammed video player is made again), Stats.cs (1.30.0: playback stats, Ctrl+Shift+P);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -134,7 +134,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   frame while playing (with animations on); dragging it holds the video still and shows the frames passed (at
   most ~20 jumps a second, ending exactly where you let go), then plays on if it was playing.
 - Play/pause button in the middle (Show / Only when paused / Hide); click the video to play/pause (since 1.29.0 a click on a playing video pauses when the button comes up, so holding can mean 2x; a paused one starts at the press as before)
-  (configurable); double-click for full screen.
+  (configurable); double-click for full screen (1.30.0: can be turned off in Settings > Viewing).
 - Video dims slightly while controls show (optional); controls can also fade on a paused video (optional).
 - Short notes when a key or the wheel changes something while the controls are hidden ("Volume 45%",
   "+30 s 1:42 / 5:00").
@@ -983,6 +983,169 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
 - Not verified: how even it sounds by ear on the user's speakers (WPF's volume is taken as linear, as FastViewer
   always has); real mouse holds (tests simulate the button).
 
+## Smooth loops and speed changes: FastViewer draws the video (1.30.0)
+- FramePath.cs. Setting "Smooth loops and speed changes" (Settings > Videos, after "Change pitch with speed"; settings
+  line ownFrames=, EXPERIMENTAL and OFF by default since 1.30.0 round 4 (card title "... (experimental)"; a proper one-player
+  rebuild is planned for 1.31: it still swaps players on pause/play (grey haze), short loops feel late, memory high); tests: --frames on|off). Windows' player (MediaElement) stands still ~0.1-0.18 s at
+  every start-over and speed change. Now, while the video on screen plays, FastViewer decodes the pictures itself and
+  draws them over Windows' player (which keeps playing underneath, unseen, for everything else: seek bar, captions,
+  frame steps, trim, crop, grabbing a frame, pausing).
+- Decoding (VideoConverter.FrameReader, thread "Frames"): Media Foundation source reader with a D3D11 device
+  (VideoConverter.Gpu: D3D11CreateDevice with video support, ID3D10Multithread protected, MFCreateDXGIDeviceManager,
+  ResetDevice) + MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING: decoded and converted to RGB32 on the graphics
+  card, copied out with IMF2DBuffer.Lock2D into a pool of 10 frames (unmanaged memory). Pictures bigger than the
+  screen are made screen-sized on the card (zooming in past 100% on such a file shows Windows' player). It reads
+  ahead of the clock (at most 0.35 s or 0.5 x speed, 9 frames); at high speeds frames closer than a screen frame
+  are decoded but not copied. A file whose picture comes out turned, or that fails, goes back to Windows' player
+  (frameBad, logged "own pictures off").
+- The clock is FastViewer's own sound (SoundPlayer.Clock: what is being heard right now on the picture's counted
+  clock, published every round of the sound thread; plus the loop length the sound wraps at). Every screen frame
+  (CompositionTarget.Rendering, OnFrameTick, hooked only while needed) the newest picture at or before the clock
+  (+12 ms, smoothed) is copied into a WriteableBitmap (Image "frameView", Stretch Fill, bound to the slot's
+  MediaElement ActualWidth/ActualHeight, right above it in the Rotor: turned, zoomed and panned with it). It shows
+  once a picture for the moment is there and stays while the sound plays; when the sound thread is busy for a moment
+  (seen at a seam) the clock carries on from its last reckoning for up to 0.4 s. So sound and picture can't drift.
+  OwnSound = OwnSoundBase || FramesWantSound: whenever the pictures are drawn, FastViewer's sound plays (files with
+  sound only; StartPlayback uses OwnSoundBase so Windows' player sounds at the start and is silenced once FastViewer's
+  sound is really heard: SoundPlayer.HeardFor, no gap).
+- Repeat: frames are read straight on into the next loop at the sound's loop length (SoundPlayer.LoopSpan). A fresh
+  reader is opened beside, shortly before the end, and takes over at the seam (jumping the old one back to 0 lost the
+  first frames of some files). Files made by x264/ffmpeg with B-frames carry an edit list that Windows' MP4 reader
+  ignores for the picture (its times run 2 frames late and it never hands out the first 2-4 frames): the reader
+  measures this on the first frame (VideoInfo.EditStart "vide") and corrects the times (FrameReader.Shift); the first
+  frame it gets of a new loop is shown from the loop's start. A jump Windows refuses (0xC00D36E5 on a 2 s clip, the
+  sound's loop a moment longer than the picture) opens the file again; jumps stay inside the picture's length.
+- Pausing: the picture on screen stays 0.35 s while Windows' player is put on that same frame underneath. The reader
+  is kept 8 s while paused (playing on needs no new one), then its memory goes.
+- Measured (--case frames, hidden test window, simulated holds; stand-still = how long the picture stays the same
+  beyond a normal frame; own pictures: how much older the shown frame is than the sound's clock): Medal clip (1080p
+  120 fps, 2 tracks): loop seams 0-12 ms (Windows' player 60-182 ms at 1.5-2x), speed changes and holds 0-36 ms
+  (111-139 ms); ffmpeg clips 60 fps: seams 2-32 ms (36-99 ms), 30 fps 2 s clip: 8-65 ms (the frames Windows never
+  hands out); seen vs heard 95% within 18-39 ms (Windows' player: up to 220-430 ms around changes). Every sound sample
+  still played at every loop (--case loops: 18 of 18). Switching unchanged (--selftest 400: median 8-11 ms, p90
+  16-33 ms both ways); the reader starts only once a video plays on screen, off the window's thread. Costs in round 1: processor 23-60% of one core, the graphics card decoding twice, about 450 MB more memory: all cut in round 2 (below).
+- Not verified: how it looks on a real 144 Hz screen (the hidden test window gets irregular screen frames), real
+  mouse holds, 4K and HDR files, Glass look over a real desktop.
+
+## 1.30.0 round 2 (the user's real-screen test: crackling sound, too much memory/GPU, a grey haze)
+- Crackling (SoundPlay.cs, in every version with FastViewer's own sound, so also 1.28/1.29): Render (the plain reading
+  at a pace, used at 1x with the 0.4% corrections in both pitch modes and at every speed with "Change pitch with
+  speed") started every ~60 ms piece fresh at its first sample and dropped the part of a sample left over: at any pace
+  but exactly 1.000 the sound jumped a little at every piece. Now the reading place is carried over (renderAt, and the
+  last sample of the piece before is kept to read between the two; ResetRender at every real break: a restart, a stop,
+  a pitch-mode change, after the time-stretcher took over). Found with --case clicks (Hunt130.cs): tone clips whose
+  every track is a 440 Hz sine (the mix stays one clean sine, so x[n] = 2cos(w)x[n-1] - x[n-2]; a jump over 400 is a
+  click), plus clipping counts and how close the speakers came to running dry (SoundPlayer.MinQueuedMs, LongestStepGap,
+  Starves; they never ran dry: always 81-94 ms queued, the sound thread paused at most 19 ms). Before: 27 clicks in 6 s
+  at 1x same pitch, 18 at 1x pitch with speed, 113 at 2x pitch with speed on a -2.5 dBFS tone (same with the frame
+  path on or off); after: none away from loop seams.
+- Limiter (PeakLimiter, SoundPlay.cs): the sound is made at 1/2.5 of its level (Render and the stretcher get the volume
+  / PeakLimiter.Headroom) and Hand brings it back up through a 2 ms look-ahead limiter: the lowest gain any sample in
+  the next 2 ms needs (ceiling 32000), averaged over the same 2 ms (no step in the gain), release ~80 ms. Before, each
+  sample over -2 dBFS was squeezed on its own (TrackMixer.Limit's curve): at 200% or with an Even out volume boost every
+  loud peak was bent. The heard clock counts the 95 frames of look-ahead (latency + 95/48000). Tests record after it.
+- Loop seams: the first sound of each track in a new loop fades in over 2.5 ms and the old loop's end fades out over the
+  2.5 ms before its cut (TrackMixer.Add fadeInFrom / cutFade): every sample still plays, but a seam where the end and the
+  start don't meet is no longer a step.
+- Memory and graphics card (FramePath.cs): (1) Windows' player is "parked" (paused) under the drawn pictures once they
+  have been on screen steadily for 0.6 s (not while scrubbing, trimming, revealing, a press that may become a hold, or in
+  the last second without Repeat): it no longer decodes every frame unseen. While parked: the sound is its own clock
+  (TellParkedSound: the window tells it its own place, so it never chases a picture; speed changes reach it at once),
+  the watchdog (WatchPicture) leaves it alone, and VideoAt(slot) (the drawn picture's place, else Windows' player's) is
+  read by the time bar, skip keys, frame steps, A-B loop, trim, captions, subtitle editor, translation, resume places,
+  rotation/crop/cover reopening and Save frame. Unparked (Unpark): when someone moves it (a skip, the time bar, a frame
+  step: its place changes by more than 4 ms after a 0.4 s settle), on pause (it is put on the shown frame), when the
+  drawn picture is gone for 0.3 s, when another file shows or the setting goes off (put on the shown frame and played),
+  and at the end without Repeat (put on the last shown frame, then OnVideoEnded as if Windows' player had ended).
+  (2) The pictures stay on the graphics card (GpuShow): the reader copies each decoded picture (MF's D3D11 texture,
+  IMFDXGIBuffer) into a texture of its own pool on the card (6 frames, was 10; textures, not memory); to show one it is
+  copied into a D3D11 texture shared with a Direct3D 9Ex surface that WPF draws (D3DImage, SetBackBuffer with software
+  fallback), then Flush + an event query so WPF never reads it half done. Copy frame / Save frame read that texture back
+  once (GpuShow.Read). If the card path can't be made (no D3D9Ex, another format than BGRA/BGRX, a lost device), the
+  pictures go through memory as in round 1 (one staging texture of our own, not Windows' per-picture copies;
+  --frames-cpu-show forces that). (3) No second reader per loop (round 1 opened one beside before each loop end; the
+  time Shift is what fixed those seams). (4) Native call wrappers are made once and kept (Gpu.Call). Measured with
+  --case usage (one video at 1x with Repeat, 8 s after 3 s; Task Manager's memory = the process's private working
+  set): Medal r1 / generated n7: 1.29 mode 235 / 209 MB, CPU 28 / 20% of one core, video decode 13.1 / 9.2%, 3D 2.0 /
+  1.8%; round 1: 423 / 379 MB, 82 / 47%, decode 2x; round 2: 358 / 306 MB, 34 / 26%, decode 15.4 / 8.9%, 3D 3.5 / 2.1%.
+  Loops after it (--case frameloops): Medal r1 0-4 ms, n7 1-26 ms, the 2 s 30 fps clip 8-64 ms (its missing frames);
+  every picture through the card (log: "pictures stayed on the graphics card").
+- Grey haze when clicking play/pause quickly (double-click off): every "play" took a snapshot of Windows' player for the
+  cover (Poster) and kept it up until the video was seen moving, which never happened while clicking; with the frame
+  path Windows' player was paused/parked or just being put on the shown frame. StartPlayback now takes no snapshot (and
+  clears an old one) while the drawn picture is up, while parked, or within 1.5 s of putting Windows' player on the
+  drawn frame (frameMovedPlayerAt). --case clickspam (clicks every 70-160 ms for 4 s): the cover was up in every check
+  before, 2 of ~39 after.
+- Also checked after round 2: switching --selftest 400, 3 rounds each: median 8-9 ms, p90 13-14 ms with the frame path
+  (8-10 / 23-34 ms without); --case hold: the picture never stands still during a hold, 0-42 ms after letting go (1.29
+  mode 97-109 ms). Test silence: Windows' player gets volume 0 in tests (PlayVolume), FastViewer's own sound goes to a
+  pretend speaker (SpeakerOut.Pretend, same timing); tests that record now get the real volume (200% too), silenced
+  after recording. Not verified: the grey haze on the real screen (the hidden test window can't show it), real mouse
+  clicks, Glass look over a real desktop, 4K/HDR files, a device lost while drawing (screen lock).
+
+## 1.30.0 round 3 (the user's second real-screen test: washed-out colours, a jam, choppy 120 fps, MP3 Repeat)
+- Colours (FramePath.cs): the reader asked for RGB32 (BGRX), whose 4th byte comes out 0; shared with Direct3D 9 as
+  X8R8G8B8, WPF drew it partly see-through on a real screen (washed out, greyish, no deep blacks; a volume change or a
+  click showed Windows' player's picture for a moment, in the right colours). Now the reader asks for ARGB32 (falls back
+  to RGB32): the 4th byte is 255, the shared texture is B8G8R8A8 / A8R8G8B8. --case colours (Hunt130.cs): pauses a
+  playing video, keeps the drawn frame and Windows' player's picture of the same frame, and compares (per-channel fit,
+  1/50/99% brightness, the 4th byte's average: 0 before, 255 after; pictures of both and of the window). Against
+  ffmpeg's decode of the same frame (BT.709, limited range expanded to full): the drawn frame 45.3 dB PSNR (the same),
+  Windows' player's picture as grabbed (RenderTargetBitmap) 22.5 dB: the grab comes out in limited range
+  (drawn = 1.16 x grab - 18), so it isn't what a real screen shows and isn't the reference.
+- The jam: SeekBy clamped a skip past the end to the exact end; skipping forward again and again there put Windows'
+  player at its end while it was ending and starting over, which hung Windows' media pipeline for the whole process
+  (no file opened any more, MFCreateSourceReaderFromURL never returned; only ending the process helped). --case skipjam
+  (Repeat on, skip to the last second, "skip forward" every 60-160 ms for 3 s, then: does it play on, does a new reader
+  open within 4 s): 12 of 12 rounds jammed with the frame path off, 3 of 12 with it on. Now: with Repeat a skip past
+  the end goes on into the next loop (modulo the length), without it stops min(0.25 s, a quarter) before the end, and
+  a forward skip on a player whose length isn't known does nothing. After: 0 of 12 both ways.
+- Self-repair (Jam.cs): once a second while a video shows, if it should play but its place (VideoAt) hasn't moved for
+  3.5 s, or it hasn't opened 6 s after being asked, a test reader of the file is opened off the window's thread. It
+  opens: the slot gets a new Windows player (NewVideoPlayer), the file afresh at the same place, playing on
+  (RebuildPlayer). It doesn't open in 4 s (or a player was made again twice within a minute): the pipeline is stuck for
+  the whole program; FastViewer saves places and settings, starts itself again with "<file> --after-jam <pid>
+  --resume-at <s> --resume-playing <0/1>" (Program.AfterJam waits for the old one to end before the single-instance
+  check; ResumeAfterJam goes on at the same place) and ends (Environment.Exit, Kill after 2 s). Both go to errors.txt.
+  Tests count instead of restarting. --case jamrepair (a player kept paused behind FastViewer's back): noticed after
+  5.3 s and made again, plays on; with --jam-probe-fail: noticed after 11.3 s, restart asked; both in errors.txt.
+  With the frame path drawing, a stuck hidden player doesn't stop what is seen, so nothing is done.
+- Playback stats (Stats.cs): Ctrl+Shift+P (shortcut "stats", Settings > Keyboard) shows top left (in the window's video row,
+  Grid row 1: in row 0, the 48 px top bar, it was cut off until 1.30.0 round 4; --case fps logs its size and place), once a second: who
+  draws (FastViewer on the graphics card / through memory / Windows' player), the video's frame rate (measured from
+  the pictures' own times, the median gap of the last 60: FrameReader.MeasuredFps), screen frames per second
+  (CompositionTarget.Rendering, counted only while the stats are on), pictures shown per second of those possible,
+  skipped (passed over unseen: FrameReader.Take reports how many), late (shown more than 1.5 pictures after their
+  moment), surface busy, the longest drawing and the longest wait for the surface. While on, each second goes to
+  %LOCALAPPDATA%\FastViewer\playback.txt with the file, place and where pictures were skipped or late (1 MB, then anew).
+  Windows' player's pictures can't be counted (it doesn't tell); its screen frames per second are still shown.
+- 120 fps: showing a picture locked the D3DImage, which waits for WPF's render thread to let go of the surface (up to
+  4 ms a frame), holding up the window's thread and so the next screen frames. Now TryLock (1 ms); busy: the picture goes
+  back to the front of the queue (FrameReader.PutBack) and is shown next screen frame (a timed-out TryLock must still be
+  Unlocked: without that the surface stayed locked for good and nothing was drawn). --case fps (each clip 7 s at 1x with
+  the stats on; the user's two 120 fps clips: a 576x720 phone clip and a 1280x720 Medal clip): 111-118 of 120 pictures
+  a second, 1-6 skipped, none late, in a hidden test window whose own screen frames wobble between 147 and 155 a second
+  (before: 101-116, 4-19 skipped). The decoder always had the picture ready (late 0). Not verified: the user's real
+  144 Hz screen; the stats are there to show it.
+- Music on Repeat (MP3 at 2x / 200%): PlanLoop started Windows' player over "at end", which left the MP3 failed for good
+  (s.Failed: from then on Windows' player played it, no volume over 100%). Now a song whose sound FastViewer plays itself
+  parks Windows' player too (CheckAudioPark at the end of TellSound; TellParkedSound un-parks a song on pause, a skip,
+  another file, the end without Repeat, or 0.5 s without the sound's clock; VideoAt gives the sound's place). --case
+  clicks on an MP3 tone and an NCS song: every run at 200% and 2x is FastViewer's sound, none failed (before: from the
+  third run on "Windows' player"). The MP3's own seam keeps a step (the encoder's padding, which Windows doesn't trim).
+- Also: a build that silently failed while a test ran from the same folder, and two shell edits that went wrong (perl
+  with "|" as delimiter and \|\| in the pattern inserts at the file's start; GNU sed's \| is "or" and matched the empty
+  string, which wrecked FramePath.cs: restored from Claude Code's file history). Lesson kept in the project notes.
+
+## Settings fixes (1.30.0)
+- Narrow windows: AddCard's control (switch, menu, row of buttons) moves under the card's text when the text would
+  keep under ~150 px beside it (FitCardControl: the control's natural width measured once, decided again only when
+  the card's width changes, after layout); the Buttons presets are a WrapPanel. Every page checked at 480, 600 and
+  760 px wide (--case narrowsettings, pictures of every page).
+- Settings > Viewing > "Double-click for full screen" (on): off sets the mouse action "double" to Nothing (the same
+  choice as Settings > Mouse > Double-click the picture). Settings pages refresh their controls when shown.
+- Tests: Windows' player gets volume 0 in every test run (PlayVolume), FastViewer's own sound goes to a pretend
+  speaker (SpeakerOut.Pretend: same timing, no sound device opened), on top of the test process's Windows volume 0.
 ## Custom look (1.17.1, Settings > Custom look)
 - A fifth look built from any of the four (Start from) plus only what you change; "Like the look" leaves a
   setting to the base look. Stored in settings.ini (customBase, customName, custom.<part>=value) and synced
@@ -1043,6 +1206,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   files added/renamed/deleted while open.
 
 ## Built-in test modes (for development; tests run muted, never steal focus, and their windows are cloaked: drawn but never seen, never on top)
+- 1.30.0: --case clicks, --case usage, --case clickspam, --case frameloops (round 2), --case colours, --case skipjam, --case jamrepair [--jam-probe-fail], --case fps (round 3), --frames-cpu-show (pictures through memory);
+- 1.30.0: --frames on|off (FastViewer draws the video, FramePath.cs; overrides the setting), --frames-cpu (its decoding without the graphics card), --case frames (loops, speed changes, holds, skip-and-hold: stand-stills, seen vs heard, CPU/GPU/memory; run once with --frames on and once off), --case skiphold (only the skip-and-hold part: the skip keys and the time bar; listens to both players for heard sound going back), --case narrowsettings (every Settings page at 480/600/760 px, pictures). Every test: Windows' player at volume 0, FastViewer's sound to a pretend speaker (no sound device).
 - --selftest <ms> (switching speed log), --features, --ui, --gallery, --controls, --tweaks, --memory,
   --stall (freeze detector), --volume, --looks, --dim, --sync, --toast, --fadetest, --snap <dir>.
 - --hunt <dir> --case <name>: torture (thousands of fast switches with checks), edge, churn, big, dump,

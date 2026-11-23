@@ -177,7 +177,7 @@ namespace FastViewer
                 lastTick = now;
                 var s = shown;
                 if (s == null || !s.IsVideo || !playing) { stillMs = silentMs = 0; lastPos = -1; return; }
-                double pos = s.Video.Position.TotalSeconds;
+                double pos = VideoAt(s).TotalSeconds; // (1.30.0: the drawn picture's place while Windows' player is parked)
                 if (lastPos >= 0 && Math.Abs(pos - lastPos) < 0.0005) { stillMs += dt; worstStill = Math.Max(worstStill, stillMs); } else stillMs = 0;
                 lastPos = pos;
                 bool sound = (OwnSound(s) && soundPlayer != null && soundPlayer.Sounding) || (!s.Video.IsMuted && stillMs == 0); // (Windows' player sounds only while its picture moves)

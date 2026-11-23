@@ -28,13 +28,14 @@ using System.Windows.Threading;
 
 namespace FastViewer
 {
-    static class Program
+    static partial class Program
     {
         [STAThread]
         static void Main(string[] args)
         {
             if (args.Length >= 4 && args[0] == "--parakeet") { Environment.ExitCode = Parakeet.Child(args); return; } // 1.28.0: the hidden Parakeet captions writer (Parakeet.cs)
             if (args.Length >= 4 && args[0] == "--isolate") { Environment.ExitCode = Vocals.Child(args); return; } // the hidden helper of voice isolation (Vocals.cs)
+            args = AfterJam(args); // (1.30.0 round 3: started again by a FastViewer whose video pipeline was stuck: Jam.cs)
             if (SingleInstance.TryForward(args)) return; // a FastViewer waiting in the background shows the file
             if (args.Any(a => a.StartsWith("--") && a != "--updated")) TestSilence.Start(); // 1.29.0: test runs make no sound at all (TestSilence.cs)
             Run(args);
@@ -507,6 +508,10 @@ namespace FastViewer
                 else if (args[i] == "--snap" && i + 1 < args.Length) snapDir = args[++i];
                 else if (args[i] == "--front") testInFront = true;
                 else if (args[i] == "--own-sound-off") ownSoundOff = true;     // sound as before 1.26, for comparing
+                else if (args[i] == "--frames" && i + 1 < args.Length) { ownFrames = args[++i] == "on"; framesSwitchFixed = true; } // 1.30.0: pictures drawn by FastViewer (FramePath.cs) on or off
+                else if (args[i] == "--frames-cpu") VideoConverter.FrameReader.NoGpu = true;
+                else if (args[i] == "--jam-probe-fail") jamProbeFails = true; // (tests: the jam watch's test reader never opens)
+                else if (args[i] == "--frames-cpu-show") VideoConverter.GpuShow.Off = true; // (1.30.0 round 2: pictures through memory, as in round 1)
                 else if (args[i] == "--own-sound-aloud") ownSoundAloud = true; // a test that is meant to be heard
                 else if (args[i] == "--loudness" && i + 1 < args.Length) loudnessStoreOverride = args[++i]; // tests: where loudness measurements are kept
                 else if (args[i] == "--tracks" && i + 1 < args.Length) soundStoreOverride = args[++i]; // tests: where what was found about sound tracks is kept
@@ -561,6 +566,7 @@ namespace FastViewer
             }
             bool testMode = selfTestInterval > 0 || snapDir != null || fadeTestLog != null;
             testRun = args.Any(a => a.StartsWith("--") && a != "--updated"); // any test option: GitHub is never contacted
+            SpeakerOut.Pretend = testRun && !ownSoundAloud; // 1.30.0: silent tests open no sound device at all
             testRunStatic = testRun;
             Addon.TestRun = Smooth.TestRun = testRun; // tests never see (or download) the real add-ons
             if (testRun && !TurnMemory.Overridden) TurnMemory.Path = null; // tests never touch the real rotations.txt
@@ -843,10 +849,12 @@ namespace FastViewer
                 UpdateControls();
                 UpdateResponsive();
                 if (path != null) OpenPath(path);
+                ResumeAfterJam(); // (1.30.0 round 3: Jam.cs)
                 if (selfTestInterval > 0) RunSelfTest();
                 if (testMode) SendToBack();
                 if (snapDir != null) { if (huntTest) RunHunt(); else if (uiTest) RunUiTest(); else if (featureTest) RunFeatureTest(); else if (galleryTest) RunGalleryTest(); else if (controlsTest) RunControlsTest(); else if (tweaksTest) RunTweaksTest(); else if (memoryTest) RunMemoryTest(); else if (stallTest) RunStallTest(); else if (looksTest) RunLooksTest(); else if (volumeTest) RunVolumeTest(); else if (dimTest) RunDimTest(); else if (syncTest) RunSyncTest(); else if (toastTest) RunToastTest(); else RunSnapshots(); }
                 idleTimer.Start();
+                StartJamWatch(); // (1.30.0 round 3: a jammed video player is made again: Jam.cs)
             };
         }
 
@@ -916,6 +924,13 @@ namespace FastViewer
             v.MediaOpened += delegate { OnVideoOpened(s); };
             v.MediaFailed += delegate(object o, ExceptionRoutedEventArgs e) { OnLoadFailed(s, e.ErrorException); };
             v.MediaEnded += delegate { OnVideoEnded(s); };
+            // 1.30.0: in every test run Windows' player itself stays at volume 0, whatever the test sets (before, only this
+            // process's Windows volume kept tests quiet, and that is checked every few tenths of a second: a moment could be heard).
+            if (testRun && !ownSoundAloud)
+            {
+                v.Volume = 0;
+                System.ComponentModel.DependencyPropertyDescriptor.FromProperty(MediaElement.VolumeProperty, typeof(MediaElement)).AddValueChanged(v, delegate { if (v.Volume != 0) v.Volume = 0; });
+            }
             s.Video = v;
             s.Rotor.Children.Insert(0, v);
         }
@@ -1405,7 +1420,7 @@ namespace FastViewer
                 {
                     LevelStart(c); // (Even out volume: Loudness.cs)
                     c.Video.Volume = PlayVolume(c);
-                    c.Video.IsMuted = muted || OwnSound(c);
+                    c.Video.IsMuted = muted || OwnSoundBase(c); // (1.30.0: not for drawn pictures alone: Windows' player sounds until FastViewer's sound is heard)
                     c.Video.Play();
                     c.Video.SpeedRatio = speed;
                 }
@@ -1440,6 +1455,10 @@ namespace FastViewer
         // now. OnRendering removes it as soon as real frames are being drawn.
         void StartPlayback(Slot c, bool snapshotNow)
         {
+            // 1.30.0 round 2: while FastViewer's drawn picture is on screen (or Windows' player is paused under it), that
+            // picture is the cover: no snapshot of Windows' player, which may be paused elsewhere or still finding its place
+            // (seen as a grey haze over the video when clicking play/pause quickly: each click laid a new grab over it).
+            if (c == shown && (frameVisible || frameParked || (Stopwatch.GetTimestamp() - frameMovedPlayerAt) / (double)Stopwatch.Frequency < 1.5)) { snapshotNow = false; c.Poster.Source = null; }
             if (snapshotNow && c.Poster.Visibility != Visibility.Visible && !slowGrabs)
             {
                 try { c.Poster.Source = Snapshot(c.Video); FitPoster(c); }
@@ -1448,7 +1467,7 @@ namespace FastViewer
             c.Poster.Visibility = c.Poster.Source != null ? Visibility.Visible : Visibility.Collapsed;
             LevelStart(c); // (Even out volume: Loudness.cs)
             c.Video.Volume = PlayVolume(c);
-            c.Video.IsMuted = muted || OwnSound(c);
+            c.Video.IsMuted = muted || OwnSoundBase(c); // (1.30.0: not for drawn pictures alone: Windows' player sounds until FastViewer's sound is heard)
             c.Video.Play();
             c.Video.SpeedRatio = speed;
             revealing = c;
@@ -1732,7 +1751,7 @@ namespace FastViewer
             else
             {
                 var d = s.Video.NaturalDuration;
-                if (d.HasTimeSpan && s.Video.Position >= d.TimeSpan - TimeSpan.FromMilliseconds(200))
+                if (d.HasTimeSpan && VideoAt(s) >= d.TimeSpan - TimeSpan.FromMilliseconds(200))
                     s.Video.Position = TimeSpan.Zero;
                 StartPlayback(s, true);
                 playing = true;
@@ -1753,13 +1772,23 @@ namespace FastViewer
             var s = shown;
             if (s == null || !s.IsVideo || s.Failed) return;
             var d = s.Video.NaturalDuration;
-            double pos = s.Video.Position.TotalSeconds + seconds;
-            if (d.HasTimeSpan) pos = Math.Min(pos, d.TimeSpan.TotalSeconds);
+            double pos = VideoAt(s).TotalSeconds + seconds;
+            // 1.30.0 round 3: never put Windows' player at (or past) its very end. Skipping forward again and again at the
+            // end did exactly that while it was ending and starting over, and that jammed Windows' media pipeline for the
+            // whole program (nothing played until FastViewer was ended in Task Manager). With Repeat a skip past the end
+            // goes on into the next loop, as playing would; without, it stops a moment before the end.
+            if (d.HasTimeSpan)
+            {
+                double len = d.TimeSpan.TotalSeconds, margin = Math.Min(0.25, len / 4);
+                if (loop && pos >= len - margin) pos = len > 0.5 ? (pos - len) % len : 0;
+                pos = Math.Min(pos, len - margin);
+            }
+            else if (seconds > 0) return; // (its length isn't known: it may be stuck; a jump could make it worse)
             s.Video.Position = TimeSpan.FromSeconds(Math.Max(0, pos));
             UpdateTime();
             if (!overlayVisible) // the time bar isn't showing: say where we are
                 ShowFeedback((seconds > 0 ? "+" : "-") + Math.Abs(seconds).ToString("0.#", CultureInfo.InvariantCulture) + " s    " +
-                             Fmt(s.Video.Position) + (d.HasTimeSpan ? " / " + Fmt(d.TimeSpan) : ""));
+                             Fmt(VideoAt(s)) + (d.HasTimeSpan ? " / " + Fmt(d.TimeSpan) : ""));
         }
 
         void SetVolume(double v)
@@ -2006,7 +2035,7 @@ namespace FastViewer
         {
             var s = shown;
             if (s == null || !s.IsVideo || s.Failed) return;
-            var pos = s.Video.Position;
+            var pos = VideoAt(s);
             var d = s.Video.NaturalDuration;
             var dur = d.HasTimeSpan ? d.TimeSpan : TimeSpan.Zero;
             if (!seek.IsMouseCaptureWithin && !scrubbing) // don't fight the user while they drag

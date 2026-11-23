@@ -154,7 +154,7 @@ namespace FastViewer
             var d = s.Video.NaturalDuration;
             if (!d.HasTimeSpan) return;
             LoadPositions();
-            double length = d.TimeSpan.TotalSeconds, at = s.Video.Position.TotalSeconds;
+            double length = d.TimeSpan.TotalSeconds, at = VideoAt(s).TotalSeconds;
             if (resumeVideos && length >= (s.IsAudio ? 600 : ResumeMinSeconds) && at >= 5 && at <= length - 5)
             {
                 positions[s.File] = at;
@@ -181,7 +181,7 @@ namespace FastViewer
             if (s == null || !s.IsVideo || s.IsAudio || s.Failed) return;
             if (playing) TogglePlay();
             var d = s.Video.NaturalDuration;
-            double at = s.Video.Position.TotalSeconds + direction * s.FrameSeconds;
+            double at = VideoAt(s).TotalSeconds + direction * s.FrameSeconds;
             if (d.HasTimeSpan) at = Math.Min(at, d.TimeSpan.TotalSeconds);
             s.Poster.Visibility = Visibility.Collapsed;
             s.Video.Position = TimeSpan.FromSeconds(Math.Max(0, at));
@@ -195,7 +195,7 @@ namespace FastViewer
         {
             var s = shown;
             if (s == null || !s.IsVideo || s.Failed) return;
-            loopA = s.Video.Position;
+            loopA = VideoAt(s);
             if (loopB.HasValue && loopB.Value <= loopA.Value) loopB = null;
             AfterLoopChange("Loop start (A) set at " + Fmt(loopA.Value) + ". Press ] at the end point.");
         }
@@ -204,7 +204,7 @@ namespace FastViewer
         {
             var s = shown;
             if (s == null || !s.IsVideo || s.Failed) return;
-            var at = s.Video.Position;
+            var at = VideoAt(s);
             if (!loopA.HasValue) loopA = TimeSpan.Zero;
             if (at <= loopA.Value) { loopB = loopA; loopA = at; } // set the "wrong" way round: swap
             else loopB = at;
@@ -240,7 +240,7 @@ namespace FastViewer
             var s = shown;
             if (s == null || !s.IsVideo || !loopB.HasValue) return;
             if (trimming) PlaceTrimHead();
-            var at = s.Video.Position;
+            var at = VideoAt(s);
             if (at >= loopB.Value || (loopA.HasValue && at < loopA.Value - TimeSpan.FromMilliseconds(500)))
                 s.Video.Position = loopA ?? TimeSpan.Zero;
         }

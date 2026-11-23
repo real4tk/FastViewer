@@ -189,7 +189,7 @@ namespace FastViewer
                     {
                         if (s == null || !string.Equals(s.File, file, StringComparison.OrdinalIgnoreCase)) continue;
                         bool wasPlaying = s == shown && playing;
-                        held.Add(Tuple.Create(s, s.Video.Position, wasPlaying));
+                        held.Add(Tuple.Create(s, VideoAt(s), wasPlaying));
                         s.Video.Stop();
                         s.Video.Source = null;
                     }

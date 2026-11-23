@@ -133,6 +133,9 @@ Right-click an MP3's music view to change its cover. Settings > Viewing > Show p
 Rotating a video or photo is remembered; Settings > Viewing can save the turn into the file (JPEG, MP4, MOV: no quality lost).
 Playback speed (0.25x to 5x): the slider at the top of the video "..." menu; click the speed next to it for 1x.
 Hold the left mouse button on a video or song to watch at 2x while you hold it; let go for the speed you had.
+Experimental: smoother Repeat and speed changes, FastViewer draws the video itself (Settings -> Videos -> "Smooth loops and speed changes (experimental)", off by default).
+Don't want double-click for full screen? Settings -> Viewing -> "Double-click for full screen" (F still works).
+Choppy video? Ctrl+Shift+P shows playback stats (frames shown per second, skipped, late).
 Other speeds keep the normal pitch; Settings -> Videos -> "Change pitch with speed" makes faster sound higher again.
 Videos that don't play or get no thumbnail elsewhere: video "..." -> "Make compatible copy".
 iPhone videos (HEVC) need "HEVC Video Extensions" from the Microsoft Store, same as the Photos app.

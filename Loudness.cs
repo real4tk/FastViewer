@@ -276,7 +276,9 @@ namespace FastViewer
         internal double levelBiggestStep; // tests: the largest change in one step of a glide (dB)
 
         // The volume for a slot's own player (Windows' player goes to 100% at most; FastViewer's sound does the rest).
-        double PlayVolume(Slot s) { return Math.Min(1, volume * LevelOf(s)); }
+        // (1.30.0: test runs give Windows' player no volume at all, so not a moment of a test can be heard: a guard that
+        // turned it back down after each change let a few milliseconds through every time, heard as crackling.)
+        double PlayVolume(Slot s) { return testRun && !ownSoundAloud ? 0 : Math.Min(1, volume * LevelOf(s)); }
 
         internal double LevelOf(Slot s)
         {

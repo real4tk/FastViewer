@@ -118,7 +118,7 @@ namespace FastViewer
             foreach (var s in slots)
             {
                 if (s == null || !string.Equals(s.File, file, StringComparison.OrdinalIgnoreCase)) continue;
-                held.Add(Tuple.Create(s, s.Video.Position, s == shown && playing));
+                held.Add(Tuple.Create(s, VideoAt(s), s == shown && playing));
                 s.Video.Stop();
                 s.Video.Source = null;
             }

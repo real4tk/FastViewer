@@ -210,7 +210,7 @@ namespace FastViewer
         {
             var s = shown;
             if (!trimming || s == null || TrimLength <= 0) return;
-            double at = trimDrag != '\0' ? trimHeadAt : s.Video.Position.TotalSeconds;
+            double at = trimDrag != '\0' ? trimHeadAt : VideoAt(s).TotalSeconds;
             Canvas.SetLeft(F<FrameworkElement>("TrimHead"), TrimX(Math.Min(at, TrimLength)) - 2);
             // While playing, the playhead moves every screen frame (the loop timer alone would be ~66 a second).
             if (playing && !Motion.Running("trimHead")) Motion.Run("trimHead", delegate { PlaceTrimHead(); return trimming && playing; });
@@ -307,7 +307,7 @@ namespace FastViewer
             if (s == null || !trimming || !loopA.HasValue || !loopB.HasValue) return;
             if (!playing)
             {
-                var at = s.Video.Position;
+                var at = VideoAt(s);
                 if (at < loopA.Value || at >= loopB.Value - TimeSpan.FromMilliseconds(100)) s.Video.Position = loopA.Value;
             }
             TogglePlay();
@@ -337,8 +337,8 @@ namespace FastViewer
             switch (sc.Id)
             {
                 case "play": PlaySelection(); return true;
-                case "loopA": if (s != null) SetTrimEnd('A', s.Video.Position.TotalSeconds, true); return true;
-                case "loopB": if (s != null) SetTrimEnd('B', s.Video.Position.TotalSeconds, true); return true;
+                case "loopA": if (s != null) SetTrimEnd('A', VideoAt(s).TotalSeconds, true); return true;
+                case "loopB": if (s != null) SetTrimEnd('B', VideoAt(s).TotalSeconds, true); return true;
                 case "loopStop": case "previous": case "next": case "first": case "last": return true; // stay with this video
                 case "trim": EndTrim(); return true; // the trim key again leaves, like G for the grid
             }

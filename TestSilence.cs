@@ -29,7 +29,7 @@ namespace FastViewer
             // (The first check sets this process's default sound session to 0 on every device, which is what both
             // Windows' player and FastViewer's own sound use; the re-checks start 3 s later, so they never weigh on the
             // opening that the speed tests measure.)
-            thread = new Thread(() => { Once(); ready.Set(); Thread.Sleep(3000); while (true) { Once(); Thread.Sleep(500); } }) { IsBackground = true, Name = "Test silence", Priority = ThreadPriority.BelowNormal };
+            thread = new Thread(() => { Once(); ready.Set(); Thread.Sleep(3000); while (true) { Once(); Thread.Sleep(200); } }) { IsBackground = true, Name = "Test silence", Priority = ThreadPriority.BelowNormal };
             thread.SetApartmentState(ApartmentState.MTA);
             thread.Start();
         }

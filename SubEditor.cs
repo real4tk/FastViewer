@@ -118,7 +118,7 @@ namespace FastViewer
         double Position()
         {
             var s = shown;
-            return s == null || !s.IsVideo ? 0 : (scrubbing ? TimeSpan.FromSeconds(seek.Value) : s.Video.Position).TotalSeconds;
+            return s == null || !s.IsVideo ? 0 : (scrubbing ? TimeSpan.FromSeconds(seek.Value) : VideoAt(s)).TotalSeconds;
         }
 
         int CueAt(double at)
