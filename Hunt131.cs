@@ -152,7 +152,7 @@ namespace FastViewer
                         HuntLog("  processor by thread: " + ThreadIds.Usage(th0, secs) + "; window placed the video " + F1((OwnVideo.FrameCalls - fc0) / secs) + " times a second");
                         var b = v.Snapshot();
                         if (b != null) HuntLog("  picture on screen: " + b.PixelWidth + "x" + b.PixelHeight + ", average " + F1(Average(b)) + " (0 = black)");
-                        HuntLog("  video window up " + VideoBack.For(this).Up + ", holes " + videoHoles.Count + (videoHoles.Count > 0 ? " " + videoHoles[0] : ""));
+                        HuntLog("  video window up " + VideoBack.For(this).Up + ", holes " + videoHoles.Count + (videoHoles.Count > 0 ? " " + videoHoles[0] : "") + ", " + VideoBack.For(this).BackNote);
                     }
                     else HuntLog("  playing " + F1(secs) + " s: CPU " + F1((CpuNow() - c0) / 10 / secs) + "% of one core, " + "Task Manager " + TaskMemMB() + " MB, " + HuntResources());
                     next();
@@ -722,6 +722,240 @@ namespace FastViewer
             var d = new Dictionary<int, double>();
             foreach (ProcessThread t in Process.GetCurrentProcess().Threads) try { d[t.Id] = t.TotalProcessorTime.TotalMilliseconds; } catch { }
             return d;
+        }
+    }
+
+    partial class ViewerWindow
+    {
+        // ---- 1.31.1: --case skiphold. A 1.29 leftover: a skip into the last 2-3 s, then hold for 2x at once, played a bit of sound
+        // twice before the real loop. Each run records what the speakers got and looks for doubled sound around the jump and
+        // around the loop (DoubledMs: pink-noise clips only), and for silence there.
+        void HuntSkipHold()
+        {
+            muted = false; Loudness.On = false; loop = true; UpdateControls();
+            var names = files.Where(f => IsVideoFile(f) && !IsAudioFile(f)).Select(Path.GetFileName).ToList();
+            if (huntPattern != null && huntPattern != "mixed") names = names.Where(nn => nn.Equals(huntPattern, StringComparison.OrdinalIgnoreCase)).ToList();
+            var setCount = typeof(System.Windows.Input.MouseButtonEventArgs).GetProperty("ClickCount").GetSetMethod(true);
+            Action<bool> press = down =>
+            {
+                var a = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left) { RoutedEvent = down ? UIElement.MouseLeftButtonDownEvent : UIElement.MouseLeftButtonUpEvent, Source = stage };
+                setCount.Invoke(a, new object[] { 1 });
+                holdTestPressed = down;
+                stage.RaiseEvent(a);
+            };
+            var runs = new List<Action<Action>>();
+            int bad = 0, total = 0;
+            foreach (var name in names.Take(1))
+                foreach (bool bySkip in new[] { true, false })
+                    foreach (double left in new[] { 2.0, 2.5, 3.0 })
+                        for (int rep = 0; rep < 2; rep++)
+                        {
+                            string nm = name; bool sk = bySkip; double lf = left;
+                            runs.Add(next => HuntOpen(nm, () =>
+                            {
+                                if (holding || holdTestPressed) press(false);
+                                if (!playing) TogglePlay();
+                                SetSpeed(1);
+                                double dur = shown.Video.NaturalDuration.TimeSpan.TotalSeconds;
+                                if (sk) SeekTo(dur - lf - skipForward); else SeekTo(dur - lf - 4);
+                                After(900, () =>
+                                {
+                                    var p = soundPlayer;
+                                    if (p == null) { HuntLog(nm + ": no own sound FAIL"); next(); return; }
+                                    var tap = new float[48000 * 8];
+                                    p.TapAt[0] = 0; p.Tap = tap;
+                                    loopTapAt = new List<int>();
+                                    After(400, () =>
+                                    {
+                                        int jumpAt = p.TapAt[0];
+                                        if (sk) SeekBy(skipForward); else SeekTo(dur - lf);
+                                        press(true); // (hold for 2x at once)
+                                        After((int)(lf / 2 * 1000) + 1500, () =>
+                                        {
+                                            press(false);
+                                            After(300, () =>
+                                            {
+                                                p.Tap = null;
+                                                var x = tap.Take(Math.Min(tap.Length, p.TapAt[0])).ToArray();
+                                                var at = loopTapAt.ToList(); loopTapAt = null;
+                                                double b1, b2 = 0, dJump = DoubledMs(x, jumpAt, out b1), sJump = SilentMs(x, jumpAt);
+                                                double dLoop = at.Count > 0 ? DoubledMs(x, at[0], out b2) : -1, sLoop = at.Count > 0 ? SilentMs(x, at[0]) : -1; if (at.Count == 0) b2 = 0;
+                                                bool ok = at.Count > 0 && dJump == 0 && dLoop == 0 && sLoop < 5;
+                                                total++; if (!ok) bad++;
+                                                HuntLog(nm + ", " + (sk ? "Skip forward" : "jump") + " to " + lf + " s before the end, hold at once: around the jump doubled " + dJump + " ms (closest " + b1.ToString("0.00") + "), silence " + sJump.ToString("0") + " ms; loops " + at.Count + ", around the loop doubled " + dLoop + " ms (closest " + b2.ToString("0.00") + "), silence " + sLoop.ToString("0") + " ms" + (ok ? "" : " FAIL"));
+                                                next();
+                                            });
+                                        });
+                                    });
+                                });
+                            }));
+                        }
+            int i = 0;
+            Action go = null;
+            go = () => { if (i >= runs.Count) { HuntLog("skiphold: " + (total - bad) + " of " + total + " runs clean"); HuntDone(); return; } runs[i++](() => Dispatcher.BeginInvoke(go)); };
+            After(500, go);
+        }
+
+        // ---- 1.31.1: --case resizefast --front. A bright magenta window right behind FastViewer's (and its video window), then
+        // fast resizes, moves, maximize, full screen and the mini player while another thread takes pictures of the screen:
+        // magenta inside the window = a gap where the video window lagged. Also reads the shadow just outside the edges.
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT131 r);
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")] static extern IntPtr GetWindowLongPtr131(IntPtr h, int i);
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRgnBox")] static extern int GetWindowRgnBoxRaw(IntPtr h, out RECT131 r);
+        static string GetWindowRgnBox131(IntPtr h) { RECT131 r; int t = GetWindowRgnBoxRaw(h, out r); return t == 0 ? "none" : r.Left + "," + r.Top + "-" + r.Right + "," + r.Bottom; }
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] struct RECT131 { public int Left, Top, Right, Bottom; }
+        volatile bool rfRun;
+        System.Drawing.Rectangle rfCover = System.Drawing.Rectangle.Empty; // (screen pixels the window covers all the time in this series)
+        readonly object rfGate = new object();
+        List<string> rfStats = new List<string>();
+        int rfShots, rfGapShots, rfWorst; System.Drawing.Bitmap rfWorstBmp;
+
+        static int Magenta(System.Drawing.Bitmap b, System.Drawing.Rectangle r)
+        {
+            r.Intersect(new System.Drawing.Rectangle(0, 0, b.Width, b.Height));
+            if (r.Width <= 0 || r.Height <= 0) return 0;
+            var d = b.LockBits(r, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                var row = new byte[r.Width * 4];
+                int n = 0;
+                for (int y = 0; y < r.Height; y++)
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(d.Scan0 + y * d.Stride, row, 0, row.Length);
+                    for (int x = 0; x < row.Length; x += 4) if (row[x] > 200 && row[x + 1] < 60 && row[x + 2] > 200) n++;
+                }
+                return n;
+            }
+            finally { b.UnlockBits(d); }
+        }
+
+        void HuntResizeFast()
+        {
+            if (!testInFront) { HuntLog("resizefast needs --front (it looks at the real screen)"); HuntDone(); return; }
+            var video = files.FirstOrDefault(f => IsVideoFile(f) && !IsAudioFile(f));
+            var photo = files.FirstOrDefault(f => !IsVideoFile(f) && !IsAudioFile(f));
+            var hw = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            var dev = PresentationSource.FromVisual(this).CompositionTarget.TransformToDevice;
+            int X0 = 300, Y0 = 160, W0 = 1000, H0 = 620;
+            var area = new System.Drawing.Rectangle(X0 - 120, Y0 - 100, W0 + 600, H0 + 380); // (what the pictures cover)
+            var backdrop = new Window { WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowActivated = false, ShowInTaskbar = false, Topmost = true, Background = new SolidColorBrush(Color.FromRgb(255, 0, 255)),
+                Left = (area.Left - 60) / dev.M11, Top = (area.Top - 60) / dev.M22, Width = (area.Width + 120) / dev.M11, Height = (area.Height + 120) / dev.M22 };
+            Action under = () =>
+            {
+                var bh = new System.Windows.Interop.WindowInteropHelper(backdrop).Handle;
+                var vb = VideoBack.For(this).Handle;
+                SetWindowPos(bh, vb != IntPtr.Zero && VideoBack.For(this).Up ? vb : hw, 0, 0, 0, 0, 1 | 2 | 0x10);
+            };
+            Func<System.Drawing.Bitmap> shot = () =>
+            {
+                var b = new System.Drawing.Bitmap(area.Width, area.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (var g = System.Drawing.Graphics.FromImage(b)) g.CopyFromScreen(area.Left, area.Top, 0, 0, b.Size);
+                return b;
+            };
+            Func<System.Drawing.Rectangle> winRect = () => { RECT131 r; GetWindowRect(hw, out r); return new System.Drawing.Rectangle(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top); };
+            // The shadow: pixels 1..24 outside the right edge and the bottom edge, in the middle (magenta = no shadow).
+            Action<string> shadow = name =>
+            {
+                using (var b = shot())
+                {
+                    var w = winRect();
+                    Func<int, int, string> px = (sx, sy) => { int x = sx - area.Left, y = sy - area.Top; if (x < 0 || y < 0 || x >= b.Width || y >= b.Height) return "-"; var c = b.GetPixel(x, y); return c.R + "," + c.G + "," + c.B; };
+                    int my = w.Top + w.Height / 2, mx = w.Left + w.Width / 2;
+                    HuntLog(name + ": shadow right of the window (1,3,6,10,16,24 px): " + string.Join(" | ", new[] { 1, 3, 6, 10, 16, 24 }.Select(o => px(w.Right - 1 + o, my))) + "; below: " + string.Join(" | ", new[] { 1, 3, 6, 10, 16, 24 }.Select(o => px(mx, w.Bottom - 1 + o))) + "; above: " + string.Join(" | ", new[] { 1, 3, 6, 10 }.Select(o => px(mx, w.Top - o))) + "; inside the right edge (1,2,3 px) " + px(w.Right - 1, my) + " | " + px(w.Right - 2, my) + " | " + px(w.Right - 3, my) + "; style " + ((long)GetWindowLongPtr131(hw, -16)).ToString("X") + ", region " + GetWindowRgnBox131(hw) + "; magenta inside the window " + Magenta(b, new System.Drawing.Rectangle(w.Left - area.Left + 1, w.Top - area.Top + 1, w.Width - 2, w.Height - 2)));
+                    b.Save(Path.Combine(snapDir, "shadow_" + name + ".png"));
+                    HuntLog("  " + VideoBack.For(this).Describe() + "; " + (shown != null && shown.IsVideo ? shown.Video.Debug() : "photo") + "; mini " + mini + ", z " + (shown != null ? System.Windows.Controls.Panel.GetZIndex(shown.Host) : -1) + ", opacity " + (shown != null ? shown.Host.Opacity : -1));
+                }
+            };
+            // A series: the picture thread counts magenta inside rfCover (and inside the window's rectangle at that moment).
+            var shooter = new Thread(() =>
+            {
+                while (true)
+                {
+                    if (!rfRun) { Thread.Sleep(5); continue; }
+                    System.Drawing.Rectangle cover; lock (rfGate) cover = rfCover;
+                    var w1 = winRect();
+                    var b = shot();
+                    var w2 = winRect();
+                    var now = System.Drawing.Rectangle.Intersect(w1, w2); now.Inflate(-2, -2);
+                    if (!cover.IsEmpty) { cover = System.Drawing.Rectangle.Intersect(cover, now); }
+                    else cover = now;
+                    cover.Offset(-area.Left, -area.Top);
+                    int n = Magenta(b, cover);
+                    lock (rfGate)
+                    {
+                        rfShots++;
+                        if (n > 0) rfGapShots++;
+                        if (n > rfWorst) { rfWorst = n; if (rfWorstBmp != null) rfWorstBmp.Dispose(); rfWorstBmp = b; b = null; }
+                    }
+                    if (b != null) b.Dispose();
+                }
+            }) { IsBackground = true, Name = "shots" };
+            shooter.Start();
+            Action<string> begin = name => { lock (rfGate) { rfShots = rfGapShots = rfWorst = 0; if (rfWorstBmp != null) rfWorstBmp.Dispose(); rfWorstBmp = null; } rfRun = true; };
+            Action<string> end = name =>
+            {
+                rfRun = false;
+                Thread.Sleep(60);
+                lock (rfGate)
+                {
+                    HuntLog(name + ": " + rfShots + " pictures, " + rfGapShots + " with the backdrop showing inside the window, most " + rfWorst + " pixels");
+                    rfStats.Add(name + " " + rfGapShots + "/" + rfShots + " (most " + rfWorst + " px)");
+                    if (rfWorstBmp != null) { rfWorstBmp.Save(Path.Combine(snapDir, "gap_" + name + ".png")); rfWorstBmp.Dispose(); rfWorstBmp = null; }
+                }
+            };
+            // Size changes, one per screen frame (a very fast drag), for ms milliseconds.
+            Action<string, Func<int, System.Drawing.Rectangle>, System.Drawing.Rectangle, int, Action> drag = (name, at, cover, ms, then) =>
+            {
+                lock (rfGate) rfCover = cover;
+                begin(name);
+                int k = 0; var sw = Stopwatch.StartNew();
+                EventHandler tick = null;
+                tick = (s, e) =>
+                {
+                    if (sw.ElapsedMilliseconds > ms)
+                    {
+                        CompositionTarget.Rendering -= tick;
+                        After(300, () => { end(name); lock (rfGate) rfCover = System.Drawing.Rectangle.Empty; then(); });
+                        return;
+                    }
+                    var r = at(k++);
+                    SetWindowPos(hw, IntPtr.Zero, r.Left, r.Top, r.Width, r.Height, 4 | 0x10);
+                };
+                CompositionTarget.Rendering += tick;
+            };
+            Func<int, int> tri = k => { int p = k % 32; return p < 16 ? p : 32 - p; }; // 0..16..0
+            Action<string, Action, Action> change = (name, act, then) =>
+            {
+                lock (rfGate) rfCover = System.Drawing.Rectangle.Empty;
+                begin(name); act(); After(700, () => { end(name); then(); });
+            };
+            var plan = new List<Action<Action>>
+            {
+                next => { Topmost = true; SetWindowPos(hw, IntPtr.Zero, X0, Y0, W0, H0, 4 | 0x10); backdrop.Show(); After(400, () => { under(); next(); }); },
+                next => { if (photo != null) HuntOpen(Path.GetFileName(photo), () => After(600, () => { under(); shadow("photo"); RealActivate(true); After(500, () => { shadow("photo_active"); RealActivate(false); After(300, next); }); })); else next(); },
+                next => HuntOpen(Path.GetFileName(video), () => { if (!playing) TogglePlay(); After(1200, () => { under(); next(); }); }),
+                next => { shadow("video"); next(); },
+                next => { RealActivate(true); After(500, () => { shadow("video_active"); RealActivate(false); After(300, next); }); },
+                next => drag("grow_shrink", k => new System.Drawing.Rectangle(X0, Y0, W0 + tri(k) * 30, H0 + tri(k) * 20), new System.Drawing.Rectangle(X0, Y0, W0, H0), 2500, next),
+                next => drag("left_top_edge", k => new System.Drawing.Rectangle(X0 + 480 - tri(k) * 30, Y0 + 320 - tri(k) * 20, W0 - 480 + tri(k) * 30, H0 - 320 + tri(k) * 20), new System.Drawing.Rectangle(X0 + 480, Y0 + 320, W0 - 480, H0 - 320), 2500, next),
+                next => drag("move", k => new System.Drawing.Rectangle(X0 + tri(k) * 25, Y0 + tri(k) * 12, W0 - 400, H0 - 250), new System.Drawing.Rectangle(X0 + 400, Y0 + 192, W0 - 800, H0 - 442), 2500, next),
+                next => { SetWindowPos(hw, IntPtr.Zero, X0, Y0, W0, H0, 4 | 0x10); After(500, () => { shadow("video_after"); next(); }); },
+                next => change("maximize", () => WindowState = WindowState.Maximized, next),
+                next => change("restore", () => WindowState = WindowState.Normal, next),
+                next => change("fullscreen_in", () => ToggleFullscreen(), next),
+                next => change("fullscreen_out", () => ToggleFullscreen(), next),
+                next => change("mini_in", () => ToggleMini(), next),
+                next => change("mini_out", () => { ToggleMini(); Topmost = true; under(); }, next), // (leaving the mini player drops "on top": the backdrop would cover the window)
+                next => { After(500, () => { shadow("video_end"); next(); }); },
+            };
+            int i = 0;
+            Action go = null;
+            go = () =>
+            {
+                if (i >= plan.Count) { backdrop.Close(); Topmost = false; HuntLog("summary: " + string.Join("; ", rfStats)); HuntDone(); return; }
+                plan[i++](() => Dispatcher.BeginInvoke(go));
+            };
+            go();
         }
     }
 }

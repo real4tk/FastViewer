@@ -134,6 +134,7 @@ namespace FastViewer
         public static IntPtr Visual() { IntPtr v; return Fn<FnOut>(Device, 7)(Device, out v) < 0 ? IntPtr.Zero : v; }
         public static void SetRoot(IntPtr target, IntPtr visual) { Fn<FnP>(target, 3)(target, visual); }
         public static void Add(IntPtr parent, IntPtr child) { Fn<FnAdd>(parent, 16)(parent, child, 1, IntPtr.Zero); }
+        public static void AddAbove(IntPtr parent, IntPtr child, IntPtr reference) { Fn<FnAdd>(parent, 16)(parent, child, 1, reference); } // (in front of reference)
         public static void Remove(IntPtr parent, IntPtr child) { Fn<FnP>(parent, 17)(parent, child); }
         public static void Content(IntPtr visual, IntPtr content) { Fn<FnP>(visual, 15)(visual, content); }
         public static void Linear(IntPtr visual) { Fn<FnI>(visual, 11)(visual, 1); }
@@ -301,7 +302,7 @@ namespace FastViewer
             IntPtr above = GetWindow(o, 3); // GW_HWNDPREV
             int n = 0;
             while (above != IntPtr.Zero && above != hwnd && n < 50) { above = GetWindow(above, 3); n++; }
-            return "video window " + (r.Right - r.Left) + "x" + (r.Bottom - r.Top) + " at " + r.Left + "," + r.Top + ", visible " + IsWindowVisible(o) + ", topmost " + (((long)GetWindowLongPtr(o, -20) & 8) != 0) + " (FastViewer's " + (((long)GetWindowLongPtr(hwnd, -20) & 8) != 0) + "), windows between it and FastViewer's: " + (above == hwnd ? n.ToString() : "? (not found above)") + ", owner set " + (GetWindowLongPtr(hwnd, -8) == o) + ", Windows frame " + (frameOff ? "off" : "drawn");
+            return "video window " + (r.Right - r.Left) + "x" + (r.Bottom - r.Top) + " at " + r.Left + "," + r.Top + ", visible " + IsWindowVisible(o) + ", topmost " + (((long)GetWindowLongPtr(o, -20) & 8) != 0) + " (FastViewer's " + (((long)GetWindowLongPtr(hwnd, -20) & 8) != 0) + "), windows between it and FastViewer's: " + (above == hwnd ? n.ToString() : "? (not found above)") + ", owner set " + (GetWindowLongPtr(hwnd, -8) == o) + ", Windows frame " + (frameOff ? "off" : "drawn") + ", " + BackNote;
         }
         public bool Up { get { return owner != null && IsWindowVisible(owner.Handle); } }
         public int Count { get { return showing.Count; } }
@@ -318,7 +319,9 @@ namespace FastViewer
             root = Comp.Visual();
             if (target == IntPtr.Zero || root == IntPtr.Zero) { Comp.Trouble = "no composition target"; return false; }
             Comp.SetRoot(target, root);
+            MakeBackground();
             Comp.Commit();
+            owner.AddHook(OwnerHook);
             // FastViewer's window is owned by it from now on: Windows keeps the two together, FastViewer's always just above.
             // (An owned window keeps its taskbar button only with WS_EX_APPWINDOW.)
             if (win.ShowInTaskbar) SetWindowLongPtr(hwnd, -20, (IntPtr)((long)GetWindowLongPtr(hwnd, -20) | 0x40000));
@@ -340,9 +343,104 @@ namespace FastViewer
         public bool Attach(OwnVideo v, IntPtr visual)
         {
             if (!Make()) return false;
-            if (!showing.Contains(v)) { showing.Add(v); Comp.Add(root, visual); Comp.Commit(); }
+            if (!showing.Contains(v)) { showing.Add(v); if (bgOuter != IntPtr.Zero) Comp.AddAbove(root, visual, bgOuter); else Comp.Add(root, visual); Comp.Commit(); }
             Sync();
             return true;
+        }
+
+        // ---- (1.31.1 fix) The video window's own background: the look's colour behind the picture, filling the whole window.
+        // While the window is resized, moved, maximized or goes full screen, FastViewer's drawing and the picture's place catch
+        // up a frame or two later; the rest of the video window used to be see-through, so the desktop showed through the gap.
+        // Now it's the colour that is there anyway. (Not for see-through looks: their window must stay see-through.)
+        IntPtr bgSwap, bgOuter, bgVis;
+        int bgColor = -1;                            // 0xAARRGGBB shown, -1 none
+        int wantBg = -1;
+        bool wantShadow, shadowOn;
+        public string BackNote { get { return (bgColor == -1 ? "background none" : "background #" + (bgColor & 0xFFFFFF).ToString("X6")) + ", shadow " + (shadowOn ? "on" : "off"); } }
+
+        void MakeBackground()
+        {
+            try
+            {
+                bgSwap = Comp.SwapChain(8, 8);
+                bgOuter = Comp.Visual();
+                bgVis = Comp.Visual();
+                if (bgSwap == IntPtr.Zero || bgOuter == IntPtr.Zero || bgVis == IntPtr.Zero) { bgOuter = IntPtr.Zero; return; }
+                Comp.Content(bgVis, bgSwap);
+                Comp.Matrix(bgVis, new Matrix(4096, 0, 0, 4096, 0, 0)); // (8 pixels -> 32768: any window size, never placed again)
+                Comp.Add(bgOuter, bgVis);
+                Comp.Add(root, bgOuter);
+                Comp.Clip(bgOuter, new Rect(0, 0, 0, 0));
+                bgColor = -1;
+                ApplyBackground();
+            }
+            catch { bgOuter = IntPtr.Zero; }
+        }
+
+        // The window tells the look: the colour around the picture (null: see-through, none) and whether Windows' shadow belongs
+        // around the window (a normal window of an opaque look; not maximized, full screen or the mini player).
+        public void Look(Color? back, bool shadow)
+        {
+            wantBg = back.HasValue ? (int)(0xFF000000 | ((uint)back.Value.R << 16) | ((uint)back.Value.G << 8) | back.Value.B) : -1;
+            wantShadow = shadow && back.HasValue;
+            if (owner == null) return;
+            if (ApplyBackground()) Comp.Commit();
+            if (IsWindowVisible(owner.Handle)) Shadow(wantShadow);
+        }
+
+        bool ApplyBackground()
+        {
+            if (bgOuter == IntPtr.Zero || wantBg == bgColor) return false;
+            if (wantBg != -1)
+            {
+                var px = new int[64];
+                for (int i = 0; i < px.Length; i++) px[i] = wantBg;
+                var h = GCHandle.Alloc(px, GCHandleType.Pinned);
+                IntPtr buf = Comp.BackBuffer(bgSwap);
+                try { if (buf == IntPtr.Zero) return false; Comp.Upload(buf, h.AddrOfPinnedObject(), 32); }
+                finally { h.Free(); if (buf != IntPtr.Zero) Marshal.Release(buf); }
+                Comp.Present(bgSwap);
+            }
+            Comp.Clip(bgOuter, wantBg == -1 ? new Rect(0, 0, 0, 0) : new Rect(0, 0, 1e5, 1e5));
+            bgColor = wantBg;
+            return true;
+        }
+
+        // ---- (1.31.1 fix) Windows' shadow. FastViewer's window has no Windows frame while the video is up (the plain region, see
+        // Frame), so it has no shadow either. The video window, exactly under it, takes the shadow over: it gets a resizable
+        // window's style (that is what Windows draws a shadow for) with no frame of its own (WM_NCCALCSIZE: all of it is
+        // picture) and its active look follows FastViewer's window. Windows' frame colour behind see-through spots can't show:
+        // with a shadow the video window is opaque (its background). Only drawn when "Show shadows under windows" is on, as
+        // before. Never activated, never in the taskbar or Alt+Tab (a tool window), never reached by the mouse (covered).
+        [DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr h, int[] margins);
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr wp, IntPtr lp);
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        void Shadow(bool on)
+        {
+            if (owner == null || on == shadowOn) return;
+            shadowOn = on;
+            IntPtr o = owner.Handle;
+            long style = (long)GetWindowLongPtr(o, -16);
+            style = on ? style | 0x40000 : style & ~0x40000L; // WS_THICKFRAME
+            SetWindowLongPtr(o, -16, (IntPtr)style);
+            try { DwmExtendFrameIntoClientArea(o, on ? new[] { 1, 1, 1, 1 } : new[] { 0, 0, 0, 0 }); } catch { }
+            SetWindowPos(o, IntPtr.Zero, 0, 0, 0, 0, NoMove | NoSize | NoZ | NoActivate | NoOwnerZ | 0x20); // SWP_FRAMECHANGED
+            if (on) SendMessage(o, 0x86, (IntPtr)(GetForegroundWindow() == hwnd ? 1 : 0), IntPtr.Zero); // WM_NCACTIVATE: FastViewer's
+        }
+
+        IntPtr OwnerHook(IntPtr h, int msg, IntPtr wp, IntPtr lp, ref bool handled)
+        {
+            if (!shadowOn) return IntPtr.Zero;
+            if (msg == 0x83) { handled = true; return IntPtr.Zero; } // WM_NCCALCSIZE: no frame, the client is the whole window
+            if (msg == 0x24) // WM_GETMINMAXINFO: any size FastViewer's window has (a resizable window is otherwise held to Windows' limits)
+            {
+                Marshal.WriteInt32(lp, 24, 1); Marshal.WriteInt32(lp, 28, 1);
+                Marshal.WriteInt32(lp, 32, 32767); Marshal.WriteInt32(lp, 36, 32767);
+                handled = true;
+                return IntPtr.Zero;
+            }
+            if (msg == 0x84) { handled = true; return (IntPtr)(-1); } // WM_NCHITTEST: HTTRANSPARENT (never a resize edge)
+            return IntPtr.Zero;
         }
 
         public void Detach(OwnVideo v, IntPtr visual)
@@ -383,6 +481,8 @@ namespace FastViewer
                 bool adjacent = GetWindow(hwnd, 2) == o; // GW_HWNDNEXT
                 SetWindowPos(o, adjacent ? IntPtr.Zero : hwnd, pt.X, pt.Y, Math.Max(1, c.Right), Math.Max(1, c.Bottom), (adjacent ? NoZ : 0) | NoActivate | NoOwnerZ | (was ? 0 : Show));
                 if (!was) { FrameDrawn(false); OwnPreviews(true); if (Showing != null) Showing(true); }
+                else if (frameOff && !Blur && Frame != null && !Looks.HasBigRegion(hwnd)) Frame(true); // (1.31.1: the region was cleared by WPF: again)
+                Shadow(wantShadow);
             }
             else if (IsWindowVisible(o)) { ShowWindow(o, 0); FrameDrawn(true); OwnPreviews(false); if (Showing != null) Showing(false); }
             bool blur = Blur && want;
@@ -534,7 +634,13 @@ namespace FastViewer
                     SetWindowPos(owner.Handle, IntPtr.Zero, x + dx, y + dy, Math.Max(1, cx + dw), Math.Max(1, cy + dh), NoZ | NoActivate | NoOwnerZ);
                 else if ((flags & NoMove) == 0 && (flags & NoSize) != 0)
                     SetWindowPos(owner.Handle, IntPtr.Zero, x + dx, y + dy, 0, 0, NoZ | NoActivate | NoOwnerZ | NoSize);
+                else if ((flags & NoMove) != 0 && (flags & NoSize) == 0) // (1.31.1: a new size at the same place, also in step)
+                {
+                    RECT w; GetWindowRect(hwnd, out w);
+                    SetWindowPos(owner.Handle, IntPtr.Zero, w.Left + dx, w.Top + dy, Math.Max(1, cx + dw), Math.Max(1, cy + dh), NoZ | NoActivate | NoOwnerZ);
+                }
             }
+            else if (msg == 0x86 && shadowOn) SendMessage(owner.Handle, 0x86, wp, IntPtr.Zero); // WM_NCACTIVATE: the shadow looks active with the window
             else if (msg == 0x47 || msg == 0x18 || msg == 0x05)
             {
                 Sync(); // WM_WINDOWPOSCHANGED, WM_SHOWWINDOW, WM_SIZE
@@ -1375,6 +1481,11 @@ namespace FastViewer
         void OnFrame(object sender, EventArgs e)
         {
             FrameCalls++;
+            // (1.31.1 fix: WPF raises Rendering before it lays the window out for this frame, so the video was placed where the
+            // window's layout was a frame ago: during a fast resize the picture sat offset. Laid out first, it is placed for
+            // the frame WPF is about to draw. Nothing to do when the layout is current.)
+            var w = Window.GetWindow(this);
+            if (w != null) try { w.UpdateLayout(); } catch { }
             if (Place()) calmFrames = 0;
             else if (++calmFrames > 30) { CompositionTarget.Rendering -= OnFrame; hooked = false; }
         }
@@ -1539,6 +1650,29 @@ namespace FastViewer
             videoHoles = holes;
             foreach (var e in new FrameworkElement[] { this, root, stage, cover }) if (e != null) HoleIn(e, holes);
             ClipHiddenSlots();
+            VideoBackLook();
+        }
+
+        // (1.31.1) The video window's background is the colour around the picture (the topmost opaque one of the cover, the
+        // stage, the root and the window), none for a see-through look; Windows' shadow for a normal window of an opaque look.
+        void VideoBackLook()
+        {
+            Color? c = null;
+            bool clearLook = (seeThrough && !fullscreen && !mini) || (mini && miniClear);
+            if (!clearLook)
+                foreach (var e in new FrameworkElement[] { cover, stage, root, this })
+                {
+                    if (e == null || !e.IsVisible) continue;
+                    var dp = BackgroundOf(e);
+                    if (dp == null) continue;
+                    Brush b;
+                    if (!holeBase.TryGetValue(e, out b)) b = e.GetValue(dp) as Brush;
+                    var s = b as SolidColorBrush;
+                    if (b == null || (s != null && s.Color.A < 255)) continue; // (nothing, or part see-through: what lies under it)
+                    c = s != null ? s.Color : Colors.Black;
+                    break;
+                }
+            VideoBack.For(this).Look(c, !seeThrough && !fullscreen && !mini && WindowState == WindowState.Normal);
         }
 
         // The slots waiting behind the cover (the files ahead and behind) are drawn there all the time, so they are ready at

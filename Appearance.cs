@@ -124,8 +124,13 @@ namespace FastViewer
             var hwnd = new WindowInteropHelper(this).Handle;
             var src = PresentationSource.FromVisual(this);
             if (hwnd == IntPtr.Zero || src == null || src.CompositionTarget == null) return;
+            VideoBackLook(); // (1.31.1: the video window's background and shadow follow the window's state)
             bool round = seeThrough && !fullscreen && !mini && WindowState == WindowState.Normal;
             bool square = mini || fullscreen || videoNoFrame && !round; // (1.31.0 fix: own player's video up, Player.cs VideoBack.Frame)
+            // (1.31.1 fix: the square region is far bigger than any window, so it never has to follow a new size. Made the window's
+            // size on every SizeChanged, it lagged a fast resize and cut off the newly uncovered strip for a moment.)
+            // (Looked up, not remembered: WPF's window chrome clears a window's region on some changes, e.g. leaving the mini player.)
+            if (square && Looks.HasBigRegion(hwnd)) { rounded = true; return; }
             if (!round && !square && !rounded) return;
             var m = src.CompositionTarget.TransformToDevice;
             var r = Application.Current.Resources["Radius.Window"];
@@ -133,7 +138,7 @@ namespace FastViewer
             int w = (int)Math.Round(ActualWidth * m.M11), h = (int)Math.Round(ActualHeight * m.M22);
             // Full screen and the mini player get a plain square region: Windows then draws no frame, border or
             // shadow around them (no accent-coloured lines; no outline around a see-through mini player).
-            if (square) Looks.SetSquareRegion(hwnd, w, h);
+            if (square) Looks.SetSquareRegion(hwnd, 32767, 32767);
             else Looks.SetRoundCorners(hwnd, w, h, radius);
             rounded = round || square;
         }

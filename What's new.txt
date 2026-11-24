@@ -4,6 +4,23 @@ FastViewer - what's new
 Version numbers: major.minor.patch. New features raise the middle number, bug fixes the last one.
 You can see which version you have in "..." -> Settings -> About.
 
+1.31.1  (24 Nov 2026)
+  Fixed
+  - Resizing fast: the video no longer lags behind the window. While you drag an edge, snap, maximize, or go in and out
+    of full screen and the mini player, the desktop no longer shows through a gap next to the picture. Measured with a
+    bright test background behind the window: dragging the right/bottom edge very fast showed it in 56 of 203 screen
+    pictures before, 0 now; dragging the left/top edge 148 of 204 before, 5 now (a thin strip at the far edge, as with
+    any app); moving, maximize and restore 0 (were 11, 10 and 13).
+  - Windows' shadow around the window stays while a video is showing (when "Show shadows under windows" is on in Windows).
+    Still no old Windows 7 frame, and the video is never blurred.
+  - After leaving the mini player during a video, the window could show grey instead of the picture until it was resized.
+  Checked, nothing to fix with FastViewer's own player
+  - A speed change in the last 0.3 s before a loop: picture and sound start the next loop together (0 ms apart).
+  - Skipping into the last 2-3 s and holding for 2x at once: no sound is played twice (12 of 12 tries).
+  Left as it is
+  - The tiny sound gaps while dragging the time slider very fast, and the few skipped pictures after very fast
+    pause/play clicks: fixing them would mean changing how picture and sound stay together.
+
 1.31.0  (23 Nov 2026)
   New
   - One player: FastViewer now plays every video and song with a player of its own, built for this, instead of Windows'

@@ -115,6 +115,8 @@ namespace FastViewer
                 case "player": HuntPlayer(); break;
                 case "memprobe": HuntMemProbe(); break;
                 case "screen": HuntScreen(); break; // 1.31.0 (Hunt131.cs)
+                case "resizefast": HuntResizeFast(); break; // 1.31.1 (Hunt131.cs, --front only)
+                case "skiphold": HuntSkipHold(); break; // 1.31.1 (Hunt131.cs)
                 case "rotscreen": HuntRotScreen(); break;
                 case "solo": HuntSolo(); break;
                 case "thumbs": HuntThumbs(); break;

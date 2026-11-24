@@ -240,7 +240,16 @@ namespace FastViewer
 
         [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
 
-        // A plain square region the size of the window (no shadow or frame drawn around it).
+        [DllImport("user32.dll")] static extern int GetWindowRgnBox(IntPtr hwnd, out RgnBox r);
+        [StructLayout(LayoutKind.Sequential)] struct RgnBox { public int Left, Top, Right, Bottom; }
+        // (1.31.1) The window has the big square region (SetSquareRegion with 32767): nothing to set again.
+        public static bool HasBigRegion(IntPtr hwnd)
+        {
+            RgnBox r;
+            return GetWindowRgnBox(hwnd, out r) == 2 && r.Left == 0 && r.Top == 0 && r.Right >= 32767 && r.Bottom >= 32767; // SIMPLEREGION
+        }
+
+        // A plain square region (no shadow or frame drawn around it); 1.31.1: always far bigger than the window.
         public static void SetSquareRegion(IntPtr hwnd, int width, int height)
         {
             SetWindowRgn(hwnd, CreateRectRgn(0, 0, width, height), true);

@@ -1,5 +1,5 @@
 <!-- Read this first in every new conversation about FastViewer. Updated with every release (see the release routine). -->
-# FastViewer: complete feature list (version 1.31.0)
+# FastViewer: complete feature list (version 1.31.1)
 
 FastViewer is a fast photo and video viewer for Windows 10/11 that looks like the Windows 11 Photos app.
 Its main point is that switching between files is instant (median about 1 ms, p90 about 11 ms per switch
@@ -12,7 +12,7 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   AssemblyInfo.cs, Playback.cs, Convert.cs, Extras.cs, FeatureTest.cs, Updates.cs, Shortcuts.cs,
   FolderWatch.cs, Background.cs, Thumbs.cs, Gallery.cs, Looks.cs, Appearance.cs, BugHunt.cs, Motion.cs
   (the shared animation system), Animations.cs (the window's animations and the Animations setting),
-  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests), Report.cs (1.28.0: the error report), Translate.cs (1.28.0: English translation), Hunt128.cs (1.28.0 tests), Parakeet.cs (1.28.0: Parakeet captions), Loudness.cs (1.29.0: Even out volume), Hold.cs (1.29.0: hold for 2x), Stretch.cs (1.29.0: same pitch at any speed (WSOLA), speed changes timed with the picture), TestSilence.cs (1.29.0: test runs at Windows volume 0), Hunt129.cs (1.29.0: pitch / let-go / Keep speed / loops / decodeinfo tests), FramePath.cs (1.30.0, since 1.31.0 only the picture decoding of the own player: FrameReader, Gpu; the 1.30 experiment's window code is gone), Hunt130.cs (1.30.0 tests still used: narrowsettings, clicks, clickspam, skipjam, jamrepair), Player.cs (1.31.0: FastViewer's own player, its video window behind the window, the Present thread), Speakers.cs (1.31.0: WASAPI sound output), Hunt131.cs (1.31.0 tests: player, screen, memprobe), Jam.cs (1.30.0: a jammed video player is made again), Stats.cs (1.30.0: playback stats, Ctrl+Shift+P);
+  Trim.cs (the trim bar), CustomLook.cs (the custom look and its colour picker), Audio.cs (music files: the cover card, tags from Windows), Rotations.cs (remembered turns, rotations.txt; video turn saved into the MP4/MOV), GridSearch.cs (grid search and sort), Menus.cs (the customizable "..." menus), Gif.cs (own GIF writer), Share.cs (Make GIF, Send to Discord), Crop.cs (cropping photos and videos), HuntCrop.cs (their tests), Away.cs (1.23.0: hidden video players let go while the window is away, and its test), Addons.cs (1.24.0: optional one-time downloads, the Helper that runs programs out of sight), Tools.cs (Convert to JPG/PNG, Smoother video, the graphics card verdict), Subtitles.cs, Captions.cs (Whisper, the speech .wav), HuntAddons.cs (their tests), Burn.cs (1.25.0: captions drawn into a copy), Vocals.cs (1.25.0: voice isolation, built but not offered), SideMenu.cs, Tracks.cs (1.26.0: what a file's sound tracks are, the mixer, the trim bar's Sound menu), SoundFix.cs (1.26.0: sound that stops a file from playing, the playable copy), SoundPlay.cs (1.26.0: FastViewer's own sound for multi-track videos and volume over 100%), Welcome.cs (1.27.0: the welcome screen, recent.txt, default viewer), SubEditor.cs (1.27.0: the subtitle editor), Hunt127.cs (1.27.0 tests), Report.cs (1.28.0: the error report), Translate.cs (1.28.0: English translation), Hunt128.cs (1.28.0 tests), Parakeet.cs (1.28.0: Parakeet captions), Loudness.cs (1.29.0: Even out volume), Hold.cs (1.29.0: hold for 2x), Stretch.cs (1.29.0: same pitch at any speed (WSOLA), speed changes timed with the picture), TestSilence.cs (1.29.0: test runs at Windows volume 0), Hunt129.cs (1.29.0: pitch / let-go / Keep speed / loops / decodeinfo tests), FramePath.cs (1.30.0, since 1.31.0 only the picture decoding of the own player: FrameReader, Gpu; the 1.30 experiment's window code is gone), Hunt130.cs (1.30.0 tests still used: narrowsettings, clicks, clickspam, skipjam, jamrepair), Player.cs (1.31.0: FastViewer's own player, its video window behind the window, the Present thread), Speakers.cs (1.31.0: WASAPI sound output), Hunt131.cs (1.31.0 tests: player, screen, memprobe; 1.31.1: resizefast, skiphold), Jam.cs (1.30.0: a jammed video player is made again), Stats.cs (1.30.0: playback stats, Ctrl+Shift+P);
   Theme.xaml, Window.xaml, Icons.Lines.xaml, Looks.Photos/Clean/Glass/Midnight.xaml; fonts\Inter-*.ttf.
 - One portable FastViewer.exe (about 1.6 MB). Release zip FastViewer-<version>.zip contains FastViewer.exe,
   "How to use FastViewer.txt", "What's new.txt" and the Inter font license.
@@ -1180,7 +1180,8 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   spot, whatever the accent (tried: DwmExtendFrame, accent 2, blur-behind regions (tinted), layered, dropping WS_THICKFRAME).
   So while the video window is up FastViewer's window gets a plain square window region (VideoBack.Frame -> videoNoFrame ->
   RoundCorners; a see-through look keeps its round one): Windows draws no frame for it, its frame drawing stays on, resize
-  border and snapping stay (style). The Windows shadow is gone meanwhile. NOT DWMWA_NCRENDERING_POLICY = disabled: with it
+  border and snapping stay (style). 1.31.1: the region is 32767x32767 (never follows a size; looked up with GetWindowRgnBox,
+  Looks.HasBigRegion, because WPF's chrome clears it e.g. leaving the mini player: Sync sets it again). NOT DWMWA_NCRENDERING_POLICY = disabled: with it
   Windows paints the old basic (Win7) frame into the window on real activations and while resizing, whatever the window
   procedure blocks. --case screen --front does real activations (RealActivate: ~1 s of the user's focus each).
   Hidden tests can't see this (cloaked windows): --case screen --front captures the real screen, incl. video_window_alone.
@@ -1212,7 +1213,28 @@ in the built-in stress test). Public on GitHub: github.com/real4tk/FastViewer (M
   and picture threads played on in a frozen window, listed in Alt+Tab); the new one kills it if still there after 6 s.
   --case solo: 45 s of fast switching (crossfade from settings, hold 2x, Repeat, skips to the end) checked every 100 ms:
   hidden players playing/not muted, sound of another file, windows Alt+Tab could list, FastViewers from this exe.
-- The clock: OwnVideo's own (Stopwatch x speed; pause, jumps, speed changes take effect at once). While FastViewer's sound
+- 1.31.1 fixes (Player.cs VideoBack, Appearance.cs RoundCorners):
+  Fast resizing: the video window has its own background, an 8x8 swap chain in the look's colour scaled to 32768 px behind
+  the pictures (VideoBack.Look/ApplyBackground; colour = the topmost opaque background of cover, stage, root, window;
+  none for see-through looks and the see-through mini player), so whatever lags shows that colour, not the desktop. The
+  picture is placed after WPF's layout of the same frame (OnFrame calls UpdateLayout: Rendering comes before layout, so it
+  was a frame behind). WM_WINDOWPOSCHANGING also moves the video window on size-only changes. Measured with --case
+  resizefast --front (magenta backdrop window behind, screen pictures from another thread, magenta inside the window =
+  gap): right/bottom drag 56/203 -> 0/226, left/top drag 148/204 -> 5/203 (a strip at the far edge, any app's resize
+  lag), move 11 -> 0, maximize 10 -> 0, restore 13 -> 0, full screen and mini player 0.
+  Shadow: while the video is up the video window carries Windows' shadow: WS_THICKFRAME added (VideoBack.Shadow),
+  WM_NCCALCSIZE -> no frame, DwmExtendFrameIntoClientArea 1, WM_GETMINMAXINFO any size, WM_NCHITTEST transparent,
+  FastViewer's WM_NCACTIVATE passed on (active/inactive shadow). Only for opaque looks in a normal window (not maximized,
+  full screen, mini). Windows draws it only with "Show shadows under windows" on: OFF on the user's PC
+  (SPI_GETDROPSHADOW 0), so there FastViewer never had a shadow or outline (photo or video); not seen on a screen with
+  shadows on yet. Stats line in --case player: "background #121212, shadow on".
+  Checked with the own player, no change needed: --case loopchange (speed change 0.3-0.8 s before the end, holds):
+  sound and picture 0 ms apart after every start-over, 0 frames left out; --case skiphold (Skip forward / jump to 2,
+  2.5, 3 s before the end, hold at once): no doubled sound in 12 of 12 (DoubledMs at the jump and the loop).
+  Left alone: fast slider drags (each jump 28-45 ms of silence while the decoder catches up) and skipped pictures after
+  very fast pause/play clicks: both live in the clock that keeps picture and sound together.
+  Before/after (hidden): pictures 60/60 and 120/120 a second, none skipped or late, pause 2-3 ms, play 4-5 ms, memory
+  the same within noise, 1000-switch torture clean (longest wait 0 ms).- The clock: OwnVideo's own (Stopwatch x speed; pause, jumps, speed changes take effect at once). While FastViewer's sound
   plays the file (always for a file with sound: the own player has none of its own) the picture follows what is being
   heard (SoundPlayer.Clock, with the pace of the piece at the speakers' playhead: HeardPace), so it can't drift from the
   sound. A jump while playing holds the clock until the new place is decoded (at most 0.6 s), then picture and sound go
